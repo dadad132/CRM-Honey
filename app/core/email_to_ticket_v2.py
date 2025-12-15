@@ -965,16 +965,29 @@ async def process_project_emails(db: AsyncSession, project) -> List:
     blocking the event loop and slowing down the website.
     
     Args:
-        db: Database session
+        db: Database session (not used - we create our own to avoid greenlet issues)
         project: Project with IMAP settings
         
     Returns:
         List of created tasks
     """
     from app.models.task import Task
+    from app.core.database import engine
+    from sqlmodel.ext.asyncio.session import AsyncSession as NewAsyncSession
     
     if not project.imap_host or not project.imap_username:
         return []
+    
+    # Store project data we need before any async operations
+    project_id = project.id
+    project_name = project.name
+    project_workspace_id = project.workspace_id
+    project_owner_id = project.owner_id
+    imap_host = project.imap_host
+    imap_port = project.imap_port
+    imap_username = project.imap_username
+    imap_password = project.imap_password
+    imap_use_ssl = project.imap_use_ssl
     
     tasks_created = []
     mail = None
@@ -988,12 +1001,12 @@ async def process_project_emails(db: AsyncSession, project) -> List:
         def connect_and_fetch():
             """Synchronous IMAP connection and fetch"""
             nonlocal mail
-            if project.imap_use_ssl:
-                mail = imaplib.IMAP4_SSL(project.imap_host, project.imap_port or 993)
+            if imap_use_ssl:
+                mail = imaplib.IMAP4_SSL(imap_host, imap_port or 993)
             else:
-                mail = imaplib.IMAP4(project.imap_host, project.imap_port or 143)
+                mail = imaplib.IMAP4(imap_host, imap_port or 143)
             
-            mail.login(project.imap_username, project.imap_password)
+            mail.login(imap_username, imap_password)
             mail.select('INBOX')
             
             status, messages = mail.search(None, 'UNSEEN')
@@ -1017,7 +1030,7 @@ async def process_project_emails(db: AsyncSession, project) -> List:
         # Fetch emails in thread pool (non-blocking)
         raw_emails = await asyncio.to_thread(connect_and_fetch)
         
-        print(f"[Project IMAP] {project.name}: Found {len(raw_emails)} unread messages")
+        print(f"[Project IMAP] {project_name}: Found {len(raw_emails)} unread messages")
         
         for raw_email in raw_emails:
             email_id = raw_email['email_id']
@@ -1027,135 +1040,143 @@ async def process_project_emails(db: AsyncSession, project) -> List:
                 # Get message ID
                 message_id = msg.get('Message-ID', f'no-id-{email_id.decode()}')
                 
-                # Check if already processed
-                from app.models.processed_mail import ProcessedMail
-                existing = await db.execute(
-                    select(ProcessedMail).where(ProcessedMail.message_id == message_id)
-                )
-                if existing.scalar_one_or_none():
-                    await asyncio.to_thread(mail.store, email_id, '+FLAGS', '\\Seen')
-                    continue
+                print(f"[Project IMAP] Processing email {email_id}: Message-ID={message_id[:50]}...")
                 
-                # Extract email info
-                from_header = msg.get('From', '')
-                # Parse sender
-                if '<' in from_header:
-                    sender_name = from_header.split('<')[0].strip().strip('"')
-                    sender_email = from_header.split('<')[1].split('>')[0]
-                else:
-                    sender_name = from_header
-                    sender_email = from_header
-                
-                # Decode subject
-                subject_header = msg.get('Subject', 'No Subject')
-                if isinstance(subject_header, bytes):
-                    subject = subject_header.decode()
-                else:
-                    decoded = decode_header(subject_header)
-                    subject = ''
-                    for part, charset in decoded:
-                        if isinstance(part, bytes):
-                            subject += part.decode(charset or 'utf-8', errors='replace')
-                        else:
-                            subject += part
-                
-                # Extract body
-                body = ''
-                if msg.is_multipart():
-                    for part in msg.walk():
-                        if part.get_content_type() == 'text/plain':
-                            payload = part.get_payload(decode=True)
-                            if payload:
-                                body = payload.decode(errors='replace')
-                                break
-                else:
-                    payload = msg.get_payload(decode=True)
-                    if payload:
-                        body = payload.decode(errors='replace')
-                
-                # Create task using the service's analyze method
-                service = EmailToTicketService.__new__(EmailToTicketService)
-                title, description = service.analyze_email_for_task(subject, body)
-                priority_str = service.determine_priority(subject, body)
-                
-                from app.models.enums import TaskPriority, TaskStatus
-                from datetime import date
-                
-                priority_map = {
-                    'urgent': TaskPriority.critical,
-                    'high': TaskPriority.high,
-                    'medium': TaskPriority.medium,
-                    'low': TaskPriority.low
-                }
-                task_priority = priority_map.get(priority_str, TaskPriority.medium)
-                
-                # Get project creator as task creator
-                creator_id = project.owner_id
-                
-                new_task = Task(
-                    title=title,
-                    description=description,
-                    project_id=project.id,
-                    creator_id=creator_id,
-                    status=TaskStatus.todo,
-                    priority=task_priority,
-                    start_date=date.today(),
-                    due_date=None
-                )
-                
-                db.add(new_task)
-                await db.commit()
-                await db.refresh(new_task)
-                
-                # Mark email as processed
-                processed = ProcessedMail(
-                    message_id=message_id,
-                    email_from=sender_email or 'unknown@unknown.com',
-                    subject=subject,
-                    ticket_id=new_task.id,  # Using ticket_id field to store task id
-                    workspace_id=project.workspace_id
-                )
-                db.add(processed)
-                await db.commit()
-                
-                # Mark as read (run in thread)
-                await asyncio.to_thread(mail.store, email_id, '+FLAGS', '\\Seen')
-                
-                # Notify project members and admins
-                from app.models.notification import Notification
-                from app.models.project_member import ProjectMember
-                from app.models.user import User
-                
-                # Get project member user IDs
-                members_query = select(ProjectMember).where(ProjectMember.project_id == project.id)
-                result = await db.execute(members_query)
-                members = result.scalars().all()
-                member_ids = {m.user_id for m in members}
-                
-                # Get admin user IDs
-                admin_query = select(User).where(User.role == 'admin', User.is_active == True)
-                result = await db.execute(admin_query)
-                admins = result.scalars().all()
-                admin_ids = {a.id for a in admins}
-                
-                # Combine unique user IDs
-                notify_ids = member_ids.union(admin_ids)
-                
-                for user_id in notify_ids:
-                    notification = Notification(
-                        user_id=user_id,
-                        title=f"📧 New Task: {title}",
-                        message=f"Email from {sender_name} created new task in '{project.name}': {subject}",
-                        type='info',
-                        related_id=new_task.id,
-                        related_type='task'
+                # Use a fresh database session for each email to avoid greenlet issues
+                async with NewAsyncSession(engine) as fresh_db:
+                    # Check if already processed
+                    from app.models.processed_mail import ProcessedMail
+                    existing = await fresh_db.execute(
+                        select(ProcessedMail).where(ProcessedMail.message_id == message_id)
                     )
-                    db.add(notification)
-                
-                await db.commit()
-                
-                tasks_created.append(new_task)
-                print(f"[Project IMAP] Created task '{title}' for project '{project.name}' from {sender_email}")
+                    if existing.scalar_one_or_none():
+                        print(f"[Project IMAP] Email already processed, marking as read")
+                        await asyncio.to_thread(mail.store, email_id, '+FLAGS', '\\Seen')
+                        continue
+                    
+                    # Extract email info
+                    from_header = msg.get('From', '')
+                    print(f"[Project IMAP] From: {from_header}")
+                    # Parse sender
+                    if '<' in from_header:
+                        sender_name = from_header.split('<')[0].strip().strip('"')
+                        sender_email = from_header.split('<')[1].split('>')[0]
+                    else:
+                        sender_name = from_header
+                        sender_email = from_header
+                    
+                    # Decode subject
+                    subject_header = msg.get('Subject', 'No Subject')
+                    if isinstance(subject_header, bytes):
+                        subject = subject_header.decode()
+                    else:
+                        decoded = decode_header(subject_header)
+                        subject = ''
+                        for part, charset in decoded:
+                            if isinstance(part, bytes):
+                                subject += part.decode(charset or 'utf-8', errors='replace')
+                            else:
+                                subject += part
+                    
+                    print(f"[Project IMAP] Subject: {subject}")
+                    
+                    # Extract body
+                    body = ''
+                    if msg.is_multipart():
+                        for part in msg.walk():
+                            if part.get_content_type() == 'text/plain':
+                                payload = part.get_payload(decode=True)
+                                if payload:
+                                    body = payload.decode(errors='replace')
+                                    break
+                    else:
+                        payload = msg.get_payload(decode=True)
+                        if payload:
+                            body = payload.decode(errors='replace')
+                    
+                    # Create task using the service's analyze method
+                    service = EmailToTicketService.__new__(EmailToTicketService)
+                    title, description = service.analyze_email_for_task(subject, body)
+                    priority_str = service.determine_priority(subject, body)
+                    
+                    from app.models.enums import TaskPriority, TaskStatus
+                    from datetime import date
+                    
+                    priority_map = {
+                        'urgent': TaskPriority.critical,
+                        'high': TaskPriority.high,
+                        'medium': TaskPriority.medium,
+                        'low': TaskPriority.low
+                    }
+                    task_priority = priority_map.get(priority_str, TaskPriority.medium)
+                    
+                    # Get project creator as task creator
+                    creator_id = project_owner_id
+                    
+                    new_task = Task(
+                        title=title,
+                        description=description,
+                        project_id=project_id,
+                        creator_id=creator_id,
+                        status=TaskStatus.todo,
+                        priority=task_priority,
+                        start_date=date.today(),
+                        due_date=None
+                    )
+                    
+                    fresh_db.add(new_task)
+                    await fresh_db.commit()
+                    await fresh_db.refresh(new_task)
+                    
+                    # Mark email as processed
+                    processed = ProcessedMail(
+                        message_id=message_id,
+                        email_from=sender_email or 'unknown@unknown.com',
+                        subject=subject,
+                        ticket_id=new_task.id,  # Using ticket_id field to store task id
+                        workspace_id=project_workspace_id
+                    )
+                    fresh_db.add(processed)
+                    await fresh_db.commit()
+                    
+                    # Mark as read (run in thread)
+                    await asyncio.to_thread(mail.store, email_id, '+FLAGS', '\\Seen')
+                    
+                    # Notify project members and admins
+                    from app.models.notification import Notification
+                    from app.models.project_member import ProjectMember
+                    from app.models.user import User
+                    
+                    # Get project member user IDs
+                    members_query = select(ProjectMember).where(ProjectMember.project_id == project_id)
+                    result = await fresh_db.execute(members_query)
+                    members = result.scalars().all()
+                    member_ids = {m.user_id for m in members}
+                    
+                    # Get admin user IDs
+                    admin_query = select(User).where(User.is_admin == True, User.is_active == True)
+                    result = await fresh_db.execute(admin_query)
+                    admins = result.scalars().all()
+                    admin_ids = {a.id for a in admins}
+                    
+                    # Combine unique user IDs
+                    notify_ids = member_ids.union(admin_ids)
+                    
+                    for uid in notify_ids:
+                        notification = Notification(
+                            user_id=uid,
+                            title=f"📧 New Task: {title}",
+                            message=f"Email from {sender_name} created new task in '{project_name}': {subject}",
+                            type='info',
+                            related_id=new_task.id,
+                            related_type='task'
+                        )
+                        fresh_db.add(notification)
+                    
+                    await fresh_db.commit()
+                    
+                    tasks_created.append(new_task)
+                    print(f"[Project IMAP] Created task '{title}' for project '{project_name}' from {sender_email}")
                 
             except Exception as e:
                 print(f"[Project IMAP] Error processing email {email_id}: {e}")
@@ -1166,7 +1187,7 @@ async def process_project_emails(db: AsyncSession, project) -> List:
             await asyncio.to_thread(lambda: (mail.close(), mail.logout()))
         
     except Exception as e:
-        print(f"[Project IMAP] Error fetching emails for project {project.name}: {e}")
+        print(f"[Project IMAP] Error fetching emails for project {project_name}: {e}")
         if mail:
             try:
                 await asyncio.to_thread(lambda: (mail.close(), mail.logout()))

@@ -3318,6 +3318,17 @@ async def web_project_detail(request: Request, project_id: int, db: AsyncSession
         )).scalar_one_or_none()
         if not member:
             raise HTTPException(status_code=403, detail='You do not have access to this project')
+    
+    # Scan project IMAP for new emails and create tasks (if IMAP is configured)
+    if project.imap_host and project.imap_username:
+        try:
+            from app.core.email_to_ticket_v2 import process_project_emails
+            import asyncio
+            # Run email scan in background - don't wait for it to complete
+            asyncio.create_task(process_project_emails(db, project))
+        except Exception as e:
+            print(f"[Project IMAP] Error triggering email scan for {project.name}: {e}")
+    
     # Fetch only non-archived tasks for board view (archived tasks go to the Done tab in tasks/list)
     tasks_result = await db.execute(
         select(Task).where(Task.project_id == project_id, Task.is_archived == False)
