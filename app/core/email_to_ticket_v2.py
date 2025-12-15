@@ -1110,9 +1110,10 @@ async def process_project_emails(db: AsyncSession, project) -> List:
                 # Mark email as processed
                 processed = ProcessedMail(
                     message_id=message_id,
-                    sender_email=sender_email,
+                    email_from=sender_email or 'unknown@unknown.com',
                     subject=subject,
-                    ticket_id=new_task.id  # Using ticket_id field to store task id
+                    ticket_id=new_task.id,  # Using ticket_id field to store task id
+                    workspace_id=project.workspace_id
                 )
                 db.add(processed)
                 await db.commit()

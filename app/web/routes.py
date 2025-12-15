@@ -3764,7 +3764,17 @@ async def web_task_update(
     new_status = TaskStatus(status)
     if task.status != new_status:
         changes.append(('status', task.status.value, new_status.value))
+        old_status_value = task.status.value
         task.status = new_status
+        
+        # Auto-archive when moved to done
+        if new_status.value == 'done':
+            task.is_archived = True
+            task.archived_at = datetime.utcnow()
+        elif old_status_value == 'done' and new_status.value != 'done':
+            # Unarchive if moved out of done
+            task.is_archived = False
+            task.archived_at = None
     
     new_priority = TaskPriority(priority)
     if task.priority != new_priority:
@@ -4245,9 +4255,14 @@ async def web_task_update_status(request: Request, task_id: int, status_value: s
     old_status = task.status.value
     task.status = TaskStatus(status_value)
     
-    # Note: Tasks are NOT auto-archived when moved to done
-    # They stay visible on the board in the Done column
-    # Archiving happens separately when needed
+    # Auto-archive when moved to done
+    if status_value == 'done':
+        task.is_archived = True
+        task.archived_at = datetime.utcnow()
+    elif old_status == 'done' and status_value != 'done':
+        # Unarchive if moved out of done
+        task.is_archived = False
+        task.archived_at = None
     
     # Save history
     history_entry = TaskHistory(
