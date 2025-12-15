@@ -4260,6 +4260,12 @@ async def web_task_update_status(request: Request, task_id: int, status_value: s
     db.add(history_entry)
     
     await db.commit()
+    
+    # Check if this is an AJAX request (fetch)
+    if request.headers.get('accept', '').find('application/json') != -1 or request.headers.get('x-requested-with') == 'XMLHttpRequest':
+        from fastapi.responses import JSONResponse
+        return JSONResponse({'success': True, 'status': status_value})
+    
     return RedirectResponse(f'/web/projects/{task.project_id}', status_code=303)
 
 
