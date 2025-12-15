@@ -326,14 +326,26 @@ Auto-created from email support request"""
             return re.sub(r'<[^>]+>', '', html)
     
     async def is_email_processed(self, db: AsyncSession, message_id: str) -> bool:
-        """Check if email was already processed"""
+        """Check if email was already processed (globally, not workspace-specific)"""
+        # Check globally - if ANY system processed this email, skip it
         result = await db.execute(
             select(ProcessedMail).where(
-                ProcessedMail.message_id == message_id,
-                ProcessedMail.workspace_id == self.workspace_id
+                ProcessedMail.message_id == message_id
             )
         )
         return result.scalar_one_or_none() is not None
+    
+    async def get_project_imap_emails(self, db: AsyncSession) -> set:
+        """Get set of email addresses used by project IMAP configs in this workspace"""
+        from app.models.project import Project
+        result = await db.execute(
+            select(Project.imap_username).where(
+                Project.workspace_id == self.workspace_id,
+                Project.imap_username.isnot(None),
+                Project.is_archived == False
+            )
+        )
+        return {row[0].lower().strip() for row in result.all() if row[0]}
     
     async def find_ticket_by_reply(self, db: AsyncSession, in_reply_to: str, references: str) -> Optional[Ticket]:
         """Find ticket from reply headers (In-Reply-To or References)"""
@@ -629,11 +641,11 @@ Auto-created from email support request"""
             }
             task_priority = priority_map.get(priority_str, TaskPriority.medium)
             
-            # Get project creator as task creator (or first admin if not available)
-            creator_id = project.created_by
+            # Get project owner as task creator (or first admin if not available)
+            creator_id = project.owner_id
             if not creator_id:
                 # Fallback: use first admin
-                admin_query = sql_select(User).where(User.role == 'admin', User.is_active == True)
+                admin_query = sql_select(User).where(User.is_admin == True, User.is_active == True)
                 result = await db.execute(admin_query)
                 admin = result.scalars().first()
                 creator_id = admin.id if admin else 1
@@ -666,7 +678,7 @@ Auto-created from email support request"""
             member_ids = {m.user_id for m in members}
             
             # Get admin user IDs
-            admin_query = sql_select(User).where(User.role == 'admin', User.is_active == True)
+            admin_query = sql_select(User).where(User.is_admin == True, User.is_active == True)
             result = await db.execute(admin_query)
             admins = result.scalars().all()
             admin_ids = {a.id for a in admins}
@@ -795,6 +807,11 @@ Auto-created from email support request"""
             
             print(f"[IMAP] Found {len(raw_emails)} unread messages")
             
+            # Get project IMAP emails to skip (they'll be handled by project-specific processing)
+            project_imap_emails = await self.get_project_imap_emails(db)
+            if project_imap_emails:
+                print(f"[IMAP] Project IMAP emails (will skip): {project_imap_emails}")
+            
             # Process each email (async operations can use event loop)
             for raw_email in raw_emails:
                 email_id = raw_email['email_id']
@@ -815,10 +832,17 @@ Auto-created from email support request"""
                     sender_name, sender_email = self.extract_email_address(from_header)
                     to_header = msg.get('To', '')
                     _, to_email = self.extract_email_address(to_header)
+                    
+                    # Skip if this email is destined for a project-specific IMAP account
+                    # (Let the project IMAP processor handle it instead)
+                    if to_email and to_email.lower().strip() in project_imap_emails:
+                        print(f"[IMAP] Skipping email to {to_email} - handled by project IMAP")
+                        continue
+                    
                     subject = self.decode_header_value(msg.get('Subject', 'No Subject'))
                     body = self.extract_email_body(msg)
                     
-                    print(f"\n{'='*80}")
+                    print(f"\\n{'='*80}")
                     print(f"[IMAP] Processing email")
                     print(f"[IMAP] From: {sender_name} <{sender_email}>")
                     print(f"[IMAP] To: {to_email}")
