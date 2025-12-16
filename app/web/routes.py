@@ -2715,8 +2715,44 @@ async def web_admin_email_accounts_add(
         raise HTTPException(status_code=403, detail="Admin access required")
     
     from app.models.incoming_email_account import IncomingEmailAccount
+    import imaplib
+    import asyncio
     
     form = await request.form()
+    
+    # Extract form data
+    imap_host = form.get('imap_host')
+    imap_port = int(form.get('imap_port', 993))
+    imap_username = form.get('imap_username')
+    imap_password = form.get('imap_password')
+    imap_use_ssl = form.get('imap_use_ssl') == 'on'
+    
+    # Test IMAP connection before saving
+    def test_imap_connection():
+        """Test IMAP connection (runs in thread pool)"""
+        try:
+            if imap_use_ssl:
+                mail = imaplib.IMAP4_SSL(imap_host, imap_port)
+            else:
+                mail = imaplib.IMAP4(imap_host, imap_port)
+            
+            mail.login(imap_username, imap_password)
+            mail.select('INBOX')
+            mail.close()
+            mail.logout()
+            return None  # Success
+        except imaplib.IMAP4.error as e:
+            return f"IMAP authentication failed: {str(e)}"
+        except Exception as e:
+            return f"Connection failed: {str(e)}"
+    
+    # Run test in thread pool to avoid blocking
+    test_error = await asyncio.to_thread(test_imap_connection)
+    
+    if test_error:
+        request.session['flash_message'] = f"✗ {test_error}. Please check your IMAP settings."
+        request.session['flash_type'] = 'error'
+        return RedirectResponse('/web/admin/email-accounts', status_code=303)
     
     try:
         auto_assign = form.get('auto_assign_to_user_id')
@@ -2726,11 +2762,11 @@ async def web_admin_email_accounts_add(
             name=form.get('name'),
             email_address=form.get('email_address'),
             project_id=int(project_id) if project_id else None,
-            imap_host=form.get('imap_host'),
-            imap_port=int(form.get('imap_port', 993)),
-            imap_username=form.get('imap_username'),
-            imap_password=form.get('imap_password'),
-            imap_use_ssl=form.get('imap_use_ssl') == 'on',
+            imap_host=imap_host,
+            imap_port=imap_port,
+            imap_username=imap_username,
+            imap_password=imap_password,
+            imap_use_ssl=imap_use_ssl,
             is_active=True,
             auto_assign_to_user_id=int(auto_assign) if auto_assign else None,
             default_priority=form.get('default_priority', 'medium'),
@@ -2739,7 +2775,7 @@ async def web_admin_email_accounts_add(
         db.add(account)
         await db.commit()
         
-        request.session['flash_message'] = f"✓ Email account '{account.name}' added successfully"
+        request.session['flash_message'] = f"✓ Email account '{account.name}' added successfully! Connection verified."
         request.session['flash_type'] = 'success'
         
     except Exception as e:
@@ -2766,6 +2802,8 @@ async def web_admin_email_accounts_update(
     
     from app.models.incoming_email_account import IncomingEmailAccount
     from datetime import datetime
+    import imaplib
+    import asyncio
     
     account = (await db.execute(
         select(IncomingEmailAccount).where(
@@ -2779,22 +2817,56 @@ async def web_admin_email_accounts_update(
     
     form = await request.form()
     
+    # Extract form data for testing
+    imap_host = form.get('imap_host')
+    imap_port = int(form.get('imap_port', 993))
+    imap_username = form.get('imap_username')
+    new_password = form.get('imap_password')
+    imap_password = new_password if new_password else account.imap_password
+    imap_use_ssl = form.get('imap_use_ssl') == 'on'
+    
+    # Test IMAP connection before saving
+    def test_imap_connection():
+        """Test IMAP connection (runs in thread pool)"""
+        try:
+            if imap_use_ssl:
+                mail = imaplib.IMAP4_SSL(imap_host, imap_port)
+            else:
+                mail = imaplib.IMAP4(imap_host, imap_port)
+            
+            mail.login(imap_username, imap_password)
+            mail.select('INBOX')
+            mail.close()
+            mail.logout()
+            return None  # Success
+        except imaplib.IMAP4.error as e:
+            return f"IMAP authentication failed: {str(e)}"
+        except Exception as e:
+            return f"Connection failed: {str(e)}"
+    
+    # Run test in thread pool to avoid blocking
+    test_error = await asyncio.to_thread(test_imap_connection)
+    
+    if test_error:
+        request.session['flash_message'] = f"✗ {test_error}. Settings not saved."
+        request.session['flash_type'] = 'error'
+        return RedirectResponse('/web/admin/email-accounts', status_code=303)
+    
     try:
         auto_assign = form.get('auto_assign_to_user_id')
         project_id = form.get('project_id')
         account.name = form.get('name')
         account.email_address = form.get('email_address')
         account.project_id = int(project_id) if project_id else None
-        account.imap_host = form.get('imap_host')
-        account.imap_port = int(form.get('imap_port', 993))
-        account.imap_username = form.get('imap_username')
+        account.imap_host = imap_host
+        account.imap_port = imap_port
+        account.imap_username = imap_username
         
         # Only update password if provided
-        new_password = form.get('imap_password')
         if new_password:
             account.imap_password = new_password
         
-        account.imap_use_ssl = form.get('imap_use_ssl') == 'on'
+        account.imap_use_ssl = imap_use_ssl
         account.is_active = form.get('is_active') == 'on'
         account.auto_assign_to_user_id = int(auto_assign) if auto_assign else None
         account.default_priority = form.get('default_priority', 'medium')
@@ -2803,7 +2875,7 @@ async def web_admin_email_accounts_update(
         
         await db.commit()
         
-        request.session['flash_message'] = f"✓ Email account '{account.name}' updated successfully"
+        request.session['flash_message'] = f"✓ Email account '{account.name}' updated successfully! Connection verified."
         request.session['flash_type'] = 'success'
         
     except Exception as e:
