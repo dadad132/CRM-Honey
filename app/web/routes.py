@@ -2683,9 +2683,13 @@ async def web_admin_email_accounts(request: Request, db: AsyncSession = Depends(
     
     # Get projects for linking emails to projects
     projects = (await db.execute(
-        select(Project).where(Project.workspace_id == user.workspace_id, Project.is_archived == False)
+        select(Project).where(Project.workspace_id == user.workspace_id)
         .order_by(Project.name)
     )).scalars().all()
+    
+    # Debug: log number of projects found
+    import logging
+    logging.info(f"Email accounts page: Found {len(projects)} projects for workspace {user.workspace_id}")
     
     return templates.TemplateResponse('admin/email_accounts.html', {
         'request': request,

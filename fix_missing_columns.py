@@ -85,6 +85,18 @@ def main():
     changes_made |= add_column_if_not_exists(cursor, "ticket", "guest_office_number", "VARCHAR", "NULL")
     changes_made |= add_column_if_not_exists(cursor, "ticket", "guest_branch", "VARCHAR", "NULL")
     changes_made |= add_column_if_not_exists(cursor, "ticket", "working_days", "VARCHAR", "'0,1,2,3,4'")
+    changes_made |= add_column_if_not_exists(cursor, "ticket", "related_project_id", "INTEGER", "NULL")
+    
+    # Incoming email account table - missing columns
+    print("\n📋 Checking 'incoming_email_account' table (if exists)...")
+    try:
+        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='incoming_email_account'")
+        if cursor.fetchone():
+            changes_made |= add_column_if_not_exists(cursor, "incoming_email_account", "project_id", "INTEGER", "NULL")
+        else:
+            print("⏭️  incoming_email_account table doesn't exist yet (will be created on first run)")
+    except Exception as e:
+        print(f"⚠️  Could not check incoming_email_account table: {e}")
     
     if changes_made:
         conn.commit()
