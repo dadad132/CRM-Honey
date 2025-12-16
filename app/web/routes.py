@@ -2731,34 +2731,56 @@ async def web_admin_email_accounts_add(
     def test_imap_connection():
         """Test IMAP connection (runs in thread pool)"""
         import socket
+        import ssl
+        mail = None
+        step = "initializing"
         try:
             # Set socket timeout to 15 seconds
             socket.setdefaulttimeout(15)
             
+            step = f"connecting to {imap_host}:{imap_port}"
             if imap_use_ssl:
+                step = f"SSL connecting to {imap_host}:{imap_port}"
                 mail = imaplib.IMAP4_SSL(imap_host, imap_port)
             else:
-                # Non-SSL connection - try STARTTLS for security
+                step = f"connecting to {imap_host}:{imap_port} (non-SSL)"
                 mail = imaplib.IMAP4(imap_host, imap_port)
+                step = "upgrading to TLS (STARTTLS)"
                 try:
                     mail.starttls()
-                except Exception:
+                except Exception as e:
                     # Server doesn't support STARTTLS, continue without encryption
-                    pass
+                    step = "continuing without STARTTLS"
             
+            step = f"authenticating as {imap_username}"
             mail.login(imap_username, imap_password)
+            
+            step = "selecting INBOX"
             mail.select('INBOX')
+            
             mail.close()
             mail.logout()
             return None  # Success
+            
         except socket.timeout:
-            return f"Connection timed out - server at {imap_host}:{imap_port} not responding"
-        except imaplib.IMAP4.error as e:
-            return f"IMAP authentication failed: {str(e)}"
+            return f"Timeout while {step} - server not responding within 15 seconds"
+        except socket.gaierror as e:
+            return f"DNS lookup failed for {imap_host} - check hostname is correct ({e})"
+        except ssl.SSLError as e:
+            return f"SSL/TLS error while {step}: {e}"
         except ConnectionRefusedError:
-            return f"Connection refused - check if port {imap_port} is correct"
+            return f"Connection refused while {step} - port {imap_port} may be blocked or wrong"
+        except OSError as e:
+            if "No route to host" in str(e):
+                return f"Cannot reach {imap_host} - server may be down or firewall blocking"
+            return f"Network error while {step}: {e}"
+        except imaplib.IMAP4.error as e:
+            error_msg = str(e)
+            if "authentication" in error_msg.lower() or "login" in error_msg.lower():
+                return f"Authentication failed - check username/password ({error_msg})"
+            return f"IMAP error while {step}: {error_msg}"
         except Exception as e:
-            return f"Connection failed: {str(e)}"
+            return f"Error while {step}: {type(e).__name__}: {e}"
         finally:
             socket.setdefaulttimeout(None)
     
@@ -2851,34 +2873,55 @@ async def web_admin_email_accounts_update(
     def test_imap_connection():
         """Test IMAP connection (runs in thread pool)"""
         import socket
+        import ssl
+        mail = None
+        step = "initializing"
         try:
             # Set socket timeout to 15 seconds
             socket.setdefaulttimeout(15)
             
+            step = f"connecting to {imap_host}:{imap_port}"
             if imap_use_ssl:
+                step = f"SSL connecting to {imap_host}:{imap_port}"
                 mail = imaplib.IMAP4_SSL(imap_host, imap_port)
             else:
-                # Non-SSL connection - try STARTTLS for security
+                step = f"connecting to {imap_host}:{imap_port} (non-SSL)"
                 mail = imaplib.IMAP4(imap_host, imap_port)
+                step = "upgrading to TLS (STARTTLS)"
                 try:
                     mail.starttls()
-                except Exception:
-                    # Server doesn't support STARTTLS, continue without encryption
-                    pass
+                except Exception as e:
+                    step = "continuing without STARTTLS"
             
+            step = f"authenticating as {imap_username}"
             mail.login(imap_username, imap_password)
+            
+            step = "selecting INBOX"
             mail.select('INBOX')
+            
             mail.close()
             mail.logout()
             return None  # Success
+            
         except socket.timeout:
-            return f"Connection timed out - server at {imap_host}:{imap_port} not responding"
-        except imaplib.IMAP4.error as e:
-            return f"IMAP authentication failed: {str(e)}"
+            return f"Timeout while {step} - server not responding within 15 seconds"
+        except socket.gaierror as e:
+            return f"DNS lookup failed for {imap_host} - check hostname ({e})"
+        except ssl.SSLError as e:
+            return f"SSL/TLS error while {step}: {e}"
         except ConnectionRefusedError:
-            return f"Connection refused - check if port {imap_port} is correct"
+            return f"Connection refused while {step} - port {imap_port} may be blocked"
+        except OSError as e:
+            if "No route to host" in str(e):
+                return f"Cannot reach {imap_host} - server may be down or firewall blocking"
+            return f"Network error while {step}: {e}"
+        except imaplib.IMAP4.error as e:
+            error_msg = str(e)
+            if "authentication" in error_msg.lower() or "login" in error_msg.lower():
+                return f"Authentication failed - check username/password ({error_msg})"
+            return f"IMAP error while {step}: {error_msg}"
         except Exception as e:
-            return f"Connection failed: {str(e)}"
+            return f"Error while {step}: {type(e).__name__}: {e}"
         finally:
             socket.setdefaulttimeout(None)
     
@@ -2989,6 +3032,7 @@ async def web_admin_email_accounts_test(
     from app.models.incoming_email_account import IncomingEmailAccount
     import imaplib
     import socket
+    import ssl
     
     account = (await db.execute(
         select(IncomingEmailAccount).where(
@@ -3001,23 +3045,29 @@ async def web_admin_email_accounts_test(
         return JSONResponse({'success': False, 'error': 'Account not found'})
     
     def do_test():
+        step = "initializing"
         try:
             # Set socket timeout to 15 seconds
             socket.setdefaulttimeout(15)
             
+            step = f"connecting to {account.imap_host}:{account.imap_port}"
             # Try to connect
             if account.imap_use_ssl:
+                step = f"SSL connecting to {account.imap_host}:{account.imap_port}"
                 mail = imaplib.IMAP4_SSL(account.imap_host, account.imap_port)
             else:
-                # Non-SSL connection - try STARTTLS for security
+                step = f"connecting to {account.imap_host}:{account.imap_port} (non-SSL)"
                 mail = imaplib.IMAP4(account.imap_host, account.imap_port)
+                step = "upgrading to TLS (STARTTLS)"
                 try:
                     mail.starttls()
                 except Exception:
-                    # Server doesn't support STARTTLS, continue without encryption
-                    pass
+                    step = "continuing without STARTTLS"
             
+            step = f"authenticating as {account.imap_username}"
             mail.login(account.imap_username, account.imap_password)
+            
+            step = "selecting INBOX"
             mail.select('INBOX')
             
             # Get unread count
@@ -3030,13 +3080,24 @@ async def web_admin_email_accounts_test(
             return {'success': True, 'message': f'Connection successful! Found {unread_count} unread email(s)'}
             
         except socket.timeout:
-            return {'success': False, 'error': f'Connection timed out - server not responding'}
-        except imaplib.IMAP4.error as e:
-            return {'success': False, 'error': f'IMAP authentication failed: {str(e)}'}
+            return {'success': False, 'error': f'Timeout while {step} - server not responding'}
+        except socket.gaierror as e:
+            return {'success': False, 'error': f'DNS lookup failed for {account.imap_host} ({e})'}
+        except ssl.SSLError as e:
+            return {'success': False, 'error': f'SSL/TLS error while {step}: {e}'}
         except ConnectionRefusedError:
-            return {'success': False, 'error': f'Connection refused - check port {account.imap_port}'}
+            return {'success': False, 'error': f'Connection refused while {step} - port may be blocked'}
+        except OSError as e:
+            if "No route to host" in str(e):
+                return {'success': False, 'error': f'Cannot reach {account.imap_host} - firewall blocking?'}
+            return {'success': False, 'error': f'Network error while {step}: {e}'}
+        except imaplib.IMAP4.error as e:
+            error_msg = str(e)
+            if "authentication" in error_msg.lower() or "login" in error_msg.lower():
+                return {'success': False, 'error': f'Authentication failed ({error_msg})'}
+            return {'success': False, 'error': f'IMAP error while {step}: {error_msg}'}
         except Exception as e:
-            return {'success': False, 'error': str(e)}
+            return {'success': False, 'error': f'Error while {step}: {type(e).__name__}: {e}'}
         finally:
             socket.setdefaulttimeout(None)
     
