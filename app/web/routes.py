@@ -2730,7 +2730,11 @@ async def web_admin_email_accounts_add(
     # Test IMAP connection before saving
     def test_imap_connection():
         """Test IMAP connection (runs in thread pool)"""
+        import socket
         try:
+            # Set socket timeout to 15 seconds
+            socket.setdefaulttimeout(15)
+            
             if imap_use_ssl:
                 mail = imaplib.IMAP4_SSL(imap_host, imap_port)
             else:
@@ -2747,13 +2751,25 @@ async def web_admin_email_accounts_add(
             mail.close()
             mail.logout()
             return None  # Success
+        except socket.timeout:
+            return f"Connection timed out - server at {imap_host}:{imap_port} not responding"
         except imaplib.IMAP4.error as e:
             return f"IMAP authentication failed: {str(e)}"
+        except ConnectionRefusedError:
+            return f"Connection refused - check if port {imap_port} is correct"
         except Exception as e:
             return f"Connection failed: {str(e)}"
+        finally:
+            socket.setdefaulttimeout(None)
     
-    # Run test in thread pool to avoid blocking
-    test_error = await asyncio.to_thread(test_imap_connection)
+    # Run test in thread pool with timeout
+    try:
+        test_error = await asyncio.wait_for(
+            asyncio.to_thread(test_imap_connection),
+            timeout=30.0
+        )
+    except asyncio.TimeoutError:
+        test_error = f"Connection test timed out after 30 seconds - server may be unreachable"
     
     if test_error:
         request.session['flash_message'] = f"✗ {test_error}. Please check your IMAP settings."
@@ -2834,7 +2850,11 @@ async def web_admin_email_accounts_update(
     # Test IMAP connection before saving
     def test_imap_connection():
         """Test IMAP connection (runs in thread pool)"""
+        import socket
         try:
+            # Set socket timeout to 15 seconds
+            socket.setdefaulttimeout(15)
+            
             if imap_use_ssl:
                 mail = imaplib.IMAP4_SSL(imap_host, imap_port)
             else:
@@ -2851,13 +2871,25 @@ async def web_admin_email_accounts_update(
             mail.close()
             mail.logout()
             return None  # Success
+        except socket.timeout:
+            return f"Connection timed out - server at {imap_host}:{imap_port} not responding"
         except imaplib.IMAP4.error as e:
             return f"IMAP authentication failed: {str(e)}"
+        except ConnectionRefusedError:
+            return f"Connection refused - check if port {imap_port} is correct"
         except Exception as e:
             return f"Connection failed: {str(e)}"
+        finally:
+            socket.setdefaulttimeout(None)
     
-    # Run test in thread pool to avoid blocking
-    test_error = await asyncio.to_thread(test_imap_connection)
+    # Run test in thread pool with timeout
+    try:
+        test_error = await asyncio.wait_for(
+            asyncio.to_thread(test_imap_connection),
+            timeout=30.0
+        )
+    except asyncio.TimeoutError:
+        test_error = f"Connection test timed out after 30 seconds - server may be unreachable"
     
     if test_error:
         request.session['flash_message'] = f"✗ {test_error}. Settings not saved."
@@ -2956,6 +2988,7 @@ async def web_admin_email_accounts_test(
     
     from app.models.incoming_email_account import IncomingEmailAccount
     import imaplib
+    import socket
     
     account = (await db.execute(
         select(IncomingEmailAccount).where(
@@ -2967,36 +3000,54 @@ async def web_admin_email_accounts_test(
     if not account:
         return JSONResponse({'success': False, 'error': 'Account not found'})
     
+    def do_test():
+        try:
+            # Set socket timeout to 15 seconds
+            socket.setdefaulttimeout(15)
+            
+            # Try to connect
+            if account.imap_use_ssl:
+                mail = imaplib.IMAP4_SSL(account.imap_host, account.imap_port)
+            else:
+                # Non-SSL connection - try STARTTLS for security
+                mail = imaplib.IMAP4(account.imap_host, account.imap_port)
+                try:
+                    mail.starttls()
+                except Exception:
+                    # Server doesn't support STARTTLS, continue without encryption
+                    pass
+            
+            mail.login(account.imap_username, account.imap_password)
+            mail.select('INBOX')
+            
+            # Get unread count
+            status, messages = mail.search(None, 'UNSEEN')
+            unread_count = len(messages[0].split()) if messages[0] else 0
+            
+            mail.close()
+            mail.logout()
+            
+            return {'success': True, 'message': f'Connection successful! Found {unread_count} unread email(s)'}
+            
+        except socket.timeout:
+            return {'success': False, 'error': f'Connection timed out - server not responding'}
+        except imaplib.IMAP4.error as e:
+            return {'success': False, 'error': f'IMAP authentication failed: {str(e)}'}
+        except ConnectionRefusedError:
+            return {'success': False, 'error': f'Connection refused - check port {account.imap_port}'}
+        except Exception as e:
+            return {'success': False, 'error': str(e)}
+        finally:
+            socket.setdefaulttimeout(None)
+    
     try:
-        # Try to connect
-        if account.imap_use_ssl:
-            mail = imaplib.IMAP4_SSL(account.imap_host, account.imap_port)
-        else:
-            # Non-SSL connection - try STARTTLS for security
-            mail = imaplib.IMAP4(account.imap_host, account.imap_port)
-            try:
-                mail.starttls()
-            except Exception:
-                # Server doesn't support STARTTLS, continue without encryption
-                pass
-        
-        mail.login(account.imap_username, account.imap_password)
-        mail.select('INBOX')
-        
-        # Get unread count
-        status, messages = mail.search(None, 'UNSEEN')
-        unread_count = len(messages[0].split()) if messages[0] else 0
-        
-        mail.close()
-        mail.logout()
-        
-        return JSONResponse({
-            'success': True, 
-            'message': f'Connection successful! Found {unread_count} unread email(s)'
-        })
-        
-    except Exception as e:
-        return JSONResponse({'success': False, 'error': str(e)})
+        result = await asyncio.wait_for(
+            asyncio.to_thread(do_test),
+            timeout=30.0
+        )
+        return JSONResponse(result)
+    except asyncio.TimeoutError:
+        return JSONResponse({'success': False, 'error': 'Connection test timed out after 30 seconds'})
 
 
 # --------------------------
