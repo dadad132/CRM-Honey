@@ -24,7 +24,8 @@ class IncomingEmailAccount(SQLModel, table=True):
     # Link to project - tickets from this email go into this project
     project_id: Optional[int] = Field(default=None, foreign_key="project.id", index=True)
     
-    # IMAP Settings
+    # Mail Server Settings (IMAP or POP3)
+    protocol: str = Field(default="imap")  # 'imap' or 'pop3'
     imap_host: str
     imap_port: int = Field(default=993)
     imap_username: str
@@ -48,6 +49,7 @@ class IncomingEmailAccountCreate(SQLModel):
     name: str
     email_address: str
     project_id: Optional[int] = None
+    protocol: str = "imap"  # 'imap' or 'pop3'
     imap_host: str
     imap_port: int = 993
     imap_username: str
@@ -63,6 +65,7 @@ class IncomingEmailAccountUpdate(SQLModel):
     name: Optional[str] = None
     email_address: Optional[str] = None
     project_id: Optional[int] = None
+    protocol: Optional[str] = None  # 'imap' or 'pop3'
     imap_host: Optional[str] = None
     imap_port: Optional[int] = None
     imap_username: Optional[str] = None

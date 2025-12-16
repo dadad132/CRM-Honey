@@ -113,6 +113,7 @@ def main():
             name VARCHAR DEFAULT 'Support Email',
             email_address VARCHAR NOT NULL,
             project_id INTEGER,
+            protocol VARCHAR DEFAULT 'imap',
             imap_host VARCHAR NOT NULL,
             imap_port INTEGER DEFAULT 993,
             imap_username VARCHAR NOT NULL,
@@ -134,6 +135,7 @@ def main():
         if cursor.fetchone():
             print("⏭️  Table 'incoming_email_account' already exists")
             changes_made |= add_column_if_not_exists(cursor, "incoming_email_account", "project_id", "INTEGER", "NULL")
+            changes_made |= add_column_if_not_exists(cursor, "incoming_email_account", "protocol", "VARCHAR", "'imap'")
         else:
             cursor.execute(incoming_email_table_sql)
             print("✅ Created table 'incoming_email_account'")

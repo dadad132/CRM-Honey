@@ -849,58 +849,96 @@ async def process_email_account(db: AsyncSession, account) -> List[Ticket]:
     imap_username = account.imap_username
     imap_password = account.imap_password
     imap_use_ssl = account.imap_use_ssl
+    protocol = getattr(account, 'protocol', 'imap')  # Default to IMAP for backward compatibility
     default_priority = account.default_priority
     default_category = account.default_category
     auto_assign_to_user_id = account.auto_assign_to_user_id
     
     tickets_created = []
     mail = None
+    pop3_conn = None
     
     try:
         import imaplib
+        import poplib
         import email as email_lib
         from email.header import decode_header
         from email.utils import parseaddr
         
-        # Run blocking IMAP operations in thread pool
+        # Run blocking mail operations in thread pool
         def connect_and_fetch():
-            """Synchronous IMAP connection and fetch"""
-            nonlocal mail
-            if imap_use_ssl:
-                mail = imaplib.IMAP4_SSL(imap_host, imap_port or 993)
-            else:
-                # Non-SSL connection - try STARTTLS for security
-                mail = imaplib.IMAP4(imap_host, imap_port or 143)
-                try:
-                    mail.starttls()
-                except Exception:
-                    # Server doesn't support STARTTLS, continue without encryption
-                    pass
+            """Synchronous mail connection and fetch (IMAP or POP3)"""
+            nonlocal mail, pop3_conn
             
-            mail.login(imap_username, imap_password)
-            mail.select('INBOX')
-            
-            # Search for emails from the last 7 days (not just unread)
-            # This ensures we catch emails even if they're marked as read by other clients
-            from datetime import datetime, timedelta
-            date_since = (datetime.now() - timedelta(days=7)).strftime("%d-%b-%Y")
-            status, messages = mail.search(None, f'SINCE {date_since}')
-            email_ids = messages[0].split()
-            
-            raw_emails = []
-            for email_id in email_ids:
-                try:
-                    status, msg_data = mail.fetch(email_id, '(RFC822)')
-                    if msg_data and msg_data[0]:
+            if protocol == 'pop3':
+                # POP3 connection
+                print(f"[Email Account] Using POP3 protocol on {imap_host}:{imap_port}")
+                if imap_use_ssl:
+                    pop3_conn = poplib.POP3_SSL(imap_host, imap_port or 995)
+                else:
+                    pop3_conn = poplib.POP3(imap_host, imap_port or 110)
+                
+                pop3_conn.user(imap_username)
+                pop3_conn.pass_(imap_password)
+                
+                # Get message count
+                num_messages = len(pop3_conn.list()[1])
+                print(f"[Email Account] POP3: Found {num_messages} messages")
+                
+                raw_emails = []
+                # Only get last 50 messages to avoid overwhelming
+                start_idx = max(1, num_messages - 50 + 1)
+                for i in range(start_idx, num_messages + 1):
+                    try:
+                        response = pop3_conn.retr(i)
+                        msg_bytes = b'\r\n'.join(response[1])
                         raw_emails.append({
-                            'email_id': email_id,
-                            'msg_bytes': msg_data[0][1]
+                            'email_id': str(i).encode(),
+                            'msg_bytes': msg_bytes
                         })
-                except Exception as e:
-                    print(f"[Email Account] Error fetching email {email_id}: {e}")
-                    continue
-            
-            return raw_emails
+                    except Exception as e:
+                        print(f"[Email Account] POP3 error fetching message {i}: {e}")
+                        continue
+                
+                return raw_emails
+            else:
+                # IMAP connection (default)
+                print(f"[Email Account] Using IMAP protocol on {imap_host}:{imap_port}")
+                if imap_use_ssl:
+                    mail = imaplib.IMAP4_SSL(imap_host, imap_port or 993)
+                else:
+                    # Non-SSL connection - try STARTTLS for security
+                    mail = imaplib.IMAP4(imap_host, imap_port or 143)
+                    try:
+                        mail.starttls()
+                    except Exception:
+                        # Server doesn't support STARTTLS, continue without encryption
+                        pass
+                
+                mail.login(imap_username, imap_password)
+                mail.select('INBOX')
+                
+                # Search for emails from the last 7 days (not just unread)
+                # This ensures we catch emails even if they're marked as read by other clients
+                from datetime import datetime, timedelta
+                date_since = (datetime.now() - timedelta(days=7)).strftime("%d-%b-%Y")
+                status, messages = mail.search(None, f'SINCE {date_since}')
+                email_ids = messages[0].split()
+                
+                raw_emails = []
+                for email_id in email_ids:
+                    try:
+                        status, msg_data = mail.fetch(email_id, '(RFC822)')
+                        if msg_data and msg_data[0]:
+                            raw_emails.append({
+                                'email_id': email_id,
+                                'msg_bytes': msg_data[0][1]
+                            })
+                    except Exception as e:
+                        print(f"[Email Account] Error fetching email {email_id}: {e}")
+                        continue
+                
+                return raw_emails
         
         # Fetch emails in thread pool (non-blocking)
         raw_emails = await asyncio.to_thread(connect_and_fetch)
@@ -1053,6 +1091,8 @@ async def process_email_account(db: AsyncSession, account) -> List[Ticket]:
         # Close connection in thread pool
         if mail:
             await asyncio.to_thread(lambda: (mail.close(), mail.logout()))
+        if pop3_conn:
+            await asyncio.to_thread(lambda: pop3_conn.quit())
         
     except Exception as e:
         print(f"[Email Account] Error fetching emails for account {account_name}: {e}")
@@ -1061,6 +1101,11 @@ async def process_email_account(db: AsyncSession, account) -> List[Ticket]:
         if mail:
             try:
                 await asyncio.to_thread(lambda: (mail.close(), mail.logout()))
+            except:
+                pass
+        if pop3_conn:
+            try:
+                await asyncio.to_thread(lambda: pop3_conn.quit())
             except:
                 pass
     

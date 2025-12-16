@@ -2744,43 +2744,67 @@ async def web_admin_email_accounts_add(
     imap_password = form.get('imap_password')
     imap_use_ssl = form.get('imap_use_ssl') == 'on'
     skip_test = form.get('skip_test') == 'on'
+    protocol = form.get('protocol', 'imap')  # 'imap' or 'pop3'
     
     test_error = None
     
-    # Test IMAP connection before saving (unless skip_test is checked)
-    def test_imap_connection():
-        """Test IMAP connection (runs in thread pool)"""
+    # Test mail connection before saving (unless skip_test is checked)
+    def test_mail_connection():
+        """Test IMAP or POP3 connection (runs in thread pool)"""
         import socket
         import ssl
+        import poplib
         mail = None
+        pop3_conn = None
         step = "initializing"
         try:
             # Set socket timeout to 15 seconds
             socket.setdefaulttimeout(15)
             
-            step = f"connecting to {imap_host}:{imap_port}"
-            if imap_use_ssl:
-                step = f"SSL connecting to {imap_host}:{imap_port}"
-                mail = imaplib.IMAP4_SSL(imap_host, imap_port)
+            if protocol == 'pop3':
+                # POP3 connection test
+                step = f"connecting to {imap_host}:{imap_port} via POP3"
+                if imap_use_ssl:
+                    step = f"SSL connecting to {imap_host}:{imap_port} via POP3"
+                    pop3_conn = poplib.POP3_SSL(imap_host, imap_port)
+                else:
+                    step = f"connecting to {imap_host}:{imap_port} via POP3 (non-SSL)"
+                    pop3_conn = poplib.POP3(imap_host, imap_port)
+                
+                step = f"authenticating as {imap_username}"
+                pop3_conn.user(imap_username)
+                pop3_conn.pass_(imap_password)
+                
+                step = "getting mailbox info"
+                pop3_conn.stat()
+                
+                pop3_conn.quit()
+                return None  # Success
             else:
-                step = f"connecting to {imap_host}:{imap_port} (non-SSL)"
-                mail = imaplib.IMAP4(imap_host, imap_port)
-                step = "upgrading to TLS (STARTTLS)"
-                try:
-                    mail.starttls()
-                except Exception as e:
-                    # Server doesn't support STARTTLS, continue without encryption
-                    step = "continuing without STARTTLS"
-            
-            step = f"authenticating as {imap_username}"
-            mail.login(imap_username, imap_password)
-            
-            step = "selecting INBOX"
-            mail.select('INBOX')
-            
-            mail.close()
-            mail.logout()
-            return None  # Success
+                # IMAP connection test (default)
+                step = f"connecting to {imap_host}:{imap_port} via IMAP"
+                if imap_use_ssl:
+                    step = f"SSL connecting to {imap_host}:{imap_port} via IMAP"
+                    mail = imaplib.IMAP4_SSL(imap_host, imap_port)
+                else:
+                    step = f"connecting to {imap_host}:{imap_port} via IMAP (non-SSL)"
+                    mail = imaplib.IMAP4(imap_host, imap_port)
+                    step = "upgrading to TLS (STARTTLS)"
+                    try:
+                        mail.starttls()
+                    except Exception as e:
+                        # Server doesn't support STARTTLS, continue without encryption
+                        step = "continuing without STARTTLS"
+                
+                step = f"authenticating as {imap_username}"
+                mail.login(imap_username, imap_password)
+                
+                step = "selecting INBOX"
+                mail.select('INBOX')
+                
+                mail.close()
+                mail.logout()
+                return None  # Success
             
         except socket.timeout:
             return f"Timeout while {step} - server not responding within 15 seconds"
@@ -2799,6 +2823,11 @@ async def web_admin_email_accounts_add(
             if "authentication" in error_msg.lower() or "login" in error_msg.lower():
                 return f"Authentication failed - check username/password ({error_msg})"
             return f"IMAP error while {step}: {error_msg}"
+        except poplib.error_proto as e:
+            error_msg = str(e)
+            if "authentication" in error_msg.lower() or "login" in error_msg.lower() or "password" in error_msg.lower():
+                return f"POP3 authentication failed - check username/password ({error_msg})"
+            return f"POP3 error while {step}: {error_msg}"
         except Exception as e:
             return f"Error while {step}: {type(e).__name__}: {e}"
         finally:
@@ -2808,7 +2837,7 @@ async def web_admin_email_accounts_add(
     if not skip_test:
         try:
             test_error = await asyncio.wait_for(
-                asyncio.to_thread(test_imap_connection),
+                asyncio.to_thread(test_mail_connection),
                 timeout=30.0
             )
         except asyncio.TimeoutError:
@@ -2822,11 +2851,13 @@ async def web_admin_email_accounts_add(
     try:
         auto_assign = form.get('auto_assign_to_user_id')
         project_id = form.get('project_id')
+        protocol = form.get('protocol', 'imap')  # 'imap' or 'pop3'
         account = IncomingEmailAccount(
             workspace_id=user.workspace_id,
             name=form.get('name'),
             email_address=form.get('email_address'),
             project_id=int(project_id) if project_id else None,
+            protocol=protocol,
             imap_host=imap_host,
             imap_port=imap_port,
             imap_username=imap_username,
