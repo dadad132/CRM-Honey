@@ -5184,7 +5184,15 @@ async def web_calendar(
     # Sort tasks by priority (critical, high, medium, low)
     # Use date.max for None due_dates to put them at the end
     priority_order = {'critical': 0, 'high': 1, 'medium': 2, 'low': 3}
-    tasks = sorted(tasks, key=lambda t: (t.due_date or date.max, priority_order.get(t.priority.value, 4), t.due_time or time.max))
+    
+    def task_sort_key(t):
+        due = t.due_date if t.due_date else date.max
+        priority_val = t.priority.value if t.priority else 'low'
+        priority = priority_order.get(priority_val, 4)
+        due_time = t.due_time if t.due_time else time.max
+        return (due, priority, due_time)
+    
+    tasks = sorted(tasks, key=task_sort_key)
     
     # Get meetings for the calendar period
     # Admin sees all meetings, regular users see only meetings they're attending
