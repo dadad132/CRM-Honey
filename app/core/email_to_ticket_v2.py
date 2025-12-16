@@ -33,6 +33,36 @@ def get_local_time() -> datetime:
     return datetime.now(timezone(LOCAL_TZ_OFFSET))
 
 
+async def generate_unique_ticket_number(db: AsyncSession, workspace_id: int) -> str:
+    """Generate a unique ticket number by finding the max existing number GLOBALLY"""
+    from sqlalchemy import func
+    
+    current_year = datetime.now().year
+    prefix = f"TKT-{current_year}-"
+    
+    # Find the highest ticket number for this year GLOBALLY (across all workspaces)
+    # because ticket_number is unique across the entire database
+    result = await db.execute(
+        select(Ticket.ticket_number)
+        .where(Ticket.ticket_number.like(f"{prefix}%"))
+    )
+    existing_numbers = result.scalars().all()
+    
+    max_num = 0
+    for tn in existing_numbers:
+        try:
+            # Extract the number part (e.g., "TKT-2025-00042" -> 42)
+            num_part = int(tn.replace(prefix, ""))
+            if num_part > max_num:
+                max_num = num_part
+        except (ValueError, AttributeError):
+            continue
+    
+    # Generate next number
+    next_num = max_num + 1
+    return f"{prefix}{next_num:05d}"
+
+
 class EmailToTicketService:
     """Service to process emails from IMAP and create tickets"""
     
@@ -457,12 +487,8 @@ class EmailToTicketService:
     ) -> Ticket:
         """Create a guest ticket from email"""
         
-        # Generate ticket number
-        result = await db.execute(
-            select(Ticket).where(Ticket.workspace_id == self.workspace_id)
-        )
-        ticket_count = len(result.all()) + 1
-        ticket_number = f"TKT-{datetime.now().year}-{ticket_count:05d}"
+        # Generate unique ticket number
+        ticket_number = await generate_unique_ticket_number(db, self.workspace_id)
         
         # Determine priority
         priority = self.determine_priority(subject, body)
@@ -949,13 +975,8 @@ async def process_email_account(db: AsyncSession, account) -> List[Ticket]:
                     else:
                         priority = default_priority
                     
-                    # Generate ticket number
-                    from datetime import datetime
-                    result = await fresh_db.execute(
-                        select(Ticket).where(Ticket.workspace_id == workspace_id)
-                    )
-                    ticket_count = len(result.all()) + 1
-                    ticket_number = f"TKT-{datetime.now().year}-{ticket_count:05d}"
+                    # Generate unique ticket number
+                    ticket_number = await generate_unique_ticket_number(fresh_db, workspace_id)
                     
                     # Create ticket
                     new_ticket = Ticket(

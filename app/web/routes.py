@@ -84,31 +84,48 @@ def format_datetime_tz(dt, tz_name="UTC", format_str="%Y-%m-%d %H:%M"):
     if dt is None:
         return ""
     
+    # Handle UTC specially to avoid tzdata dependency issues on Windows
+    from datetime import timezone as dt_timezone
+    
     try:
         from zoneinfo import ZoneInfo
+        has_zoneinfo = True
     except ImportError:
-        # Python < 3.9 fallback
+        has_zoneinfo = False
+    
+    try:
+        # Try pytz first as it's more reliable on Windows
+        import pytz
+        if isinstance(dt, datetime):
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=pytz.UTC)
+            if tz_name == "UTC":
+                target_tz = pytz.UTC
+            else:
+                target_tz = pytz.timezone(tz_name)
+            local_dt = dt.astimezone(target_tz)
+            return local_dt.strftime(format_str)
+    except ImportError:
+        pass
+    
+    # Fallback to zoneinfo
+    if has_zoneinfo:
         try:
-            import pytz
             if isinstance(dt, datetime):
                 if dt.tzinfo is None:
-                    dt = dt.replace(tzinfo=pytz.UTC)
-                target_tz = pytz.timezone(tz_name)
+                    # Use datetime.timezone.utc instead of ZoneInfo("UTC")
+                    dt = dt.replace(tzinfo=dt_timezone.utc)
+                if tz_name == "UTC":
+                    target_tz = dt_timezone.utc
+                else:
+                    target_tz = ZoneInfo(tz_name)
                 local_dt = dt.astimezone(target_tz)
                 return local_dt.strftime(format_str)
-        except (ImportError, Exception):
-            return dt.strftime(format_str) if isinstance(dt, datetime) else str(dt)
+        except Exception:
+            pass
     
-    # Python 3.9+ with zoneinfo
-    if isinstance(dt, datetime):
-        if dt.tzinfo is None:
-            # Assume UTC if no timezone info
-            dt = dt.replace(tzinfo=ZoneInfo("UTC"))
-        target_tz = ZoneInfo(tz_name)
-        local_dt = dt.astimezone(target_tz)
-        return local_dt.strftime(format_str)
-    
-    return str(dt)
+    # Ultimate fallback - just format as-is
+    return dt.strftime(format_str) if isinstance(dt, datetime) else str(dt)
 
 async def get_workspace_for_user(user_id: int, db: AsyncSession) -> Optional[Workspace]:
     """Get workspace with branding for a user"""
