@@ -6668,13 +6668,33 @@ async def web_tickets_process_emails(request: Request, db: AsyncSession = Depend
         return RedirectResponse('/web/tickets', status_code=303)
     
     try:
-        from app.core.email_to_ticket_v2 import process_workspace_emails
+        from app.core.email_to_ticket_v2 import process_email_account
+        from app.models.incoming_email_account import IncomingEmailAccount
         
-        # Process emails using database settings (V2)
-        tickets = await process_workspace_emails(db, user.workspace_id)
+        # Get all active email accounts for this workspace
+        accounts_result = await db.execute(
+            select(IncomingEmailAccount).where(
+                IncomingEmailAccount.workspace_id == user.workspace_id,
+                IncomingEmailAccount.is_active == True
+            )
+        )
+        accounts = accounts_result.scalars().all()
+        
+        if not accounts:
+            request.session['flash_message'] = "✗ No email accounts configured. Add one in Admin → Email Accounts"
+            request.session['flash_type'] = 'error'
+            return RedirectResponse('/web/tickets', status_code=303)
+        
+        total_tickets = 0
+        for account in accounts:
+            try:
+                tickets = await process_email_account(db, account)
+                total_tickets += len(tickets)
+            except Exception as e:
+                print(f"[Email] Error processing account {account.name}: {e}")
         
         # Show success message
-        request.session['flash_message'] = f"✓ Processed {len(tickets)} emails and created {len(tickets)} tickets"
+        request.session['flash_message'] = f"✓ Checked {len(accounts)} email account(s), created {total_tickets} ticket(s)"
         request.session['flash_type'] = 'success'
         
     except Exception as e:
