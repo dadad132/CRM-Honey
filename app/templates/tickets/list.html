@@ -135,13 +135,14 @@
                     <h3 class="font-semibold text-blue-800">
                         <i class="fas fa-inbox mr-2"></i>Open
                     </h3>
-                    <span class="bg-blue-200 text-blue-800 text-xs px-2 py-1 rounded-full">
+                    <span class="bg-blue-200 text-blue-800 text-xs px-2 py-1 rounded-full" id="count-open">
                         {{ tickets|selectattr('status', 'equalto', 'open')|list|length }}
                     </span>
                 </div>
-                <div class="space-y-2">
+                <div id="ticket-col-open" class="space-y-2 min-h-[100px]">
                     {% for ticket in tickets if ticket.status == 'open' %}
-                    <a href="/web/tickets/{{ ticket.id }}" class="block bg-white rounded-lg shadow-sm p-3 hover:shadow-md transition-shadow border-l-4 
+                    <div data-ticket-id="{{ ticket.id }}" onclick="window.location='/web/tickets/{{ ticket.id }}'" 
+                         class="ticket-card cursor-pointer bg-white rounded-lg shadow-sm p-3 hover:shadow-md transition-shadow border-l-4 
                         {% if ticket.priority == 'urgent' %}border-red-500
                         {% elif ticket.priority == 'high' %}border-orange-500
                         {% elif ticket.priority == 'medium' %}border-yellow-500
@@ -165,7 +166,7 @@
                             <span class="text-xs text-indigo-600"><i class="fas fa-user-circle"></i></span>
                             {% endif %}
                         </div>
-                    </a>
+                    </div>
                     {% endfor %}
                 </div>
             </div>
@@ -176,13 +177,14 @@
                     <h3 class="font-semibold text-purple-800">
                         <i class="fas fa-spinner mr-2"></i>In Progress
                     </h3>
-                    <span class="bg-purple-200 text-purple-800 text-xs px-2 py-1 rounded-full">
+                    <span class="bg-purple-200 text-purple-800 text-xs px-2 py-1 rounded-full" id="count-in_progress">
                         {{ tickets|selectattr('status', 'equalto', 'in_progress')|list|length }}
                     </span>
                 </div>
-                <div class="space-y-2">
+                <div id="ticket-col-in_progress" class="space-y-2 min-h-[100px]">
                     {% for ticket in tickets if ticket.status == 'in_progress' %}
-                    <a href="/web/tickets/{{ ticket.id }}" class="block bg-white rounded-lg shadow-sm p-3 hover:shadow-md transition-shadow border-l-4 
+                    <div data-ticket-id="{{ ticket.id }}" onclick="window.location='/web/tickets/{{ ticket.id }}'" 
+                         class="ticket-card cursor-pointer bg-white rounded-lg shadow-sm p-3 hover:shadow-md transition-shadow border-l-4 
                         {% if ticket.priority == 'urgent' %}border-red-500
                         {% elif ticket.priority == 'high' %}border-orange-500
                         {% elif ticket.priority == 'medium' %}border-yellow-500
@@ -206,7 +208,7 @@
                             <span class="text-xs text-indigo-600"><i class="fas fa-user-circle"></i></span>
                             {% endif %}
                         </div>
-                    </a>
+                    </div>
                     {% endfor %}
                 </div>
             </div>
@@ -217,13 +219,14 @@
                     <h3 class="font-semibold text-yellow-800">
                         <i class="fas fa-clock mr-2"></i>Waiting
                     </h3>
-                    <span class="bg-yellow-200 text-yellow-800 text-xs px-2 py-1 rounded-full">
+                    <span class="bg-yellow-200 text-yellow-800 text-xs px-2 py-1 rounded-full" id="count-waiting">
                         {{ tickets|selectattr('status', 'equalto', 'waiting')|list|length }}
                     </span>
                 </div>
-                <div class="space-y-2">
+                <div id="ticket-col-waiting" class="space-y-2 min-h-[100px]">
                     {% for ticket in tickets if ticket.status == 'waiting' %}
-                    <a href="/web/tickets/{{ ticket.id }}" class="block bg-white rounded-lg shadow-sm p-3 hover:shadow-md transition-shadow border-l-4 
+                    <div data-ticket-id="{{ ticket.id }}" onclick="window.location='/web/tickets/{{ ticket.id }}'" 
+                         class="ticket-card cursor-pointer bg-white rounded-lg shadow-sm p-3 hover:shadow-md transition-shadow border-l-4 
                         {% if ticket.priority == 'urgent' %}border-red-500
                         {% elif ticket.priority == 'high' %}border-orange-500
                         {% elif ticket.priority == 'medium' %}border-yellow-500
@@ -247,7 +250,7 @@
                             <span class="text-xs text-indigo-600"><i class="fas fa-user-circle"></i></span>
                             {% endif %}
                         </div>
-                    </a>
+                    </div>
                     {% endfor %}
                 </div>
             </div>
@@ -258,13 +261,14 @@
                     <h3 class="font-semibold text-green-800">
                         <i class="fas fa-check-circle mr-2"></i>Resolved
                     </h3>
-                    <span class="bg-green-200 text-green-800 text-xs px-2 py-1 rounded-full">
+                    <span class="bg-green-200 text-green-800 text-xs px-2 py-1 rounded-full" id="count-resolved">
                         {{ tickets|selectattr('status', 'equalto', 'resolved')|list|length }}
                     </span>
                 </div>
-                <div class="space-y-2">
+                <div id="ticket-col-resolved" class="space-y-2 min-h-[100px]">
                     {% for ticket in tickets if ticket.status == 'resolved' %}
-                    <a href="/web/tickets/{{ ticket.id }}" class="block bg-white rounded-lg shadow-sm p-3 hover:shadow-md transition-shadow border-l-4 
+                    <div data-ticket-id="{{ ticket.id }}" onclick="window.location='/web/tickets/{{ ticket.id }}'" 
+                         class="ticket-card cursor-pointer bg-white rounded-lg shadow-sm p-3 hover:shadow-md transition-shadow border-l-4 
                         {% if ticket.priority == 'urgent' %}border-red-500
                         {% elif ticket.priority == 'high' %}border-orange-500
                         {% elif ticket.priority == 'medium' %}border-yellow-500
@@ -288,7 +292,7 @@
                             <span class="text-xs text-indigo-600"><i class="fas fa-user-circle"></i></span>
                             {% endif %}
                         </div>
-                    </a>
+                    </div>
                     {% endfor %}
                 </div>
             </div>
@@ -299,13 +303,14 @@
                     <h3 class="font-semibold text-gray-700">
                         <i class="fas fa-times-circle mr-2"></i>Closed
                     </h3>
-                    <span class="bg-gray-300 text-gray-700 text-xs px-2 py-1 rounded-full">
+                    <span class="bg-gray-300 text-gray-700 text-xs px-2 py-1 rounded-full" id="count-closed">
                         {{ tickets|selectattr('status', 'equalto', 'closed')|list|length }}
                     </span>
                 </div>
-                <div class="space-y-2">
+                <div id="ticket-col-closed" class="space-y-2 min-h-[100px]">
                     {% for ticket in tickets if ticket.status == 'closed' %}
-                    <a href="/web/tickets/{{ ticket.id }}" class="block bg-white rounded-lg shadow-sm p-3 hover:shadow-md transition-shadow border-l-4 
+                    <div data-ticket-id="{{ ticket.id }}" onclick="window.location='/web/tickets/{{ ticket.id }}'" 
+                         class="ticket-card cursor-pointer bg-white rounded-lg shadow-sm p-3 hover:shadow-md transition-shadow border-l-4 
                         {% if ticket.priority == 'urgent' %}border-red-500
                         {% elif ticket.priority == 'high' %}border-orange-500
                         {% elif ticket.priority == 'medium' %}border-yellow-500
@@ -329,7 +334,7 @@
                             <span class="text-xs text-indigo-600"><i class="fas fa-user-circle"></i></span>
                             {% endif %}
                         </div>
-                    </a>
+                    </div>
                     {% endfor %}
                 </div>
             </div>
@@ -696,6 +701,118 @@ function switchToList() {
     localStorage.setItem('ticketViewPreference', 'list');
 }
 
+// Ticket drag-and-drop kanban functionality
+function initTicketKanban() {
+    const statuses = ['open', 'in_progress', 'waiting', 'resolved', 'closed'];
+    const columns = statuses.map(s => document.getElementById(`ticket-col-${s}`)).filter(el => el !== null);
+    
+    if (columns.length === 0) {
+        console.log('No ticket kanban columns found');
+        return;
+    }
+    
+    columns.forEach(column => {
+        new Sortable(column, {
+            group: 'ticket-kanban',
+            animation: 150,
+            ghostClass: 'opacity-50',
+            draggable: '.ticket-card',
+            onStart: function(evt) {
+                // Prevent click navigation when dragging
+                evt.item.dataset.dragging = 'true';
+            },
+            onEnd: async function(evt) {
+                const el = evt.item;
+                const ticketId = el.dataset.ticketId;
+                const newStatus = evt.to.id.replace('ticket-col-', '');
+                const oldStatus = evt.from.id.replace('ticket-col-', '');
+                
+                // Reset dragging flag after a short delay
+                setTimeout(() => {
+                    el.dataset.dragging = 'false';
+                }, 100);
+                
+                // If dropped in the same column, do nothing
+                if (newStatus === oldStatus) {
+                    return;
+                }
+                
+                // Update status via AJAX
+                const form = new FormData();
+                form.append('status', newStatus);
+                
+                try {
+                    const res = await fetch(`/web/tickets/${ticketId}/update-status`, {
+                        method: 'POST',
+                        body: form,
+                        headers: {
+                            'X-Requested-With': 'XMLHttpRequest'
+                        }
+                    });
+                    
+                    if (!res.ok) {
+                        throw new Error('Failed to update status');
+                    }
+                    
+                    const data = await res.json();
+                    console.log('Ticket status updated:', data);
+                    
+                    // Update counts
+                    updateTicketCounts(oldStatus, newStatus);
+                    
+                    // Show success toast
+                    showToast(`Ticket moved to ${newStatus.replace('_', ' ')}`, 'success');
+                    
+                } catch (e) {
+                    console.error('Error updating ticket status:', e);
+                    // Revert on failure
+                    evt.from.insertBefore(el, evt.from.children[evt.oldIndex] || null);
+                    showToast('Could not update ticket status', 'error');
+                }
+            }
+        });
+    });
+    
+    console.log('Ticket kanban drag-drop initialized for', columns.length, 'columns');
+}
+
+function updateTicketCounts(oldStatus, newStatus) {
+    const oldCount = document.getElementById(`count-${oldStatus}`);
+    const newCount = document.getElementById(`count-${newStatus}`);
+    
+    if (oldCount) {
+        oldCount.textContent = parseInt(oldCount.textContent) - 1;
+    }
+    if (newCount) {
+        newCount.textContent = parseInt(newCount.textContent) + 1;
+    }
+}
+
+function showToast(message, type) {
+    // Create toast element
+    const toast = document.createElement('div');
+    toast.className = `fixed bottom-4 right-4 px-4 py-2 rounded-lg shadow-lg text-white z-50 transition-opacity duration-300 ${
+        type === 'success' ? 'bg-green-600' : 'bg-red-600'
+    }`;
+    toast.textContent = message;
+    document.body.appendChild(toast);
+    
+    // Auto remove after 3 seconds
+    setTimeout(() => {
+        toast.style.opacity = '0';
+        setTimeout(() => toast.remove(), 300);
+    }, 3000);
+}
+
+// Prevent navigation when dragging
+document.addEventListener('click', function(e) {
+    const ticketCard = e.target.closest('.ticket-card');
+    if (ticketCard && ticketCard.dataset.dragging === 'true') {
+        e.preventDefault();
+        e.stopPropagation();
+    }
+}, true);
+
 // Setup event listeners for ticket form
 document.addEventListener('DOMContentLoaded', function() {
     const ticketDuration = document.getElementById('ticket-duration');
@@ -721,6 +838,9 @@ document.addEventListener('DOMContentLoaded', function() {
         // Default to board view
         switchToBoard();
     }
+    
+    // Initialize ticket kanban drag-and-drop
+    initTicketKanban();
 });
 </script>
 {% endblock %}

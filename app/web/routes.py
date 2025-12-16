@@ -6316,10 +6316,15 @@ async def web_tickets_update_status(
     """Update ticket status"""
     user_id = request.session.get('user_id')
     if not user_id:
+        # Check if AJAX request
+        if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+            return JSONResponse({'error': 'Not authenticated'}, status_code=401)
         return RedirectResponse('/web/login', status_code=303)
     
     user = (await db.execute(select(User).where(User.id == user_id))).scalar_one_or_none()
     if not user:
+        if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+            return JSONResponse({'error': 'User not found'}, status_code=401)
         return RedirectResponse('/web/login', status_code=303)
     
     from app.models.ticket import Ticket, TicketHistory
@@ -6327,6 +6332,8 @@ async def web_tickets_update_status(
     
     ticket = (await db.execute(select(Ticket).where(Ticket.id == ticket_id))).scalar_one_or_none()
     if not ticket:
+        if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+            return JSONResponse({'error': 'Ticket not found'}, status_code=404)
         return RedirectResponse('/web/tickets', status_code=303)
     
     old_status = ticket.status
@@ -6366,6 +6373,17 @@ async def web_tickets_update_status(
         db.add(notification)
     
     await db.commit()
+    
+    # Return JSON for AJAX requests
+    if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+        return JSONResponse({
+            'success': True,
+            'ticket_id': ticket_id,
+            'old_status': old_status,
+            'new_status': status,
+            'ticket_number': ticket.ticket_number
+        })
+    
     return RedirectResponse(f'/web/tickets/{ticket_id}', status_code=303)
 
 
