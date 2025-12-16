@@ -2655,6 +2655,246 @@ async def web_admin_preview_inbox(request: Request, db: AsyncSession = Depends(g
 
 
 # --------------------------
+# Email Accounts Management (Admin Only)
+# --------------------------
+@router.get('/admin/email-accounts', response_class=HTMLResponse)
+async def web_admin_email_accounts(request: Request, db: AsyncSession = Depends(get_session)):
+    """List all email accounts"""
+    user_id = request.session.get('user_id')
+    if not user_id:
+        return RedirectResponse('/web/login', status_code=303)
+    
+    user = (await db.execute(select(User).where(User.id == user_id))).scalar_one_or_none()
+    if not user or not user.is_admin:
+        raise HTTPException(status_code=403, detail="Admin access required")
+    
+    from app.models.incoming_email_account import IncomingEmailAccount
+    
+    # Get all email accounts for this workspace
+    accounts = (await db.execute(
+        select(IncomingEmailAccount).where(IncomingEmailAccount.workspace_id == user.workspace_id)
+        .order_by(IncomingEmailAccount.name)
+    )).scalars().all()
+    
+    # Get users for auto-assign dropdown
+    users = (await db.execute(
+        select(User).where(User.workspace_id == user.workspace_id, User.is_active == True)
+    )).scalars().all()
+    
+    return templates.TemplateResponse('admin/email_accounts.html', {
+        'request': request,
+        'user': user,
+        'accounts': accounts,
+        'users': users
+    })
+
+
+@router.post('/admin/email-accounts/add')
+async def web_admin_email_accounts_add(
+    request: Request,
+    db: AsyncSession = Depends(get_session)
+):
+    """Add a new email account"""
+    user_id = request.session.get('user_id')
+    if not user_id:
+        return RedirectResponse('/web/login', status_code=303)
+    
+    user = (await db.execute(select(User).where(User.id == user_id))).scalar_one_or_none()
+    if not user or not user.is_admin:
+        raise HTTPException(status_code=403, detail="Admin access required")
+    
+    from app.models.incoming_email_account import IncomingEmailAccount
+    
+    form = await request.form()
+    
+    try:
+        auto_assign = form.get('auto_assign_to_user_id')
+        account = IncomingEmailAccount(
+            workspace_id=user.workspace_id,
+            name=form.get('name'),
+            email_address=form.get('email_address'),
+            imap_host=form.get('imap_host'),
+            imap_port=int(form.get('imap_port', 993)),
+            imap_username=form.get('imap_username'),
+            imap_password=form.get('imap_password'),
+            imap_use_ssl=form.get('imap_use_ssl') == 'on',
+            is_active=True,
+            auto_assign_to_user_id=int(auto_assign) if auto_assign else None,
+            default_priority=form.get('default_priority', 'medium'),
+            default_category=form.get('default_category', 'support')
+        )
+        db.add(account)
+        await db.commit()
+        
+        request.session['flash_message'] = f"✓ Email account '{account.name}' added successfully"
+        request.session['flash_type'] = 'success'
+        
+    except Exception as e:
+        request.session['flash_message'] = f"✗ Failed to add account: {str(e)}"
+        request.session['flash_type'] = 'error'
+    
+    return RedirectResponse('/web/admin/email-accounts', status_code=303)
+
+
+@router.post('/admin/email-accounts/{account_id}/update')
+async def web_admin_email_accounts_update(
+    account_id: int,
+    request: Request,
+    db: AsyncSession = Depends(get_session)
+):
+    """Update an email account"""
+    user_id = request.session.get('user_id')
+    if not user_id:
+        return RedirectResponse('/web/login', status_code=303)
+    
+    user = (await db.execute(select(User).where(User.id == user_id))).scalar_one_or_none()
+    if not user or not user.is_admin:
+        raise HTTPException(status_code=403, detail="Admin access required")
+    
+    from app.models.incoming_email_account import IncomingEmailAccount
+    from datetime import datetime
+    
+    account = (await db.execute(
+        select(IncomingEmailAccount).where(
+            IncomingEmailAccount.id == account_id,
+            IncomingEmailAccount.workspace_id == user.workspace_id
+        )
+    )).scalar_one_or_none()
+    
+    if not account:
+        raise HTTPException(status_code=404, detail="Account not found")
+    
+    form = await request.form()
+    
+    try:
+        auto_assign = form.get('auto_assign_to_user_id')
+        account.name = form.get('name')
+        account.email_address = form.get('email_address')
+        account.imap_host = form.get('imap_host')
+        account.imap_port = int(form.get('imap_port', 993))
+        account.imap_username = form.get('imap_username')
+        
+        # Only update password if provided
+        new_password = form.get('imap_password')
+        if new_password:
+            account.imap_password = new_password
+        
+        account.imap_use_ssl = form.get('imap_use_ssl') == 'on'
+        account.is_active = form.get('is_active') == 'on'
+        account.auto_assign_to_user_id = int(auto_assign) if auto_assign else None
+        account.default_priority = form.get('default_priority', 'medium')
+        account.default_category = form.get('default_category', 'support')
+        account.updated_at = datetime.utcnow()
+        
+        await db.commit()
+        
+        request.session['flash_message'] = f"✓ Email account '{account.name}' updated successfully"
+        request.session['flash_type'] = 'success'
+        
+    except Exception as e:
+        request.session['flash_message'] = f"✗ Failed to update account: {str(e)}"
+        request.session['flash_type'] = 'error'
+    
+    return RedirectResponse('/web/admin/email-accounts', status_code=303)
+
+
+@router.post('/admin/email-accounts/{account_id}/delete')
+async def web_admin_email_accounts_delete(
+    account_id: int,
+    request: Request,
+    db: AsyncSession = Depends(get_session)
+):
+    """Delete an email account"""
+    user_id = request.session.get('user_id')
+    if not user_id:
+        return RedirectResponse('/web/login', status_code=303)
+    
+    user = (await db.execute(select(User).where(User.id == user_id))).scalar_one_or_none()
+    if not user or not user.is_admin:
+        raise HTTPException(status_code=403, detail="Admin access required")
+    
+    from app.models.incoming_email_account import IncomingEmailAccount
+    
+    account = (await db.execute(
+        select(IncomingEmailAccount).where(
+            IncomingEmailAccount.id == account_id,
+            IncomingEmailAccount.workspace_id == user.workspace_id
+        )
+    )).scalar_one_or_none()
+    
+    if not account:
+        raise HTTPException(status_code=404, detail="Account not found")
+    
+    try:
+        account_name = account.name
+        await db.delete(account)
+        await db.commit()
+        
+        request.session['flash_message'] = f"✓ Email account '{account_name}' deleted"
+        request.session['flash_type'] = 'success'
+        
+    except Exception as e:
+        request.session['flash_message'] = f"✗ Failed to delete account: {str(e)}"
+        request.session['flash_type'] = 'error'
+    
+    return RedirectResponse('/web/admin/email-accounts', status_code=303)
+
+
+@router.post('/admin/email-accounts/{account_id}/test')
+async def web_admin_email_accounts_test(
+    account_id: int,
+    request: Request,
+    db: AsyncSession = Depends(get_session)
+):
+    """Test connection to an email account"""
+    user_id = request.session.get('user_id')
+    if not user_id:
+        return JSONResponse({'success': False, 'error': 'Not authenticated'})
+    
+    user = (await db.execute(select(User).where(User.id == user_id))).scalar_one_or_none()
+    if not user or not user.is_admin:
+        return JSONResponse({'success': False, 'error': 'Admin access required'})
+    
+    from app.models.incoming_email_account import IncomingEmailAccount
+    import imaplib
+    
+    account = (await db.execute(
+        select(IncomingEmailAccount).where(
+            IncomingEmailAccount.id == account_id,
+            IncomingEmailAccount.workspace_id == user.workspace_id
+        )
+    )).scalar_one_or_none()
+    
+    if not account:
+        return JSONResponse({'success': False, 'error': 'Account not found'})
+    
+    try:
+        # Try to connect
+        if account.imap_use_ssl:
+            mail = imaplib.IMAP4_SSL(account.imap_host, account.imap_port)
+        else:
+            mail = imaplib.IMAP4(account.imap_host, account.imap_port)
+        
+        mail.login(account.imap_username, account.imap_password)
+        mail.select('INBOX')
+        
+        # Get unread count
+        status, messages = mail.search(None, 'UNSEEN')
+        unread_count = len(messages[0].split()) if messages[0] else 0
+        
+        mail.close()
+        mail.logout()
+        
+        return JSONResponse({
+            'success': True, 
+            'message': f'Connection successful! Found {unread_count} unread email(s)'
+        })
+        
+    except Exception as e:
+        return JSONResponse({'success': False, 'error': str(e)})
+
+
+# --------------------------
 # Site Settings (Admin Only)
 # --------------------------
 @router.get('/admin/site-settings', response_class=HTMLResponse)
@@ -3318,16 +3558,6 @@ async def web_project_detail(request: Request, project_id: int, db: AsyncSession
         )).scalar_one_or_none()
         if not member:
             raise HTTPException(status_code=403, detail='You do not have access to this project')
-    
-    # Scan project IMAP for new emails and create tasks (if IMAP is configured)
-    if project.imap_host and project.imap_username:
-        try:
-            from app.core.email_to_ticket_v2 import process_project_emails
-            import asyncio
-            # Run email scan in background - don't wait for it to complete
-            asyncio.create_task(process_project_emails(db, project))
-        except Exception as e:
-            print(f"[Project IMAP] Error triggering email scan for {project.name}: {e}")
     
     # Fetch only non-archived tasks for board view (archived tasks go to the Done tab in tasks/list)
     tasks_result = await db.execute(

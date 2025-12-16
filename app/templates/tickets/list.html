@@ -24,10 +24,18 @@
 
     <div class="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 mb-6">
         <h1 class="text-2xl sm:text-3xl font-bold text-gray-900">Support Tickets</h1>
-        <div class="flex flex-wrap gap-2">
-            <a href="/web/tickets?status=all" class="px-3 sm:px-4 py-2 text-sm text-gray-600 hover:text-gray-900 whitespace-nowrap">
-                <i class="fas fa-list mr-1 sm:mr-2"></i>All Tickets
-            </a>
+        <div class="flex flex-wrap gap-2 items-center">
+            <!-- View Toggle -->
+            <div class="flex items-center bg-gray-100 rounded-lg p-1 mr-2">
+                <button id="boardViewBtn" onclick="switchToBoard()" 
+                        class="px-3 py-1.5 text-sm rounded-md transition-colors bg-white shadow text-blue-600">
+                    <i class="fas fa-columns mr-1"></i>Board
+                </button>
+                <button id="listViewBtn" onclick="switchToList()" 
+                        class="px-3 py-1.5 text-sm rounded-md transition-colors text-gray-600 hover:text-gray-900">
+                    <i class="fas fa-list mr-1"></i>List
+                </button>
+            </div>
             <a href="/web/tickets/archived" class="px-3 sm:px-4 py-2 text-sm text-amber-600 hover:text-amber-700 whitespace-nowrap">
                 <i class="fas fa-archive mr-1 sm:mr-2"></i>Archived
             </a>
@@ -118,8 +126,195 @@
         </form>
     </div>
 
-    <!-- Tickets List -->
-    <div class="space-y-3">
+    <!-- Board View (Kanban) -->
+    <div id="boardView" class="mb-6">
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
+            <!-- Open Column -->
+            <div class="bg-blue-50 rounded-lg p-3 min-h-[400px]">
+                <div class="flex items-center justify-between mb-3">
+                    <h3 class="font-semibold text-blue-800">
+                        <i class="fas fa-inbox mr-2"></i>Open
+                    </h3>
+                    <span class="bg-blue-200 text-blue-800 text-xs px-2 py-1 rounded-full">
+                        {{ tickets|selectattr('status', 'equalto', 'open')|list|length }}
+                    </span>
+                </div>
+                <div class="space-y-2">
+                    {% for ticket in tickets if ticket.status == 'open' %}
+                    <a href="/web/tickets/{{ ticket.id }}" class="block bg-white rounded-lg shadow-sm p-3 hover:shadow-md transition-shadow border-l-4 
+                        {% if ticket.priority == 'urgent' %}border-red-500
+                        {% elif ticket.priority == 'high' %}border-orange-500
+                        {% elif ticket.priority == 'medium' %}border-yellow-500
+                        {% else %}border-gray-300{% endif %}">
+                        <div class="text-xs text-gray-500 mb-1">{{ ticket.ticket_number }}</div>
+                        <div class="font-medium text-sm text-gray-900 mb-2 line-clamp-2">{{ ticket.subject }}</div>
+                        <div class="flex items-center justify-between">
+                            {% if ticket.priority == 'urgent' %}
+                            <span class="px-1.5 py-0.5 text-xs rounded bg-red-100 text-red-700">Urgent</span>
+                            {% elif ticket.priority == 'high' %}
+                            <span class="px-1.5 py-0.5 text-xs rounded bg-orange-100 text-orange-700">High</span>
+                            {% endif %}
+                            {% if ticket.is_guest %}
+                            <span class="text-xs text-indigo-600"><i class="fas fa-user-circle"></i></span>
+                            {% endif %}
+                        </div>
+                    </a>
+                    {% endfor %}
+                </div>
+            </div>
+
+            <!-- In Progress Column -->
+            <div class="bg-purple-50 rounded-lg p-3 min-h-[400px]">
+                <div class="flex items-center justify-between mb-3">
+                    <h3 class="font-semibold text-purple-800">
+                        <i class="fas fa-spinner mr-2"></i>In Progress
+                    </h3>
+                    <span class="bg-purple-200 text-purple-800 text-xs px-2 py-1 rounded-full">
+                        {{ tickets|selectattr('status', 'equalto', 'in_progress')|list|length }}
+                    </span>
+                </div>
+                <div class="space-y-2">
+                    {% for ticket in tickets if ticket.status == 'in_progress' %}
+                    <a href="/web/tickets/{{ ticket.id }}" class="block bg-white rounded-lg shadow-sm p-3 hover:shadow-md transition-shadow border-l-4 
+                        {% if ticket.priority == 'urgent' %}border-red-500
+                        {% elif ticket.priority == 'high' %}border-orange-500
+                        {% elif ticket.priority == 'medium' %}border-yellow-500
+                        {% else %}border-gray-300{% endif %}">
+                        <div class="text-xs text-gray-500 mb-1">{{ ticket.ticket_number }}</div>
+                        <div class="font-medium text-sm text-gray-900 mb-2 line-clamp-2">{{ ticket.subject }}</div>
+                        <div class="flex items-center justify-between">
+                            {% if ticket.priority == 'urgent' %}
+                            <span class="px-1.5 py-0.5 text-xs rounded bg-red-100 text-red-700">Urgent</span>
+                            {% elif ticket.priority == 'high' %}
+                            <span class="px-1.5 py-0.5 text-xs rounded bg-orange-100 text-orange-700">High</span>
+                            {% endif %}
+                            {% if ticket.is_guest %}
+                            <span class="text-xs text-indigo-600"><i class="fas fa-user-circle"></i></span>
+                            {% endif %}
+                        </div>
+                    </a>
+                    {% endfor %}
+                </div>
+            </div>
+
+            <!-- Waiting Column -->
+            <div class="bg-yellow-50 rounded-lg p-3 min-h-[400px]">
+                <div class="flex items-center justify-between mb-3">
+                    <h3 class="font-semibold text-yellow-800">
+                        <i class="fas fa-clock mr-2"></i>Waiting
+                    </h3>
+                    <span class="bg-yellow-200 text-yellow-800 text-xs px-2 py-1 rounded-full">
+                        {{ tickets|selectattr('status', 'equalto', 'waiting')|list|length }}
+                    </span>
+                </div>
+                <div class="space-y-2">
+                    {% for ticket in tickets if ticket.status == 'waiting' %}
+                    <a href="/web/tickets/{{ ticket.id }}" class="block bg-white rounded-lg shadow-sm p-3 hover:shadow-md transition-shadow border-l-4 
+                        {% if ticket.priority == 'urgent' %}border-red-500
+                        {% elif ticket.priority == 'high' %}border-orange-500
+                        {% elif ticket.priority == 'medium' %}border-yellow-500
+                        {% else %}border-gray-300{% endif %}">
+                        <div class="text-xs text-gray-500 mb-1">{{ ticket.ticket_number }}</div>
+                        <div class="font-medium text-sm text-gray-900 mb-2 line-clamp-2">{{ ticket.subject }}</div>
+                        <div class="flex items-center justify-between">
+                            {% if ticket.priority == 'urgent' %}
+                            <span class="px-1.5 py-0.5 text-xs rounded bg-red-100 text-red-700">Urgent</span>
+                            {% elif ticket.priority == 'high' %}
+                            <span class="px-1.5 py-0.5 text-xs rounded bg-orange-100 text-orange-700">High</span>
+                            {% endif %}
+                            {% if ticket.is_guest %}
+                            <span class="text-xs text-indigo-600"><i class="fas fa-user-circle"></i></span>
+                            {% endif %}
+                        </div>
+                    </a>
+                    {% endfor %}
+                </div>
+            </div>
+
+            <!-- Resolved Column -->
+            <div class="bg-green-50 rounded-lg p-3 min-h-[400px]">
+                <div class="flex items-center justify-between mb-3">
+                    <h3 class="font-semibold text-green-800">
+                        <i class="fas fa-check-circle mr-2"></i>Resolved
+                    </h3>
+                    <span class="bg-green-200 text-green-800 text-xs px-2 py-1 rounded-full">
+                        {{ tickets|selectattr('status', 'equalto', 'resolved')|list|length }}
+                    </span>
+                </div>
+                <div class="space-y-2">
+                    {% for ticket in tickets if ticket.status == 'resolved' %}
+                    <a href="/web/tickets/{{ ticket.id }}" class="block bg-white rounded-lg shadow-sm p-3 hover:shadow-md transition-shadow border-l-4 
+                        {% if ticket.priority == 'urgent' %}border-red-500
+                        {% elif ticket.priority == 'high' %}border-orange-500
+                        {% elif ticket.priority == 'medium' %}border-yellow-500
+                        {% else %}border-gray-300{% endif %}">
+                        <div class="text-xs text-gray-500 mb-1">{{ ticket.ticket_number }}</div>
+                        <div class="font-medium text-sm text-gray-900 mb-2 line-clamp-2">{{ ticket.subject }}</div>
+                        <div class="flex items-center justify-between">
+                            {% if ticket.priority == 'urgent' %}
+                            <span class="px-1.5 py-0.5 text-xs rounded bg-red-100 text-red-700">Urgent</span>
+                            {% elif ticket.priority == 'high' %}
+                            <span class="px-1.5 py-0.5 text-xs rounded bg-orange-100 text-orange-700">High</span>
+                            {% endif %}
+                            {% if ticket.is_guest %}
+                            <span class="text-xs text-indigo-600"><i class="fas fa-user-circle"></i></span>
+                            {% endif %}
+                        </div>
+                    </a>
+                    {% endfor %}
+                </div>
+            </div>
+
+            <!-- Closed Column -->
+            <div class="bg-gray-100 rounded-lg p-3 min-h-[400px]">
+                <div class="flex items-center justify-between mb-3">
+                    <h3 class="font-semibold text-gray-700">
+                        <i class="fas fa-times-circle mr-2"></i>Closed
+                    </h3>
+                    <span class="bg-gray-300 text-gray-700 text-xs px-2 py-1 rounded-full">
+                        {{ tickets|selectattr('status', 'equalto', 'closed')|list|length }}
+                    </span>
+                </div>
+                <div class="space-y-2">
+                    {% for ticket in tickets if ticket.status == 'closed' %}
+                    <a href="/web/tickets/{{ ticket.id }}" class="block bg-white rounded-lg shadow-sm p-3 hover:shadow-md transition-shadow border-l-4 
+                        {% if ticket.priority == 'urgent' %}border-red-500
+                        {% elif ticket.priority == 'high' %}border-orange-500
+                        {% elif ticket.priority == 'medium' %}border-yellow-500
+                        {% else %}border-gray-300{% endif %}">
+                        <div class="text-xs text-gray-500 mb-1">{{ ticket.ticket_number }}</div>
+                        <div class="font-medium text-sm text-gray-900 mb-2 line-clamp-2">{{ ticket.subject }}</div>
+                        <div class="flex items-center justify-between">
+                            {% if ticket.priority == 'urgent' %}
+                            <span class="px-1.5 py-0.5 text-xs rounded bg-red-100 text-red-700">Urgent</span>
+                            {% elif ticket.priority == 'high' %}
+                            <span class="px-1.5 py-0.5 text-xs rounded bg-orange-100 text-orange-700">High</span>
+                            {% endif %}
+                            {% if ticket.is_guest %}
+                            <span class="text-xs text-indigo-600"><i class="fas fa-user-circle"></i></span>
+                            {% endif %}
+                        </div>
+                    </a>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+        
+        {% if not tickets %}
+        <div class="text-center py-12 bg-white rounded-lg shadow-sm">
+            <i class="fas fa-ticket-alt text-6xl text-gray-300 mb-4"></i>
+            <h3 class="text-xl font-semibold text-gray-700 mb-2">No Tickets Found</h3>
+            <p class="text-gray-500 mb-4">Create your first ticket to get started.</p>
+            <button onclick="document.getElementById('createTicketModal').classList.remove('hidden')"
+                    class="px-6 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700">
+                <i class="fas fa-plus mr-2"></i>Create Ticket
+            </button>
+        </div>
+        {% endif %}
+    </div>
+
+    <!-- List View -->
+    <div id="listView" class="hidden space-y-3">
         {% if tickets %}
             {% for ticket in tickets %}
             <div class="bg-white rounded-lg shadow-sm hover:shadow-md transition-shadow border-l-4 
@@ -438,6 +633,27 @@ function calculateTicketDueDate() {
     targetInput.value = `${year}-${month}-${day}T${hours}:${minutes}`;
 }
 
+// View Toggle Functions
+function switchToBoard() {
+    document.getElementById('boardView').classList.remove('hidden');
+    document.getElementById('listView').classList.add('hidden');
+    document.getElementById('boardViewBtn').classList.add('bg-white', 'shadow', 'text-blue-600');
+    document.getElementById('boardViewBtn').classList.remove('text-gray-600', 'hover:text-gray-900');
+    document.getElementById('listViewBtn').classList.remove('bg-white', 'shadow', 'text-blue-600');
+    document.getElementById('listViewBtn').classList.add('text-gray-600', 'hover:text-gray-900');
+    localStorage.setItem('ticketViewPreference', 'board');
+}
+
+function switchToList() {
+    document.getElementById('boardView').classList.add('hidden');
+    document.getElementById('listView').classList.remove('hidden');
+    document.getElementById('listViewBtn').classList.add('bg-white', 'shadow', 'text-blue-600');
+    document.getElementById('listViewBtn').classList.remove('text-gray-600', 'hover:text-gray-900');
+    document.getElementById('boardViewBtn').classList.remove('bg-white', 'shadow', 'text-blue-600');
+    document.getElementById('boardViewBtn').classList.add('text-gray-600', 'hover:text-gray-900');
+    localStorage.setItem('ticketViewPreference', 'list');
+}
+
 // Setup event listeners for ticket form
 document.addEventListener('DOMContentLoaded', function() {
     const ticketDuration = document.getElementById('ticket-duration');
@@ -453,6 +669,15 @@ document.addEventListener('DOMContentLoaded', function() {
                 }
             });
         });
+    }
+    
+    // Restore view preference from localStorage
+    const viewPreference = localStorage.getItem('ticketViewPreference');
+    if (viewPreference === 'list') {
+        switchToList();
+    } else {
+        // Default to board view
+        switchToBoard();
     }
 });
 </script>

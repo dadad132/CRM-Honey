@@ -1,6 +1,6 @@
 """
 Email-to-Ticket Scheduler V2
-Uses database settings for each workspace
+Uses database settings for each workspace - supports multiple email accounts
 """
 
 import asyncio
@@ -9,10 +9,10 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 from sqlmodel import select
 
 from app.core.database import engine
-from app.core.email_to_ticket_v2 import process_workspace_emails, process_project_emails
+from app.core.email_to_ticket_v2 import process_workspace_emails, process_email_account
 from app.models.workspace import Workspace
 from app.models.email_settings import EmailSettings
-from app.models.project import Project
+from app.models.incoming_email_account import IncomingEmailAccount
 
 
 class EmailScheduler:
@@ -36,22 +36,22 @@ class EmailScheduler:
         
         while self.running:
             try:
-                # Get list of workspaces to process
+                # Process legacy workspace email settings (single account)
                 workspace_ids = []
                 
                 async with AsyncSession(engine) as db:
-                    # Get all workspaces with email settings
+                    # Get all workspaces with legacy email settings
                     result = await db.execute(
                         select(EmailSettings.workspace_id).where(EmailSettings.incoming_mail_host.isnot(None))
                     )
                     workspace_ids = [row[0] for row in result.all()]
                 
-                # Process workspaces sequentially (each gets its own session)
+                # Process legacy workspaces sequentially
                 for ws_id in workspace_ids:
                     await self._process_workspace(ws_id)
                 
-                # Process projects with their own IMAP settings
-                await self._process_project_emails()
+                # Process new multi-account email settings
+                await self._process_email_accounts()
                 
                 # Wait for next check
                 await asyncio.sleep(self.check_interval)
@@ -61,7 +61,7 @@ class EmailScheduler:
                 await asyncio.sleep(self.check_interval)
     
     async def _process_workspace(self, workspace_id: int):
-        """Process emails for a single workspace with its own session"""
+        """Process emails for a single workspace with its own session (legacy single-account)"""
         try:
             async with AsyncSession(engine) as db:
                 tickets = await process_workspace_emails(db, workspace_id)
@@ -73,31 +73,34 @@ class EmailScheduler:
         except Exception as e:
             print(f"[Email-to-Ticket] Error processing workspace {workspace_id}: {e}")
     
-    async def _process_project_emails(self):
-        """Process emails for all projects with their own IMAP settings"""
+    async def _process_email_accounts(self):
+        """Process emails for all active incoming email accounts (new multi-account)"""
         try:
             async with AsyncSession(engine) as db:
-                # Find all projects with IMAP configured
+                # Find all active email accounts
                 result = await db.execute(
-                    select(Project).where(
-                        Project.imap_host.isnot(None),
-                        Project.imap_username.isnot(None),
-                        Project.is_archived == False
+                    select(IncomingEmailAccount).where(
+                        IncomingEmailAccount.is_active == True
                     )
                 )
-                projects = result.scalars().all()
+                accounts = result.scalars().all()
                 
-                for project in projects:
+                for account in accounts:
                     try:
-                        tasks = await process_project_emails(db, project)
-                        if tasks:
+                        tickets = await process_email_account(db, account)
+                        if tickets:
                             timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-                            print(f"[{timestamp}] Project '{project.name}': Created {len(tasks)} task(s) from emails")
+                            print(f"[{timestamp}] Email '{account.name}': Created {len(tickets)} ticket(s) from emails")
+                        
+                        # Update last_checked_at
+                        account.last_checked_at = datetime.utcnow()
+                        db.add(account)
+                        await db.commit()
                     except Exception as e:
-                        print(f"[Email-to-Ticket] Error processing project '{project.name}': {e}")
+                        print(f"[Email-to-Ticket] Error processing email account '{account.name}': {e}")
         
         except Exception as e:
-            print(f"[Email-to-Ticket] Error processing project emails: {e}")
+            print(f"[Email-to-Ticket] Error processing email accounts: {e}")
     
     async def start(self):
         """Start the scheduler"""
