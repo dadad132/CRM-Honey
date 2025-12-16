@@ -26,6 +26,21 @@ def add_column_if_not_exists(cursor, table, column, column_type, default_value=N
         print(f"❌ Error adding {table}.{column}: {e}")
         return False
 
+def create_table_if_not_exists(cursor, table_name, create_sql):
+    """Create a table if it doesn't exist"""
+    try:
+        cursor.execute(f"SELECT name FROM sqlite_master WHERE type='table' AND name='{table_name}'")
+        if cursor.fetchone():
+            print(f"⏭️  Table '{table_name}' already exists")
+            return False
+        else:
+            cursor.execute(create_sql)
+            print(f"✅ Created table '{table_name}'")
+            return True
+    except Exception as e:
+        print(f"❌ Error creating table {table_name}: {e}")
+        return False
+
 def main():
     db_path = Path("data.db")
     
@@ -34,7 +49,7 @@ def main():
         sys.exit(1)
     
     print("=" * 60)
-    print("Fixing Missing Database Columns")
+    print("Fixing Missing Database Columns and Tables")
     print("=" * 60)
     
     conn = sqlite3.connect(str(db_path))
@@ -90,13 +105,69 @@ def main():
     # Incoming email account table - missing columns
     print("\n📋 Checking 'incoming_email_account' table (if exists)...")
     try:
+        # First, create the table if it doesn't exist
+        incoming_email_table_sql = """
+        CREATE TABLE IF NOT EXISTS incoming_email_account (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            workspace_id INTEGER NOT NULL,
+            name VARCHAR DEFAULT 'Support Email',
+            email_address VARCHAR NOT NULL,
+            project_id INTEGER,
+            imap_host VARCHAR NOT NULL,
+            imap_port INTEGER DEFAULT 993,
+            imap_username VARCHAR NOT NULL,
+            imap_password VARCHAR NOT NULL,
+            imap_use_ssl BOOLEAN DEFAULT 1,
+            is_active BOOLEAN DEFAULT 1,
+            auto_assign_to_user_id INTEGER,
+            default_priority VARCHAR DEFAULT 'medium',
+            default_category VARCHAR DEFAULT 'support',
+            last_checked_at DATETIME,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (workspace_id) REFERENCES workspace(id),
+            FOREIGN KEY (project_id) REFERENCES project(id),
+            FOREIGN KEY (auto_assign_to_user_id) REFERENCES user(id)
+        )
+        """
         cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='incoming_email_account'")
         if cursor.fetchone():
+            print("⏭️  Table 'incoming_email_account' already exists")
             changes_made |= add_column_if_not_exists(cursor, "incoming_email_account", "project_id", "INTEGER", "NULL")
         else:
-            print("⏭️  incoming_email_account table doesn't exist yet (will be created on first run)")
+            cursor.execute(incoming_email_table_sql)
+            print("✅ Created table 'incoming_email_account'")
+            changes_made = True
     except Exception as e:
-        print(f"⚠️  Could not check incoming_email_account table: {e}")
+        print(f"⚠️  Could not check/create incoming_email_account table: {e}")
+    
+    # ProcessedMail table - for tracking processed emails
+    print("\n📋 Checking 'processedmail' table...")
+    try:
+        processedmail_table_sql = """
+        CREATE TABLE IF NOT EXISTS processedmail (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            workspace_id INTEGER NOT NULL,
+            message_id VARCHAR NOT NULL,
+            email_from VARCHAR,
+            subject VARCHAR,
+            ticket_id INTEGER,
+            processed_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (workspace_id) REFERENCES workspace(id),
+            FOREIGN KEY (ticket_id) REFERENCES ticket(id)
+        )
+        """
+        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='processedmail'")
+        if cursor.fetchone():
+            print("⏭️  Table 'processedmail' already exists")
+        else:
+            cursor.execute(processedmail_table_sql)
+            print("✅ Created table 'processedmail'")
+            # Create index for message_id lookups
+            cursor.execute("CREATE INDEX IF NOT EXISTS ix_processedmail_message_id ON processedmail(message_id)")
+            changes_made = True
+    except Exception as e:
+        print(f"⚠️  Could not check/create processedmail table: {e}")
     
     if changes_made:
         conn.commit()
