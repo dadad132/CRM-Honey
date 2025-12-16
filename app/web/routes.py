@@ -2681,11 +2681,18 @@ async def web_admin_email_accounts(request: Request, db: AsyncSession = Depends(
         select(User).where(User.workspace_id == user.workspace_id, User.is_active == True)
     )).scalars().all()
     
+    # Get projects for linking emails to projects
+    projects = (await db.execute(
+        select(Project).where(Project.workspace_id == user.workspace_id, Project.is_archived == False)
+        .order_by(Project.name)
+    )).scalars().all()
+    
     return templates.TemplateResponse('admin/email_accounts.html', {
         'request': request,
         'user': user,
         'accounts': accounts,
-        'users': users
+        'users': users,
+        'projects': projects
     })
 
 
@@ -2709,10 +2716,12 @@ async def web_admin_email_accounts_add(
     
     try:
         auto_assign = form.get('auto_assign_to_user_id')
+        project_id = form.get('project_id')
         account = IncomingEmailAccount(
             workspace_id=user.workspace_id,
             name=form.get('name'),
             email_address=form.get('email_address'),
+            project_id=int(project_id) if project_id else None,
             imap_host=form.get('imap_host'),
             imap_port=int(form.get('imap_port', 993)),
             imap_username=form.get('imap_username'),
@@ -2768,8 +2777,10 @@ async def web_admin_email_accounts_update(
     
     try:
         auto_assign = form.get('auto_assign_to_user_id')
+        project_id = form.get('project_id')
         account.name = form.get('name')
         account.email_address = form.get('email_address')
+        account.project_id = int(project_id) if project_id else None
         account.imap_host = form.get('imap_host')
         account.imap_port = int(form.get('imap_port', 993))
         account.imap_username = form.get('imap_username')
@@ -5310,6 +5321,9 @@ async def web_tickets_list(request: Request, db: AsyncSession = Depends(get_sess
         select(User).where(User.workspace_id == user.workspace_id)
     )).scalars().all()
     
+    # Build project lookup dict for showing project names on tickets
+    projects_dict = {p.id: p for p in user_projects}
+    
     return templates.TemplateResponse('tickets/list.html', {
         'request': request,
         'user': user,
@@ -5320,6 +5334,7 @@ async def web_tickets_list(request: Request, db: AsyncSession = Depends(get_sess
         'assigned_filter': assigned_filter,
         'project_filter': project_filter,
         'user_projects': user_projects,
+        'projects_dict': projects_dict,
         'search_query': search_query
     })
 

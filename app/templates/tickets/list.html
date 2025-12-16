@@ -146,7 +146,14 @@
                         {% elif ticket.priority == 'high' %}border-orange-500
                         {% elif ticket.priority == 'medium' %}border-yellow-500
                         {% else %}border-gray-300{% endif %}">
-                        <div class="text-xs text-gray-500 mb-1">{{ ticket.ticket_number }}</div>
+                        <div class="flex items-center justify-between mb-1">
+                            <span class="text-xs text-gray-500">{{ ticket.ticket_number }}</span>
+                            {% if ticket.related_project_id and projects_dict.get(ticket.related_project_id) %}
+                            <span class="px-1.5 py-0.5 text-xs rounded bg-indigo-100 text-indigo-700 truncate max-w-[80px]" title="{{ projects_dict[ticket.related_project_id].name }}">
+                                {{ projects_dict[ticket.related_project_id].name[:10] }}{% if projects_dict[ticket.related_project_id].name|length > 10 %}...{% endif %}
+                            </span>
+                            {% endif %}
+                        </div>
                         <div class="font-medium text-sm text-gray-900 mb-2 line-clamp-2">{{ ticket.subject }}</div>
                         <div class="flex items-center justify-between">
                             {% if ticket.priority == 'urgent' %}
@@ -180,7 +187,14 @@
                         {% elif ticket.priority == 'high' %}border-orange-500
                         {% elif ticket.priority == 'medium' %}border-yellow-500
                         {% else %}border-gray-300{% endif %}">
-                        <div class="text-xs text-gray-500 mb-1">{{ ticket.ticket_number }}</div>
+                        <div class="flex items-center justify-between mb-1">
+                            <span class="text-xs text-gray-500">{{ ticket.ticket_number }}</span>
+                            {% if ticket.related_project_id and projects_dict.get(ticket.related_project_id) %}
+                            <span class="px-1.5 py-0.5 text-xs rounded bg-indigo-100 text-indigo-700 truncate max-w-[80px]" title="{{ projects_dict[ticket.related_project_id].name }}">
+                                {{ projects_dict[ticket.related_project_id].name[:10] }}{% if projects_dict[ticket.related_project_id].name|length > 10 %}...{% endif %}
+                            </span>
+                            {% endif %}
+                        </div>
                         <div class="font-medium text-sm text-gray-900 mb-2 line-clamp-2">{{ ticket.subject }}</div>
                         <div class="flex items-center justify-between">
                             {% if ticket.priority == 'urgent' %}
@@ -214,7 +228,14 @@
                         {% elif ticket.priority == 'high' %}border-orange-500
                         {% elif ticket.priority == 'medium' %}border-yellow-500
                         {% else %}border-gray-300{% endif %}">
-                        <div class="text-xs text-gray-500 mb-1">{{ ticket.ticket_number }}</div>
+                        <div class="flex items-center justify-between mb-1">
+                            <span class="text-xs text-gray-500">{{ ticket.ticket_number }}</span>
+                            {% if ticket.related_project_id and projects_dict.get(ticket.related_project_id) %}
+                            <span class="px-1.5 py-0.5 text-xs rounded bg-indigo-100 text-indigo-700 truncate max-w-[80px]" title="{{ projects_dict[ticket.related_project_id].name }}">
+                                {{ projects_dict[ticket.related_project_id].name[:10] }}{% if projects_dict[ticket.related_project_id].name|length > 10 %}...{% endif %}
+                            </span>
+                            {% endif %}
+                        </div>
                         <div class="font-medium text-sm text-gray-900 mb-2 line-clamp-2">{{ ticket.subject }}</div>
                         <div class="flex items-center justify-between">
                             {% if ticket.priority == 'urgent' %}
@@ -248,7 +269,14 @@
                         {% elif ticket.priority == 'high' %}border-orange-500
                         {% elif ticket.priority == 'medium' %}border-yellow-500
                         {% else %}border-gray-300{% endif %}">
-                        <div class="text-xs text-gray-500 mb-1">{{ ticket.ticket_number }}</div>
+                        <div class="flex items-center justify-between mb-1">
+                            <span class="text-xs text-gray-500">{{ ticket.ticket_number }}</span>
+                            {% if ticket.related_project_id and projects_dict.get(ticket.related_project_id) %}
+                            <span class="px-1.5 py-0.5 text-xs rounded bg-indigo-100 text-indigo-700 truncate max-w-[80px]" title="{{ projects_dict[ticket.related_project_id].name }}">
+                                {{ projects_dict[ticket.related_project_id].name[:10] }}{% if projects_dict[ticket.related_project_id].name|length > 10 %}...{% endif %}
+                            </span>
+                            {% endif %}
+                        </div>
                         <div class="font-medium text-sm text-gray-900 mb-2 line-clamp-2">{{ ticket.subject }}</div>
                         <div class="flex items-center justify-between">
                             {% if ticket.priority == 'urgent' %}
@@ -282,7 +310,14 @@
                         {% elif ticket.priority == 'high' %}border-orange-500
                         {% elif ticket.priority == 'medium' %}border-yellow-500
                         {% else %}border-gray-300{% endif %}">
-                        <div class="text-xs text-gray-500 mb-1">{{ ticket.ticket_number }}</div>
+                        <div class="flex items-center justify-between mb-1">
+                            <span class="text-xs text-gray-500">{{ ticket.ticket_number }}</span>
+                            {% if ticket.related_project_id and projects_dict.get(ticket.related_project_id) %}
+                            <span class="px-1.5 py-0.5 text-xs rounded bg-indigo-100 text-indigo-700 truncate max-w-[80px]" title="{{ projects_dict[ticket.related_project_id].name }}">
+                                {{ projects_dict[ticket.related_project_id].name[:10] }}{% if projects_dict[ticket.related_project_id].name|length > 10 %}...{% endif %}
+                            </span>
+                            {% endif %}
+                        </div>
                         <div class="font-medium text-sm text-gray-900 mb-2 line-clamp-2">{{ ticket.subject }}</div>
                         <div class="flex items-center justify-between">
                             {% if ticket.priority == 'urgent' %}
@@ -358,6 +393,13 @@
                                     <span class="px-2 py-1 text-xs rounded bg-green-100 text-green-800 whitespace-nowrap">Resolved</span>
                                 {% else %}
                                     <span class="px-2 py-1 text-xs rounded bg-gray-100 text-gray-800 whitespace-nowrap">Closed</span>
+                                {% endif %}
+
+                                <!-- Project Badge -->
+                                {% if ticket.related_project_id and projects_dict.get(ticket.related_project_id) %}
+                                    <span class="px-2 py-1 text-xs font-semibold rounded bg-indigo-100 text-indigo-700 whitespace-nowrap" title="{{ projects_dict[ticket.related_project_id].name }}">
+                                        <i class="fas fa-folder mr-1"></i>{{ projects_dict[ticket.related_project_id].name[:15] }}{% if projects_dict[ticket.related_project_id].name|length > 15 %}...{% endif %}
+                                    </span>
                                 {% endif %}
 
                                 <!-- Guest Badge -->

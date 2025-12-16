@@ -7,7 +7,7 @@
     <div class="mb-6 flex justify-between items-center">
         <div>
             <h1 class="text-3xl font-bold text-gray-900">Email Accounts</h1>
-            <p class="text-gray-600 mt-2">Manage multiple email accounts for automatic ticket creation</p>
+            <p class="text-gray-600 mt-2">Manage incoming email accounts - each linked to a project for ticket organization</p>
         </div>
         <div class="flex gap-2">
             <a href="/web/admin/email-settings" class="px-4 py-2 text-gray-600 hover:text-gray-900">
@@ -31,11 +31,11 @@
         <div class="flex items-start">
             <i class="fas fa-info-circle text-blue-600 mt-1 mr-3"></i>
             <div class="text-sm text-blue-800">
-                <p class="font-medium mb-1">How Email Accounts Work:</p>
+                <p class="font-medium mb-1">How Email-to-Ticket Works:</p>
                 <ul class="list-disc ml-4 space-y-1">
-                    <li>Each email account connects via IMAP to check for new emails</li>
-                    <li>Unread emails are automatically converted to support tickets</li>
-                    <li>You can set default priority, category, and auto-assign for each account</li>
+                    <li>Each email account is linked to a <strong>project</strong> (e.g., Company A, Company B)</li>
+                    <li>Incoming emails automatically create tickets labeled with that project</li>
+                    <li>Filter tickets by project in the Tickets page to see emails from each company</li>
                     <li>Email checking runs every 5 minutes automatically</li>
                 </ul>
             </div>
@@ -57,11 +57,27 @@
                 </span>
             </div>
             
+            <!-- Project Link (prominent) -->
+            <div class="mb-3 p-2 bg-indigo-50 rounded-lg">
+                <div class="flex items-center">
+                    <i class="fas fa-folder text-indigo-600 mr-2"></i>
+                    {% set linked_project = None %}
+                    {% for p in projects %}
+                        {% if p.id == account.project_id %}
+                            {% set linked_project = p %}
+                        {% endif %}
+                    {% endfor %}
+                    {% if linked_project %}
+                    <span class="text-sm font-medium text-indigo-800">{{ linked_project.name }}</span>
+                    {% else %}
+                    <span class="text-sm text-gray-500 italic">No project linked</span>
+                    {% endif %}
+                </div>
+            </div>
+            
             <div class="text-sm text-gray-600 space-y-1 mb-4">
                 <div><i class="fas fa-server w-5 text-gray-400"></i> {{ account.imap_host }}:{{ account.imap_port }}</div>
-                <div><i class="fas fa-user w-5 text-gray-400"></i> {{ account.imap_username }}</div>
-                <div><i class="fas fa-lock w-5 text-gray-400"></i> SSL: {% if account.imap_use_ssl %}Yes{% else %}No{% endif %}</div>
-                <div><i class="fas fa-flag w-5 text-gray-400"></i> Default: {{ account.default_priority | title }}</div>
+                <div><i class="fas fa-flag w-5 text-gray-400"></i> Priority: {{ account.default_priority | title }}</div>
                 {% if account.last_checked_at %}
                 <div><i class="fas fa-clock w-5 text-gray-400"></i> Last check: {{ account.last_checked_at.strftime('%b %d, %H:%M') }}</div>
                 {% endif %}
@@ -95,6 +111,23 @@
                         <input type="email" name="email_address" value="{{ account.email_address }}" required
                                class="w-full px-3 py-2 text-sm border border-gray-300 rounded-md">
                     </div>
+                    
+                    <!-- Project Selection (prominent) -->
+                    <div class="p-3 bg-indigo-50 rounded-lg">
+                        <label class="block text-xs font-medium text-indigo-800 mb-1">
+                            <i class="fas fa-folder mr-1"></i>Link to Project *
+                        </label>
+                        <select name="project_id" required class="w-full px-3 py-2 text-sm border border-indigo-300 rounded-md bg-white">
+                            <option value="">-- Select Project --</option>
+                            {% for p in projects %}
+                            <option value="{{ p.id }}" {% if account.project_id == p.id %}selected{% endif %}>
+                                {{ p.name }}
+                            </option>
+                            {% endfor %}
+                        </select>
+                        <p class="text-xs text-indigo-600 mt-1">Tickets from this email will be tagged with this project</p>
+                    </div>
+                    
                     <div class="grid grid-cols-2 gap-2">
                         <div>
                             <label class="block text-xs font-medium text-gray-600 mb-1">IMAP Host</label>
@@ -177,7 +210,7 @@
     <div class="bg-white rounded-lg shadow-sm p-12 text-center">
         <i class="fas fa-inbox text-6xl text-gray-300 mb-4"></i>
         <h3 class="text-xl font-semibold text-gray-700 mb-2">No Email Accounts</h3>
-        <p class="text-gray-500 mb-4">Add email accounts to automatically convert incoming emails to tickets.</p>
+        <p class="text-gray-500 mb-4">Add email accounts to automatically create tickets from incoming emails.</p>
         <button onclick="document.getElementById('addAccountModal').classList.remove('hidden')"
                 class="px-6 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700">
             <i class="fas fa-plus mr-2"></i>Add Email Account
@@ -202,14 +235,32 @@
                 <label class="block text-sm font-medium text-gray-700 mb-1">Account Name *</label>
                 <input type="text" name="name" required
                        class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                       placeholder="e.g. Sales Support, Tech Support">
+                       placeholder="e.g. Company A Support, Company B Sales">
             </div>
 
             <div>
                 <label class="block text-sm font-medium text-gray-700 mb-1">Email Address *</label>
                 <input type="email" name="email_address" required
                        class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                       placeholder="support@yourcompany.com">
+                       placeholder="support@companya.com">
+            </div>
+
+            <!-- Project Selection (prominent) -->
+            <div class="p-4 bg-indigo-50 rounded-lg border border-indigo-200">
+                <label class="block text-sm font-medium text-indigo-800 mb-1">
+                    <i class="fas fa-folder mr-1"></i>Link to Project *
+                </label>
+                <select name="project_id" required class="w-full px-3 py-2 border border-indigo-300 rounded-md bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                    <option value="">-- Select Project --</option>
+                    {% for p in projects %}
+                    <option value="{{ p.id }}">{{ p.name }}</option>
+                    {% endfor %}
+                </select>
+                <p class="text-xs text-indigo-600 mt-2">
+                    <i class="fas fa-info-circle mr-1"></i>
+                    Tickets from this email will be automatically tagged with the selected project.
+                    This helps organize tickets by company/client.
+                </p>
             </div>
 
             <div class="bg-gray-50 p-4 rounded-md">
@@ -233,7 +284,7 @@
                     <label class="block text-xs font-medium text-gray-600 mb-1">Username (Email) *</label>
                     <input type="text" name="imap_username" required
                            class="w-full px-3 py-2 text-sm border border-gray-300 rounded-md"
-                           placeholder="support@yourcompany.com">
+                           placeholder="support@companya.com">
                 </div>
                 
                 <div class="mb-3">
@@ -285,7 +336,7 @@
                     <option value="{{ u.id }}">{{ u.full_name or u.email }}</option>
                     {% endfor %}
                 </select>
-                <p class="text-xs text-gray-500 mt-1">Optionally auto-assign all tickets from this account to a user</p>
+                <p class="text-xs text-gray-500 mt-1">Optionally auto-assign all tickets from this email to a specific user</p>
             </div>
 
             <div class="flex justify-end gap-3 pt-4 border-t">

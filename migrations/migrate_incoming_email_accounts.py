@@ -20,19 +20,20 @@ def run_migration():
         # Check if table already exists
         cursor.execute("""
             SELECT name FROM sqlite_master 
-            WHERE type='table' AND name='incoming_email_accounts'
+            WHERE type='table' AND name='incoming_email_account'
         """)
         if cursor.fetchone():
-            print("Table 'incoming_email_accounts' already exists, skipping migration.")
+            print("Table 'incoming_email_account' already exists, skipping migration.")
             return True
         
         # Create the incoming_email_accounts table
         cursor.execute("""
-            CREATE TABLE IF NOT EXISTS incoming_email_accounts (
+            CREATE TABLE IF NOT EXISTS incoming_email_account (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 workspace_id INTEGER NOT NULL,
                 name VARCHAR(100) NOT NULL,
                 email_address VARCHAR(255) NOT NULL,
+                project_id INTEGER,
                 imap_host VARCHAR(255) NOT NULL,
                 imap_port INTEGER DEFAULT 993,
                 imap_username VARCHAR(255) NOT NULL,
@@ -45,20 +46,26 @@ def run_migration():
                 last_checked_at DATETIME,
                 created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
                 updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY (workspace_id) REFERENCES workspaces(id),
-                FOREIGN KEY (auto_assign_to_user_id) REFERENCES users(id)
+                FOREIGN KEY (workspace_id) REFERENCES workspace(id),
+                FOREIGN KEY (project_id) REFERENCES project(id),
+                FOREIGN KEY (auto_assign_to_user_id) REFERENCES user(id)
             )
         """)
         
         # Create index for faster lookups
         cursor.execute("""
             CREATE INDEX IF NOT EXISTS idx_incoming_email_workspace 
-            ON incoming_email_accounts(workspace_id)
+            ON incoming_email_account(workspace_id)
         """)
         
         cursor.execute("""
             CREATE INDEX IF NOT EXISTS idx_incoming_email_active 
-            ON incoming_email_accounts(is_active)
+            ON incoming_email_account(is_active)
+        """)
+        
+        cursor.execute("""
+            CREATE INDEX IF NOT EXISTS idx_incoming_email_project 
+            ON incoming_email_account(project_id)
         """)
         
         conn.commit()

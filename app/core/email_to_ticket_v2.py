@@ -985,6 +985,7 @@ async def process_email_account(db: AsyncSession, account) -> List[Ticket]:
     account_name = account.name
     account_email = account.email_address
     workspace_id = account.workspace_id
+    project_id = account.project_id  # Link tickets to this project
     imap_host = account.imap_host
     imap_port = account.imap_port
     imap_username = account.imap_username
@@ -1123,6 +1124,7 @@ async def process_email_account(db: AsyncSession, account) -> List[Ticket]:
                         status='open',
                         category=default_category,
                         workspace_id=workspace_id,
+                        related_project_id=project_id,  # Link to project for this email account
                         created_by_id=None,  # Guest ticket
                         assigned_to_id=auto_assign_to_user_id,  # Auto-assign if configured
                         is_guest=True,
@@ -1130,7 +1132,7 @@ async def process_email_account(db: AsyncSession, account) -> List[Ticket]:
                         guest_surname=sender_name.split()[-1] if sender_name and len(sender_name.split()) > 1 else "",
                         guest_email=sender_email_addr,
                         guest_phone="",
-                        guest_company="",
+                        guest_company=account_name,  # Use email account name as company
                         guest_branch="",
                         created_at=get_local_time(),
                         updated_at=get_local_time()

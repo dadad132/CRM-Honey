@@ -21,6 +21,9 @@ class IncomingEmailAccount(SQLModel, table=True):
     name: str = Field(default="Support Email")  # Friendly name like "Sales Support", "Tech Support"
     email_address: str  # The email address this account represents
     
+    # Link to project - tickets from this email go into this project
+    project_id: Optional[int] = Field(default=None, foreign_key="project.id", index=True)
+    
     # IMAP Settings
     imap_host: str
     imap_port: int = Field(default=993)
@@ -44,6 +47,7 @@ class IncomingEmailAccountCreate(SQLModel):
     """Schema for creating an incoming email account"""
     name: str
     email_address: str
+    project_id: Optional[int] = None
     imap_host: str
     imap_port: int = 993
     imap_username: str
@@ -58,6 +62,7 @@ class IncomingEmailAccountUpdate(SQLModel):
     """Schema for updating an incoming email account"""
     name: Optional[str] = None
     email_address: Optional[str] = None
+    project_id: Optional[int] = None
     imap_host: Optional[str] = None
     imap_port: Optional[int] = None
     imap_username: Optional[str] = None
