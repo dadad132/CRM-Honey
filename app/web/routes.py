@@ -2743,8 +2743,11 @@ async def web_admin_email_accounts_add(
     imap_username = form.get('imap_username')
     imap_password = form.get('imap_password')
     imap_use_ssl = form.get('imap_use_ssl') == 'on'
+    skip_test = form.get('skip_test') == 'on'
     
-    # Test IMAP connection before saving
+    test_error = None
+    
+    # Test IMAP connection before saving (unless skip_test is checked)
     def test_imap_connection():
         """Test IMAP connection (runs in thread pool)"""
         import socket
@@ -2801,19 +2804,20 @@ async def web_admin_email_accounts_add(
         finally:
             socket.setdefaulttimeout(None)
     
-    # Run test in thread pool with timeout
-    try:
-        test_error = await asyncio.wait_for(
-            asyncio.to_thread(test_imap_connection),
-            timeout=30.0
-        )
-    except asyncio.TimeoutError:
-        test_error = f"Connection test timed out after 30 seconds - server may be unreachable"
-    
-    if test_error:
-        request.session['flash_message'] = f"✗ {test_error}. Please check your IMAP settings."
-        request.session['flash_type'] = 'error'
-        return RedirectResponse('/web/admin/email-accounts', status_code=303)
+    # Run test in thread pool with timeout (unless skip_test is checked)
+    if not skip_test:
+        try:
+            test_error = await asyncio.wait_for(
+                asyncio.to_thread(test_imap_connection),
+                timeout=30.0
+            )
+        except asyncio.TimeoutError:
+            test_error = f"Connection test timed out after 30 seconds - server may be unreachable"
+        
+        if test_error:
+            request.session['flash_message'] = f"✗ {test_error}. Please check your IMAP settings."
+            request.session['flash_type'] = 'error'
+            return RedirectResponse('/web/admin/email-accounts', status_code=303)
     
     try:
         auto_assign = form.get('auto_assign_to_user_id')
