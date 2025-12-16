@@ -79,11 +79,14 @@ class EmailToTicketService:
             mail = self.connect_imap()
             mail.select('INBOX')
             
-            # Search for unread emails
-            status, messages = mail.search(None, 'UNSEEN')
+            # Search for emails from the last 7 days (not just unread)
+            # This ensures we catch emails even if they're marked as read by other clients
+            from datetime import datetime, timedelta
+            date_since = (datetime.now() - timedelta(days=7)).strftime("%d-%b-%Y")
+            status, messages = mail.search(None, f'SINCE {date_since}')
             email_ids = messages[0].split()
             
-            print(f"[IMAP] Found {len(email_ids)} unread messages")
+            print(f"[IMAP] Found {len(email_ids)} messages from last 7 days")
             
             for email_id in email_ids:
                 try:
@@ -772,7 +775,11 @@ Auto-created from email support request"""
                 mail = self.connect_imap()
                 mail.select('INBOX')
                 
-                status, messages = mail.search(None, 'UNSEEN')
+                # Search for emails from the last 7 days (not just unread)
+                # This ensures we catch emails even if they're marked as read by other clients
+                from datetime import datetime, timedelta
+                date_since = (datetime.now() - timedelta(days=7)).strftime("%d-%b-%Y")
+                status, messages = mail.search(None, f'SINCE {date_since}')
                 email_ids = messages[0].split()
                 
                 raw_emails = []
@@ -793,7 +800,7 @@ Auto-created from email support request"""
             # Run IMAP fetch in thread pool (non-blocking)
             raw_emails = await asyncio.to_thread(connect_and_fetch)
             
-            print(f"[IMAP] Found {len(raw_emails)} unread messages")
+            print(f"[IMAP] Found {len(raw_emails)} messages from last 7 days")
             
             # Process each email (async operations can use event loop)
             for raw_email in raw_emails:
@@ -1016,7 +1023,11 @@ async def process_email_account(db: AsyncSession, account) -> List[Ticket]:
             mail.login(imap_username, imap_password)
             mail.select('INBOX')
             
-            status, messages = mail.search(None, 'UNSEEN')
+            # Search for emails from the last 7 days (not just unread)
+            # This ensures we catch emails even if they're marked as read by other clients
+            from datetime import datetime, timedelta
+            date_since = (datetime.now() - timedelta(days=7)).strftime("%d-%b-%Y")
+            status, messages = mail.search(None, f'SINCE {date_since}')
             email_ids = messages[0].split()
             
             raw_emails = []
@@ -1037,7 +1048,7 @@ async def process_email_account(db: AsyncSession, account) -> List[Ticket]:
         # Fetch emails in thread pool (non-blocking)
         raw_emails = await asyncio.to_thread(connect_and_fetch)
         
-        print(f"[Email Account] {account_name}: Found {len(raw_emails)} unread messages")
+        print(f"[Email Account] {account_name}: Found {len(raw_emails)} messages from last 7 days")
         
         for raw_email in raw_emails:
             email_id = raw_email['email_id']
