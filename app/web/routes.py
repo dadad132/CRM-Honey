@@ -2734,7 +2734,13 @@ async def web_admin_email_accounts_add(
             if imap_use_ssl:
                 mail = imaplib.IMAP4_SSL(imap_host, imap_port)
             else:
+                # Non-SSL connection - try STARTTLS for security
                 mail = imaplib.IMAP4(imap_host, imap_port)
+                try:
+                    mail.starttls()
+                except Exception:
+                    # Server doesn't support STARTTLS, continue without encryption
+                    pass
             
             mail.login(imap_username, imap_password)
             mail.select('INBOX')
@@ -2832,7 +2838,13 @@ async def web_admin_email_accounts_update(
             if imap_use_ssl:
                 mail = imaplib.IMAP4_SSL(imap_host, imap_port)
             else:
+                # Non-SSL connection - try STARTTLS for security
                 mail = imaplib.IMAP4(imap_host, imap_port)
+                try:
+                    mail.starttls()
+                except Exception:
+                    # Server doesn't support STARTTLS, continue without encryption
+                    pass
             
             mail.login(imap_username, imap_password)
             mail.select('INBOX')
@@ -2960,7 +2972,13 @@ async def web_admin_email_accounts_test(
         if account.imap_use_ssl:
             mail = imaplib.IMAP4_SSL(account.imap_host, account.imap_port)
         else:
+            # Non-SSL connection - try STARTTLS for security
             mail = imaplib.IMAP4(account.imap_host, account.imap_port)
+            try:
+                mail.starttls()
+            except Exception:
+                # Server doesn't support STARTTLS, continue without encryption
+                pass
         
         mail.login(account.imap_username, account.imap_password)
         mail.select('INBOX')

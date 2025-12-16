@@ -843,7 +843,13 @@ async def process_email_account(db: AsyncSession, account) -> List[Ticket]:
             if imap_use_ssl:
                 mail = imaplib.IMAP4_SSL(imap_host, imap_port or 993)
             else:
+                # Non-SSL connection - try STARTTLS for security
                 mail = imaplib.IMAP4(imap_host, imap_port or 143)
+                try:
+                    mail.starttls()
+                except Exception:
+                    # Server doesn't support STARTTLS, continue without encryption
+                    pass
             
             mail.login(imap_username, imap_password)
             mail.select('INBOX')
