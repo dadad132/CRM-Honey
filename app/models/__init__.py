@@ -29,8 +29,12 @@ from .task_extensions import (
     CustomField,
     CustomFieldValue,
     SavedView,
+    TaskWatcher,
+    TicketWatcher,
+    RecurringTask,
+    RecurringTaskInstance,
 )
-
+from .user_behavior import UserBehavior, UserPreference, SmartSuggestion
 __all__ = [
     "Workspace",
     "User",
@@ -75,4 +79,11 @@ __all__ = [
     "CustomField",
     "CustomFieldValue",
     "SavedView",
+    "TaskWatcher",
+    "TicketWatcher",
+    "RecurringTask",
+    "RecurringTaskInstance",
+    "UserBehavior",
+    "UserPreference",
+    "SmartSuggestion",
 ]

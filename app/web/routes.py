@@ -202,7 +202,7 @@ async def web_login_post(
     # Redirect to profile completion if not completed
     if not user.profile_completed:
         return RedirectResponse('/web/profile/complete', status_code=303)
-    return RedirectResponse('/web/projects', status_code=303)
+    return RedirectResponse('/web/dashboard', status_code=303)
 
 
 @router.get('/signup', response_class=HTMLResponse)
@@ -557,6 +557,286 @@ async def web_google_oauth_unlink(request: Request, db: AsyncSession = Depends(g
 
 
 # --------------------------
+# Dashboard
+# --------------------------
+@router.get('/dashboard', response_class=HTMLResponse)
+async def web_dashboard(request: Request, db: AsyncSession = Depends(get_session)):
+    """Main dashboard with stats and overview"""
+    user_id = request.session.get('user_id')
+    if not user_id:
+        return RedirectResponse('/web/login', status_code=303)
+    
+    user = (await db.execute(select(User).where(User.id == user_id))).scalar_one_or_none()
+    if not user or not user.is_active:
+        request.session.clear()
+        return RedirectResponse('/web/login', status_code=303)
+    
+    from app.models.ticket import Ticket
+    from app.models.project_member import ProjectMember
+    from datetime import timedelta
+    
+    today = date.today()
+    week_ago = today - timedelta(days=7)
+    
+    # Get user's projects (admin sees all, user sees assigned)
+    if user.is_admin:
+        projects_result = await db.execute(
+            select(Project)
+            .where(Project.workspace_id == user.workspace_id, Project.is_archived == False)
+        )
+        projects = projects_result.scalars().all()
+        project_ids = [p.id for p in projects]
+    else:
+        member_result = await db.execute(
+            select(ProjectMember.project_id)
+            .where(ProjectMember.user_id == user_id)
+        )
+        project_ids = [r[0] for r in member_result.fetchall()]
+        projects_result = await db.execute(
+            select(Project)
+            .where(Project.id.in_(project_ids), Project.is_archived == False)
+        )
+        projects = projects_result.scalars().all()
+    
+    # My Tasks stats
+    my_tasks_result = await db.execute(
+        select(Task)
+        .join(Assignment, Task.id == Assignment.task_id)
+        .where(Assignment.assignee_id == user_id, Task.status != TaskStatus.done)
+    )
+    my_tasks = my_tasks_result.scalars().all()
+    
+    # Tasks done this week
+    my_done_result = await db.execute(
+        select(Task)
+        .join(Assignment, Task.id == Assignment.task_id)
+        .where(
+            Assignment.assignee_id == user_id,
+            Task.status == TaskStatus.done,
+            Task.updated_at >= datetime.combine(week_ago, time.min)
+        )
+    )
+    my_tasks_done = len(my_done_result.scalars().all())
+    
+    # Tasks due soon (next 7 days)
+    tasks_due_result = await db.execute(
+        select(Task, Project.name.label('project_name'))
+        .join(Project, Task.project_id == Project.id)
+        .join(Assignment, Task.id == Assignment.task_id)
+        .where(
+            Assignment.assignee_id == user_id,
+            Task.status != TaskStatus.done,
+            Task.due_date.isnot(None),
+            Task.due_date <= today + timedelta(days=7)
+        )
+        .order_by(Task.due_date)
+    )
+    tasks_due_rows = tasks_due_result.fetchall()
+    tasks_due_soon = []
+    for row in tasks_due_rows:
+        task = row[0]
+        # Create a dict-like object to add project_name
+        task_dict = {
+            "id": task.id,
+            "title": task.title,
+            "description": task.description,
+            "status": task.status,
+            "priority": task.priority,
+            "due_date": task.due_date,
+            "project_id": task.project_id,
+            "project_name": row[1]
+        }
+        tasks_due_soon.append(task_dict)
+    
+    # Open tickets
+    tickets_result = await db.execute(
+        select(Ticket)
+        .where(
+            Ticket.workspace_id == user.workspace_id,
+            Ticket.status.in_(['open', 'in_progress', 'waiting'])
+        )
+    )
+    open_tickets = tickets_result.scalars().all()
+    urgent_tickets = len([t for t in open_tickets if t.priority in ['urgent', 'high']])
+    
+    # Meetings today
+    meetings_result = await db.execute(
+        select(Meeting)
+        .join(MeetingAttendee, Meeting.id == MeetingAttendee.meeting_id)
+        .where(
+            MeetingAttendee.user_id == user_id,
+            Meeting.date == today,
+            Meeting.is_cancelled == False
+        )
+    )
+    meetings_today = len(meetings_result.scalars().all())
+    
+    # Upcoming meetings (next 7 days)
+    upcoming_result = await db.execute(
+        select(Meeting)
+        .join(MeetingAttendee, Meeting.id == MeetingAttendee.meeting_id)
+        .where(
+            MeetingAttendee.user_id == user_id,
+            Meeting.date >= today,
+            Meeting.date <= today + timedelta(days=7),
+            Meeting.is_cancelled == False
+        )
+        .order_by(Meeting.date, Meeting.start_time)
+        .limit(5)
+    )
+    upcoming_meetings = upcoming_result.scalars().all()
+    
+    # Team members count
+    team_result = await db.execute(
+        select(User)
+        .where(User.workspace_id == user.workspace_id, User.is_active == True)
+    )
+    total_team_members = len(team_result.scalars().all())
+    
+    # Recent activities (simplified)
+    from app.models.task_history import TaskHistory
+    recent_result = await db.execute(
+        select(TaskHistory)
+        .join(Task, TaskHistory.task_id == Task.id)
+        .where(Task.project_id.in_(project_ids) if project_ids else True)
+        .order_by(TaskHistory.created_at.desc())
+        .limit(10)
+    )
+    recent_activities_raw = recent_result.scalars().all()
+    
+    # Format activities
+    recent_activities = []
+    for activity in recent_activities_raw:
+        activity_type = 'task_created' if activity.field == 'created' else 'task_updated'
+        if activity.field == 'status' and activity.new_value == 'done':
+            activity_type = 'task_completed'
+        recent_activities.append({
+            'type': activity_type,
+            'description': f"Task: {activity.field.replace('_', ' ').title()} changed",
+            'created_at': activity.created_at
+        })
+    
+    # Admin stats - team performance
+    team_tasks_completed = 0
+    team_tickets_resolved = 0
+    avg_response_time = None
+    
+    if user.is_admin:
+        # Tasks completed by team this week
+        team_done_result = await db.execute(
+            select(Task)
+            .where(
+                Task.project_id.in_(project_ids) if project_ids else True,
+                Task.status == TaskStatus.done,
+                Task.updated_at >= datetime.combine(week_ago, time.min)
+            )
+        )
+        team_tasks_completed = len(team_done_result.scalars().all())
+        
+        # Tickets resolved this week
+        resolved_result = await db.execute(
+            select(Ticket)
+            .where(
+                Ticket.workspace_id == user.workspace_id,
+                Ticket.status.in_(['resolved', 'closed']),
+                Ticket.resolved_at >= datetime.combine(week_ago, time.min)
+            )
+        )
+        team_tickets_resolved = len(resolved_result.scalars().all())
+    
+    stats = {
+        'my_tasks': len(my_tasks),
+        'my_tasks_done': my_tasks_done,
+        'open_tickets': len(open_tickets),
+        'urgent_tickets': urgent_tickets,
+        'active_projects': len(projects),
+        'total_team_members': total_team_members,
+        'meetings_today': meetings_today,
+        'team_tasks_completed': team_tasks_completed,
+        'team_tickets_resolved': team_tickets_resolved,
+        'avg_response_time': avg_response_time
+    }
+    
+    workspace = await get_workspace_for_user(user_id, db)
+    
+    return templates.TemplateResponse('dashboard/index.html', {
+        'request': request,
+        'user': user,
+        'stats': stats,
+        'tasks_due_soon': tasks_due_soon,
+        'upcoming_meetings': upcoming_meetings,
+        'recent_activities': recent_activities,
+        'projects': projects,
+        'today': today,
+        'workspace': workspace
+    })
+
+
+@router.post('/dashboard/quick-task')
+async def web_dashboard_quick_task(
+    request: Request,
+    title: str = Form(...),
+    project_id: int = Form(...),
+    priority: str = Form('medium'),
+    due_date: Optional[date] = Form(None),
+    db: AsyncSession = Depends(get_session)
+):
+    """Quick add task from dashboard"""
+    user_id = request.session.get('user_id')
+    if not user_id:
+        return RedirectResponse('/web/login', status_code=303)
+    
+    user = (await db.execute(select(User).where(User.id == user_id))).scalar_one_or_none()
+    if not user or not user.is_active:
+        request.session.clear()
+        return RedirectResponse('/web/login', status_code=303)
+    
+    # Verify project exists and user has access
+    project = (await db.execute(
+        select(Project).where(Project.id == project_id, Project.workspace_id == user.workspace_id)
+    )).scalar_one_or_none()
+    
+    if not project:
+        return RedirectResponse('/web/dashboard?error=invalid_project', status_code=303)
+    
+    # Create task
+    task = Task(
+        title=title,
+        project_id=project_id,
+        creator_id=user_id,
+        priority=TaskPriority(priority),
+        due_date=due_date
+    )
+    db.add(task)
+    await db.flush()
+    
+    # Auto-assign to creator
+    assignment = Assignment(task_id=task.id, user_id=user_id, assigned_by=user_id)
+    db.add(assignment)
+    
+    # Add task history
+    history = TaskHistory(
+        task_id=task.id,
+        user_id=user_id,
+        action='created',
+        new_value=title
+    )
+    db.add(history)
+    
+    # Track user behavior for learning
+    from app.core.smart_suggestions import track_user_action
+    await track_user_action(
+        db, user_id, user.workspace_id, 'task_created', 'task',
+        entity_id=task.id, project_id=project_id,
+        field_name='priority', field_value=priority
+    )
+    
+    await db.commit()
+    
+    return RedirectResponse('/web/dashboard', status_code=303)
+
+
+# --------------------------
 # Email Verification (kept for later, not enforced)
 # --------------------------
 @router.get('/verify-email', response_class=HTMLResponse)
@@ -581,6 +861,465 @@ async def web_verify_email_request(request: Request, db: AsyncSession = Depends(
 async def web_verify_email_confirm(request: Request, code: str = Form(...), db: AsyncSession = Depends(get_session)):
     # No-op while OTP disabled
     return RedirectResponse('/web/projects', status_code=303)
+
+
+# --------------------------
+# Smart Suggestions API
+# --------------------------
+@router.get('/api/suggestions/assignees')
+async def api_get_suggested_assignees(
+    request: Request,
+    project_id: Optional[int] = None,
+    db: AsyncSession = Depends(get_session)
+):
+    """Get suggested assignees based on user's history"""
+    user_id = request.session.get('user_id')
+    if not user_id:
+        return JSONResponse({'suggestions': []})
+    
+    user = (await db.execute(select(User).where(User.id == user_id))).scalar_one_or_none()
+    if not user:
+        return JSONResponse({'suggestions': []})
+    
+    from app.core.smart_suggestions import get_suggested_assignees
+    suggestions = await get_suggested_assignees(db, user_id, user.workspace_id, project_id)
+    return JSONResponse({'suggestions': suggestions})
+
+
+@router.get('/api/suggestions/priority')
+async def api_get_suggested_priority(
+    request: Request,
+    project_id: Optional[int] = None,
+    db: AsyncSession = Depends(get_session)
+):
+    """Get suggested priority based on user's history"""
+    user_id = request.session.get('user_id')
+    if not user_id:
+        return JSONResponse({'suggestion': None})
+    
+    user = (await db.execute(select(User).where(User.id == user_id))).scalar_one_or_none()
+    if not user:
+        return JSONResponse({'suggestion': None})
+    
+    from app.core.smart_suggestions import get_suggested_priority
+    suggestion = await get_suggested_priority(db, user_id, user.workspace_id, project_id)
+    return JSONResponse({'suggestion': suggestion})
+
+
+@router.get('/api/suggestions/similar-tasks')
+async def api_get_similar_tasks(
+    request: Request,
+    title: str,
+    project_id: Optional[int] = None,
+    db: AsyncSession = Depends(get_session)
+):
+    """Find similar tasks based on title keywords"""
+    user_id = request.session.get('user_id')
+    if not user_id or not title:
+        return JSONResponse({'similar_tasks': []})
+    
+    user = (await db.execute(select(User).where(User.id == user_id))).scalar_one_or_none()
+    if not user:
+        return JSONResponse({'similar_tasks': []})
+    
+    from app.core.smart_suggestions import get_similar_tasks
+    similar = await get_similar_tasks(db, user_id, user.workspace_id, title, project_id)
+    return JSONResponse({'similar_tasks': similar})
+
+
+@router.get('/api/suggestions/insights')
+async def api_get_work_insights(
+    request: Request,
+    db: AsyncSession = Depends(get_session)
+):
+    """Get work pattern insights for current user"""
+    user_id = request.session.get('user_id')
+    if not user_id:
+        return JSONResponse({'insights': {}})
+    
+    user = (await db.execute(select(User).where(User.id == user_id))).scalar_one_or_none()
+    if not user:
+        return JSONResponse({'insights': {}})
+    
+    from app.core.smart_suggestions import get_work_pattern_insights
+    insights = await get_work_pattern_insights(db, user_id, user.workspace_id)
+    return JSONResponse({'insights': insights})
+
+
+# --------------------------
+# Global Search
+# --------------------------
+@router.get('/search')
+async def web_global_search(
+    request: Request,
+    q: str = '',
+    db: AsyncSession = Depends(get_session)
+):
+    """Global search across tasks, tickets, and projects"""
+    user_id = request.session.get('user_id')
+    if not user_id:
+        return RedirectResponse('/web/login', status_code=303)
+    
+    user = (await db.execute(select(User).where(User.id == user_id))).scalar_one_or_none()
+    if not user:
+        request.session.clear()
+        return RedirectResponse('/web/login', status_code=303)
+    
+    results = {
+        'tasks': [],
+        'tickets': [],
+        'projects': [],
+        'query': q
+    }
+    
+    if q and len(q) >= 2:
+        search_term = f'%{q}%'
+        
+        # Search tasks
+        task_results = await db.execute(
+            select(Task, Project.name.label('project_name'))
+            .join(Project, Task.project_id == Project.id)
+            .where(
+                Project.workspace_id == user.workspace_id,
+                Task.is_archived == False,
+                (Task.title.ilike(search_term) | Task.description.ilike(search_term))
+            )
+            .limit(10)
+        )
+        for row in task_results.fetchall():
+            task = row[0]
+            results['tasks'].append({
+                'id': task.id,
+                'title': task.title,
+                'project_name': row[1],
+                'status': task.status.value if hasattr(task.status, 'value') else task.status,
+                'priority': task.priority.value if hasattr(task.priority, 'value') else task.priority
+            })
+        
+        # Search tickets
+        ticket_results = await db.execute(
+            select(Ticket)
+            .where(
+                Ticket.workspace_id == user.workspace_id,
+                Ticket.is_archived == False,
+                (Ticket.title.ilike(search_term) | Ticket.description.ilike(search_term) | Ticket.ticket_number.ilike(search_term))
+            )
+            .limit(10)
+        )
+        for ticket in ticket_results.scalars().all():
+            results['tickets'].append({
+                'id': ticket.id,
+                'ticket_number': ticket.ticket_number,
+                'title': ticket.title,
+                'status': ticket.status,
+                'priority': ticket.priority
+            })
+        
+        # Search projects
+        project_results = await db.execute(
+            select(Project)
+            .where(
+                Project.workspace_id == user.workspace_id,
+                Project.is_archived == False,
+                (Project.name.ilike(search_term) | Project.description.ilike(search_term))
+            )
+            .limit(10)
+        )
+        for project in project_results.scalars().all():
+            results['projects'].append({
+                'id': project.id,
+                'name': project.name,
+                'description': project.description[:100] if project.description else None
+            })
+    
+    # Check if AJAX request
+    if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+        return JSONResponse(results)
+    
+    return templates.TemplateResponse('search/results.html', {
+        'request': request,
+        'user': user,
+        'results': results,
+        'query': q
+    })
+
+
+@router.get('/api/search')
+async def api_global_search(
+    request: Request,
+    q: str = '',
+    db: AsyncSession = Depends(get_session)
+):
+    """API endpoint for global search (used by search modal)"""
+    user_id = request.session.get('user_id')
+    if not user_id:
+        return JSONResponse({'tasks': [], 'tickets': [], 'projects': []})
+    
+    user = (await db.execute(select(User).where(User.id == user_id))).scalar_one_or_none()
+    if not user:
+        return JSONResponse({'tasks': [], 'tickets': [], 'projects': []})
+    
+    results = {'tasks': [], 'tickets': [], 'projects': []}
+    
+    if q and len(q) >= 2:
+        search_term = f'%{q}%'
+        
+        # Search tasks
+        task_results = await db.execute(
+            select(Task, Project.name.label('project_name'))
+            .join(Project, Task.project_id == Project.id)
+            .where(
+                Project.workspace_id == user.workspace_id,
+                Task.is_archived == False,
+                (Task.title.ilike(search_term) | Task.description.ilike(search_term))
+            )
+            .limit(5)
+        )
+        for row in task_results.fetchall():
+            task = row[0]
+            results['tasks'].append({
+                'id': task.id,
+                'title': task.title,
+                'project_name': row[1],
+                'url': f'/web/tasks/{task.id}'
+            })
+        
+        # Search tickets
+        ticket_results = await db.execute(
+            select(Ticket)
+            .where(
+                Ticket.workspace_id == user.workspace_id,
+                Ticket.is_archived == False,
+                (Ticket.title.ilike(search_term) | Ticket.description.ilike(search_term) | Ticket.ticket_number.ilike(search_term))
+            )
+            .limit(5)
+        )
+        for ticket in ticket_results.scalars().all():
+            results['tickets'].append({
+                'id': ticket.id,
+                'ticket_number': ticket.ticket_number,
+                'title': ticket.title,
+                'url': f'/web/tickets/{ticket.id}'
+            })
+        
+        # Search projects
+        project_results = await db.execute(
+            select(Project)
+            .where(
+                Project.workspace_id == user.workspace_id,
+                Project.is_archived == False,
+                Project.name.ilike(search_term)
+            )
+            .limit(5)
+        )
+        for project in project_results.scalars().all():
+            results['projects'].append({
+                'id': project.id,
+                'name': project.name,
+                'url': f'/web/projects/{project.id}'
+            })
+    
+    return JSONResponse(results)
+
+
+# --------------------------
+# Task Duplication
+# --------------------------
+@router.post('/tasks/{task_id}/duplicate')
+async def web_task_duplicate(
+    request: Request,
+    task_id: int,
+    db: AsyncSession = Depends(get_session)
+):
+    """Duplicate a task with all its details"""
+    user_id = request.session.get('user_id')
+    if not user_id:
+        return RedirectResponse('/web/login', status_code=303)
+    
+    user = (await db.execute(select(User).where(User.id == user_id))).scalar_one_or_none()
+    if not user:
+        request.session.clear()
+        return RedirectResponse('/web/login', status_code=303)
+    
+    # Get original task
+    original = (await db.execute(
+        select(Task)
+        .join(Project, Task.project_id == Project.id)
+        .where(Task.id == task_id, Project.workspace_id == user.workspace_id)
+    )).scalar_one_or_none()
+    
+    if not original:
+        raise HTTPException(status_code=404, detail='Task not found')
+    
+    # Create duplicate
+    new_task = Task(
+        title=f"Copy of {original.title}",
+        description=original.description,
+        project_id=original.project_id,
+        creator_id=user_id,
+        status=TaskStatus.todo,
+        priority=original.priority,
+        due_date=original.due_date,
+        due_time=original.due_time,
+        start_date=original.start_date,
+        start_time=original.start_time,
+        estimated_hours=original.estimated_hours,
+        working_days=original.working_days
+    )
+    db.add(new_task)
+    await db.flush()
+    
+    # Copy assignments
+    assignments = (await db.execute(
+        select(Assignment).where(Assignment.task_id == task_id)
+    )).scalars().all()
+    
+    for orig_assign in assignments:
+        new_assign = Assignment(
+            task_id=new_task.id,
+            user_id=orig_assign.user_id,
+            assigned_by=user_id
+        )
+        db.add(new_assign)
+    
+    # Copy subtasks
+    from app.models.subtask import Subtask
+    subtasks = (await db.execute(
+        select(Subtask).where(Subtask.task_id == task_id)
+    )).scalars().all()
+    
+    for orig_subtask in subtasks:
+        new_subtask = Subtask(
+            task_id=new_task.id,
+            title=orig_subtask.title,
+            is_completed=False,
+            order=orig_subtask.order
+        )
+        db.add(new_subtask)
+    
+    # Add history
+    history = TaskHistory(
+        task_id=new_task.id,
+        user_id=user_id,
+        action='created',
+        new_value=f"Duplicated from task #{task_id}"
+    )
+    db.add(history)
+    
+    # Track behavior
+    from app.core.smart_suggestions import track_user_action
+    await track_user_action(
+        db, user_id, user.workspace_id, 'task_duplicated', 'task',
+        entity_id=new_task.id, project_id=new_task.project_id
+    )
+    
+    await db.commit()
+    
+    return RedirectResponse(f'/web/tasks/{new_task.id}', status_code=303)
+
+
+# --------------------------
+# Time Tracking
+# --------------------------
+@router.post('/tasks/{task_id}/time-log')
+async def web_task_add_time_log(
+    request: Request,
+    task_id: int,
+    hours: float = Form(...),
+    description: Optional[str] = Form(None),
+    db: AsyncSession = Depends(get_session)
+):
+    """Log time spent on a task"""
+    user_id = request.session.get('user_id')
+    if not user_id:
+        return RedirectResponse('/web/login', status_code=303)
+    
+    user = (await db.execute(select(User).where(User.id == user_id))).scalar_one_or_none()
+    if not user:
+        request.session.clear()
+        return RedirectResponse('/web/login', status_code=303)
+    
+    # Verify task exists
+    task = (await db.execute(
+        select(Task)
+        .join(Project, Task.project_id == Project.id)
+        .where(Task.id == task_id, Project.workspace_id == user.workspace_id)
+    )).scalar_one_or_none()
+    
+    if not task:
+        raise HTTPException(status_code=404, detail='Task not found')
+    
+    # Create time log
+    from app.models.task_extensions import TimeLog
+    time_log = TimeLog(
+        task_id=task_id,
+        user_id=user_id,
+        hours=hours,
+        description=description
+    )
+    db.add(time_log)
+    
+    # Track behavior
+    from app.core.smart_suggestions import track_user_action
+    await track_user_action(
+        db, user_id, user.workspace_id, 'time_logged', 'task',
+        entity_id=task_id, project_id=task.project_id,
+        field_name='hours', field_value=str(hours)
+    )
+    
+    await db.commit()
+    
+    return RedirectResponse(f'/web/tasks/{task_id}', status_code=303)
+
+
+@router.get('/tasks/{task_id}/time-logs')
+async def web_task_get_time_logs(
+    request: Request,
+    task_id: int,
+    db: AsyncSession = Depends(get_session)
+):
+    """Get time logs for a task"""
+    user_id = request.session.get('user_id')
+    if not user_id:
+        return JSONResponse({'logs': [], 'total_hours': 0})
+    
+    user = (await db.execute(select(User).where(User.id == user_id))).scalar_one_or_none()
+    if not user:
+        return JSONResponse({'logs': [], 'total_hours': 0})
+    
+    # Verify task exists
+    task = (await db.execute(
+        select(Task)
+        .join(Project, Task.project_id == Project.id)
+        .where(Task.id == task_id, Project.workspace_id == user.workspace_id)
+    )).scalar_one_or_none()
+    
+    if not task:
+        return JSONResponse({'logs': [], 'total_hours': 0})
+    
+    # Get time logs
+    from app.models.task_extensions import TimeLog
+    logs_result = await db.execute(
+        select(TimeLog, User.full_name, User.username)
+        .join(User, TimeLog.user_id == User.id)
+        .where(TimeLog.task_id == task_id)
+        .order_by(TimeLog.logged_at.desc())
+    )
+    
+    logs = []
+    total_hours = 0
+    for row in logs_result.fetchall():
+        log = row[0]
+        logs.append({
+            'id': log.id,
+            'hours': log.hours,
+            'description': log.description,
+            'user_name': row[1] or row[2],
+            'logged_at': log.logged_at.isoformat() if log.logged_at else None
+        })
+        total_hours += log.hours
+    
+    return JSONResponse({'logs': logs, 'total_hours': total_hours})
 
 
 # --------------------------
@@ -3990,6 +4729,23 @@ async def web_task_create(request: Request, db: AsyncSession = Depends(get_sessi
         db.add(assignment)
         await db.commit()
     
+    # Track user behavior for learning
+    try:
+        from app.core.smart_suggestions import track_user_action
+        await track_user_action(
+            db=db,
+            user_id=user_id,
+            workspace_id=user.workspace_id,
+            action_type="task_create",
+            entity_type="task",
+            entity_id=task.id,
+            project_id=project_id,
+            field_name="priority",
+            field_value=priority
+        )
+    except Exception:
+        pass  # Don't fail task creation if tracking fails
+    
     return RedirectResponse(f'/web/projects/{project_id}', status_code=303)
 
 
@@ -4194,6 +4950,42 @@ async def web_task_detail(request: Request, task_id: int, db: AsyncSession = Dep
     completed_subtasks = sum(1 for st in subtasks if st.is_completed)
     completion_percentage = int((completed_subtasks / total_subtasks) * 100) if total_subtasks > 0 else 0
     
+    # Get task dependencies (blocked by)
+    from app.models.task_extensions import TaskDependency
+    blocked_by_result = await db.execute(
+        select(Task)
+        .join(TaskDependency, Task.id == TaskDependency.depends_on_task_id)
+        .where(TaskDependency.task_id == task_id)
+    )
+    blocked_by_tasks = blocked_by_result.scalars().all()
+    
+    # Get tasks that this task blocks
+    blocks_result = await db.execute(
+        select(Task)
+        .join(TaskDependency, Task.id == TaskDependency.task_id)
+        .where(TaskDependency.depends_on_task_id == task_id)
+    )
+    blocks_tasks = blocks_result.scalars().all()
+    
+    # Get watchers
+    from app.models.task_extensions import TaskWatcher
+    watchers_result = await db.execute(
+        select(User)
+        .join(TaskWatcher, User.id == TaskWatcher.user_id)
+        .where(TaskWatcher.task_id == task_id)
+    )
+    watchers = watchers_result.scalars().all()
+    
+    # Check if current user is watching
+    is_watching = any(w.id == user_id for w in watchers)
+    
+    # Get available tasks for dependency selection (same project, not this task)
+    available_tasks = (await db.execute(
+        select(Task)
+        .where(Task.project_id == task.project_id, Task.id != task_id, Task.is_archived == False)
+        .order_by(Task.title)
+    )).scalars().all()
+    
     return templates.TemplateResponse('tasks/detail.html', {
         'request': request,
         'task': task,
@@ -4209,6 +5001,11 @@ async def web_task_detail(request: Request, task_id: int, db: AsyncSession = Dep
         'total_subtasks': total_subtasks,
         'completed_subtasks': completed_subtasks,
         'completion_percentage': completion_percentage,
+        'blocked_by_tasks': blocked_by_tasks,
+        'blocks_tasks': blocks_tasks,
+        'watchers': watchers,
+        'is_watching': is_watching,
+        'available_tasks': available_tasks,
         'TaskStatus': TaskStatus,
         'TaskPriority': TaskPriority
     })
@@ -4627,6 +5424,171 @@ async def web_task_add_comment(
     return RedirectResponse(f'/web/tasks/{task_id}', status_code=303)
 
 
+@router.post('/tasks/{task_id}/watch')
+async def web_task_watch(
+    request: Request,
+    task_id: int,
+    db: AsyncSession = Depends(get_session)
+):
+    """Add current user as a watcher of the task."""
+    user_id = request.session.get('user_id')
+    if not user_id:
+        return RedirectResponse('/web/login', status_code=303)
+    user = (await db.execute(select(User).where(User.id == user_id))).scalar_one_or_none()
+    if not user:
+        request.session.clear()
+        return RedirectResponse('/web/login', status_code=303)
+    
+    # Verify task exists and belongs to workspace
+    stmt = select(Task).join(Project, Task.project_id == Project.id).where(Task.id == task_id, Project.workspace_id == user.workspace_id)
+    result = await db.execute(stmt)
+    task = result.scalar_one_or_none()
+    if not task:
+        raise HTTPException(status_code=404, detail='Task not found')
+    
+    # Check if already watching
+    from app.models.task_extensions import TaskWatcher
+    existing = (await db.execute(
+        select(TaskWatcher).where(TaskWatcher.task_id == task_id, TaskWatcher.user_id == user_id)
+    )).scalar_one_or_none()
+    
+    if not existing:
+        watcher = TaskWatcher(task_id=task_id, user_id=user_id)
+        db.add(watcher)
+        await db.commit()
+    
+    return RedirectResponse(f'/web/tasks/{task_id}', status_code=303)
+
+
+@router.post('/tasks/{task_id}/unwatch')
+async def web_task_unwatch(
+    request: Request,
+    task_id: int,
+    db: AsyncSession = Depends(get_session)
+):
+    """Remove current user as a watcher of the task."""
+    user_id = request.session.get('user_id')
+    if not user_id:
+        return RedirectResponse('/web/login', status_code=303)
+    user = (await db.execute(select(User).where(User.id == user_id))).scalar_one_or_none()
+    if not user:
+        request.session.clear()
+        return RedirectResponse('/web/login', status_code=303)
+    
+    # Verify task exists and belongs to workspace
+    stmt = select(Task).join(Project, Task.project_id == Project.id).where(Task.id == task_id, Project.workspace_id == user.workspace_id)
+    result = await db.execute(stmt)
+    task = result.scalar_one_or_none()
+    if not task:
+        raise HTTPException(status_code=404, detail='Task not found')
+    
+    # Remove watcher
+    from app.models.task_extensions import TaskWatcher
+    existing = (await db.execute(
+        select(TaskWatcher).where(TaskWatcher.task_id == task_id, TaskWatcher.user_id == user_id)
+    )).scalar_one_or_none()
+    
+    if existing:
+        await db.delete(existing)
+        await db.commit()
+    
+    return RedirectResponse(f'/web/tasks/{task_id}', status_code=303)
+
+
+@router.post('/tasks/{task_id}/dependencies/add')
+async def web_task_add_dependency(
+    request: Request,
+    task_id: int,
+    blocker_task_id: int = Form(...),
+    db: AsyncSession = Depends(get_session)
+):
+    """Add a blocking dependency to the task."""
+    user_id = request.session.get('user_id')
+    if not user_id:
+        return RedirectResponse('/web/login', status_code=303)
+    user = (await db.execute(select(User).where(User.id == user_id))).scalar_one_or_none()
+    if not user:
+        request.session.clear()
+        return RedirectResponse('/web/login', status_code=303)
+    
+    # Verify task exists and belongs to workspace
+    stmt = select(Task).join(Project, Task.project_id == Project.id).where(Task.id == task_id, Project.workspace_id == user.workspace_id)
+    result = await db.execute(stmt)
+    task = result.scalar_one_or_none()
+    if not task:
+        raise HTTPException(status_code=404, detail='Task not found')
+    
+    # Verify blocker task exists and belongs to same project
+    blocker = (await db.execute(
+        select(Task).where(Task.id == blocker_task_id, Task.project_id == task.project_id)
+    )).scalar_one_or_none()
+    if not blocker:
+        raise HTTPException(status_code=404, detail='Blocker task not found')
+    
+    # Check for circular dependencies (simple check)
+    if blocker_task_id == task_id:
+        raise HTTPException(status_code=400, detail='Task cannot block itself')
+    
+    # Check if dependency already exists
+    from app.models.task_extensions import TaskDependency
+    existing = (await db.execute(
+        select(TaskDependency).where(
+            TaskDependency.task_id == task_id, 
+            TaskDependency.depends_on_task_id == blocker_task_id
+        )
+    )).scalar_one_or_none()
+    
+    if not existing:
+        dependency = TaskDependency(
+            task_id=task_id, 
+            depends_on_task_id=blocker_task_id,
+            created_by_id=user_id
+        )
+        db.add(dependency)
+        await db.commit()
+    
+    return RedirectResponse(f'/web/tasks/{task_id}', status_code=303)
+
+
+@router.post('/tasks/{task_id}/dependencies/{dep_task_id}/remove')
+async def web_task_remove_dependency(
+    request: Request,
+    task_id: int,
+    dep_task_id: int,
+    db: AsyncSession = Depends(get_session)
+):
+    """Remove a blocking dependency from the task."""
+    user_id = request.session.get('user_id')
+    if not user_id:
+        return RedirectResponse('/web/login', status_code=303)
+    user = (await db.execute(select(User).where(User.id == user_id))).scalar_one_or_none()
+    if not user:
+        request.session.clear()
+        return RedirectResponse('/web/login', status_code=303)
+    
+    # Verify task exists and belongs to workspace
+    stmt = select(Task).join(Project, Task.project_id == Project.id).where(Task.id == task_id, Project.workspace_id == user.workspace_id)
+    result = await db.execute(stmt)
+    task = result.scalar_one_or_none()
+    if not task:
+        raise HTTPException(status_code=404, detail='Task not found')
+    
+    # Remove dependency
+    from app.models.task_extensions import TaskDependency
+    existing = (await db.execute(
+        select(TaskDependency).where(
+            TaskDependency.task_id == task_id,
+            TaskDependency.depends_on_task_id == dep_task_id
+        )
+    )).scalar_one_or_none()
+    
+    if existing:
+        await db.delete(existing)
+        await db.commit()
+    
+    return RedirectResponse(f'/web/tasks/{task_id}', status_code=303)
+
+
 @router.get('/attachments/{attachment_id}/preview')
 async def preview_comment_attachment(
     request: Request,
@@ -4786,6 +5748,23 @@ async def web_task_update_status(request: Request, task_id: int, status_value: s
     
     await db.commit()
     
+    # Track user behavior for learning
+    try:
+        from app.core.smart_suggestions import track_user_action
+        await track_user_action(
+            db=db,
+            user_id=user_id,
+            workspace_id=user.workspace_id,
+            action_type="task_status_change",
+            entity_type="task",
+            entity_id=task_id,
+            project_id=task.project_id,
+            field_name="status",
+            field_value=status_value
+        )
+    except Exception:
+        pass
+    
     # Check if this is an AJAX request (fetch)
     if request.headers.get('accept', '').find('application/json') != -1 or request.headers.get('x-requested-with') == 'XMLHttpRequest':
         from fastapi.responses import JSONResponse
@@ -4838,6 +5817,23 @@ async def web_task_assign(request: Request, task_id: int, assignee_id: int = For
             db.add(notification)
         
         await db.commit()
+        
+        # Track user behavior for learning
+        try:
+            from app.core.smart_suggestions import track_user_action
+            await track_user_action(
+                db=db,
+                user_id=user_id,
+                workspace_id=user.workspace_id,
+                action_type="task_assign",
+                entity_type="task",
+                entity_id=task_id,
+                project_id=task.project_id,
+                field_name="assignee",
+                field_value=str(assignee_id)
+            )
+        except Exception:
+            pass
     return RedirectResponse(f'/web/projects/{task.project_id}', status_code=303)
 
 
@@ -5762,6 +6758,34 @@ async def web_tickets_create(
             db.add(notification)
     
     await db.commit()
+    
+    # Track user behavior for learning
+    try:
+        from app.core.smart_suggestions import track_user_action
+        await track_user_action(
+            db=db,
+            user_id=user_id,
+            workspace_id=user.workspace_id,
+            action_type="ticket_create",
+            entity_type="ticket",
+            entity_id=ticket.id,
+            field_name="priority",
+            field_value=priority
+        )
+        if assigned_to_user_id:
+            await track_user_action(
+                db=db,
+                user_id=user_id,
+                workspace_id=user.workspace_id,
+                action_type="ticket_assign",
+                entity_type="ticket",
+                entity_id=ticket.id,
+                field_name="assigned_to",
+                field_value=str(assigned_to_user_id)
+            )
+    except Exception:
+        pass  # Don't fail ticket creation if tracking fails
+    
     return RedirectResponse(f'/web/tickets/{ticket.id}', status_code=303)
 
 

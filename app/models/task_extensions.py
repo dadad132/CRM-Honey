@@ -9,8 +9,55 @@ from sqlmodel import Field, SQLModel
 class TaskDependency(SQLModel, table=True):
     """Tracks task dependencies - which tasks block other tasks"""
     id: Optional[int] = Field(default=None, primary_key=True)
-    task_id: int = Field(foreign_key="task.id")  # The task that is blocked
-    depends_on_task_id: int = Field(foreign_key="task.id")  # The task it depends on
+    task_id: int = Field(foreign_key="task.id", index=True)  # The task that is blocked
+    depends_on_task_id: int = Field(foreign_key="task.id", index=True)  # The task it depends on
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    created_by_id: Optional[int] = Field(default=None, foreign_key="user.id")
+
+
+class TaskWatcher(SQLModel, table=True):
+    """Users watching a task for updates"""
+    id: Optional[int] = Field(default=None, primary_key=True)
+    task_id: int = Field(foreign_key="task.id", index=True)
+    user_id: int = Field(foreign_key="user.id", index=True)
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class TicketWatcher(SQLModel, table=True):
+    """Users watching a ticket for updates"""
+    id: Optional[int] = Field(default=None, primary_key=True)
+    ticket_id: int = Field(foreign_key="ticket.id", index=True)
+    user_id: int = Field(foreign_key="user.id", index=True)
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class RecurringTask(SQLModel, table=True):
+    """Template for recurring tasks"""
+    id: Optional[int] = Field(default=None, primary_key=True)
+    project_id: int = Field(foreign_key="project.id", index=True)
+    title: str
+    description: Optional[str] = None
+    status: str = "pending"  # Uses TaskStatus values
+    priority: str = "medium"  # Uses TaskPriority values
+    recurrence_type: str  # daily, weekly, monthly, yearly
+    recurrence_value: Optional[str] = None  # e.g., "monday,wednesday" for weekly, "15" for monthly
+    recurrence_interval: int = Field(default=1)  # Every X days/weeks/months
+    start_date: datetime
+    end_date: Optional[datetime] = None  # When to stop creating instances
+    last_created_at: Optional[datetime] = None  # When the last instance was created
+    next_due_date: Optional[datetime] = None  # When the next instance should be created
+    created_by_id: int = Field(foreign_key="user.id")
+    assign_to_id: Optional[int] = Field(default=None, foreign_key="user.id")  # Default assignee
+    is_active: bool = Field(default=True)
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class RecurringTaskInstance(SQLModel, table=True):
+    """Tracks created instances from recurring tasks"""
+    id: Optional[int] = Field(default=None, primary_key=True)
+    recurring_task_id: int = Field(foreign_key="recurringtask.id", index=True)
+    task_id: int = Field(foreign_key="task.id", index=True)
+    due_date: datetime
     created_at: datetime = Field(default_factory=datetime.utcnow)
 
 

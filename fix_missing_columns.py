@@ -171,6 +171,276 @@ def main():
     except Exception as e:
         print(f"⚠️  Could not check/create processedmail table: {e}")
     
+    # Task Dependency table - for task dependencies (blocked by / blocks)
+    print("\n📋 Checking 'taskdependency' table...")
+    try:
+        taskdependency_table_sql = """
+        CREATE TABLE IF NOT EXISTS taskdependency (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            task_id INTEGER NOT NULL,
+            dependent_on_task_id INTEGER NOT NULL,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            created_by_id INTEGER,
+            FOREIGN KEY (task_id) REFERENCES task(id),
+            FOREIGN KEY (dependent_on_task_id) REFERENCES task(id),
+            FOREIGN KEY (created_by_id) REFERENCES user(id)
+        )
+        """
+        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='taskdependency'")
+        if cursor.fetchone():
+            print("⏭️  Table 'taskdependency' already exists")
+        else:
+            cursor.execute(taskdependency_table_sql)
+            print("✅ Created table 'taskdependency'")
+            cursor.execute("CREATE INDEX IF NOT EXISTS ix_taskdependency_task_id ON taskdependency(task_id)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS ix_taskdependency_dependent_on ON taskdependency(dependent_on_task_id)")
+            changes_made = True
+    except Exception as e:
+        print(f"⚠️  Could not check/create taskdependency table: {e}")
+    
+    # Task Watcher table - for following tasks without being assigned
+    print("\n📋 Checking 'taskwatcher' table...")
+    try:
+        taskwatcher_table_sql = """
+        CREATE TABLE IF NOT EXISTS taskwatcher (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            task_id INTEGER NOT NULL,
+            user_id INTEGER NOT NULL,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (task_id) REFERENCES task(id),
+            FOREIGN KEY (user_id) REFERENCES user(id)
+        )
+        """
+        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='taskwatcher'")
+        if cursor.fetchone():
+            print("⏭️  Table 'taskwatcher' already exists")
+        else:
+            cursor.execute(taskwatcher_table_sql)
+            print("✅ Created table 'taskwatcher'")
+            cursor.execute("CREATE INDEX IF NOT EXISTS ix_taskwatcher_task_id ON taskwatcher(task_id)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS ix_taskwatcher_user_id ON taskwatcher(user_id)")
+            changes_made = True
+    except Exception as e:
+        print(f"⚠️  Could not check/create taskwatcher table: {e}")
+    
+    # Ticket Watcher table - for following tickets without being assigned
+    print("\n📋 Checking 'ticketwatcher' table...")
+    try:
+        ticketwatcher_table_sql = """
+        CREATE TABLE IF NOT EXISTS ticketwatcher (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            ticket_id INTEGER NOT NULL,
+            user_id INTEGER NOT NULL,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (ticket_id) REFERENCES ticket(id),
+            FOREIGN KEY (user_id) REFERENCES user(id)
+        )
+        """
+        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='ticketwatcher'")
+        if cursor.fetchone():
+            print("⏭️  Table 'ticketwatcher' already exists")
+        else:
+            cursor.execute(ticketwatcher_table_sql)
+            print("✅ Created table 'ticketwatcher'")
+            cursor.execute("CREATE INDEX IF NOT EXISTS ix_ticketwatcher_ticket_id ON ticketwatcher(ticket_id)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS ix_ticketwatcher_user_id ON ticketwatcher(user_id)")
+            changes_made = True
+    except Exception as e:
+        print(f"⚠️  Could not check/create ticketwatcher table: {e}")
+    
+    # Recurring Task table - for recurring task templates
+    print("\n📋 Checking 'recurringtask' table...")
+    try:
+        recurringtask_table_sql = """
+        CREATE TABLE IF NOT EXISTS recurringtask (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            project_id INTEGER NOT NULL,
+            title VARCHAR NOT NULL,
+            description TEXT,
+            status VARCHAR DEFAULT 'pending',
+            priority VARCHAR DEFAULT 'medium',
+            recurrence_type VARCHAR NOT NULL,
+            recurrence_value VARCHAR,
+            recurrence_interval INTEGER DEFAULT 1,
+            start_date DATETIME NOT NULL,
+            end_date DATETIME,
+            last_created_at DATETIME,
+            next_due_date DATETIME,
+            created_by_id INTEGER NOT NULL,
+            assign_to_id INTEGER,
+            is_active BOOLEAN DEFAULT 1,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (project_id) REFERENCES project(id),
+            FOREIGN KEY (created_by_id) REFERENCES user(id),
+            FOREIGN KEY (assign_to_id) REFERENCES user(id)
+        )
+        """
+        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='recurringtask'")
+        if cursor.fetchone():
+            print("⏭️  Table 'recurringtask' already exists")
+        else:
+            cursor.execute(recurringtask_table_sql)
+            print("✅ Created table 'recurringtask'")
+            cursor.execute("CREATE INDEX IF NOT EXISTS ix_recurringtask_project_id ON recurringtask(project_id)")
+            changes_made = True
+    except Exception as e:
+        print(f"⚠️  Could not check/create recurringtask table: {e}")
+    
+    # Recurring Task Instance table - tracks created instances
+    print("\n📋 Checking 'recurringtaskinstance' table...")
+    try:
+        recurringtaskinstance_table_sql = """
+        CREATE TABLE IF NOT EXISTS recurringtaskinstance (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            recurring_task_id INTEGER NOT NULL,
+            task_id INTEGER NOT NULL,
+            due_date DATETIME NOT NULL,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (recurring_task_id) REFERENCES recurringtask(id),
+            FOREIGN KEY (task_id) REFERENCES task(id)
+        )
+        """
+        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='recurringtaskinstance'")
+        if cursor.fetchone():
+            print("⏭️  Table 'recurringtaskinstance' already exists")
+        else:
+            cursor.execute(recurringtaskinstance_table_sql)
+            print("✅ Created table 'recurringtaskinstance'")
+            cursor.execute("CREATE INDEX IF NOT EXISTS ix_recurringtaskinstance_recurring_task_id ON recurringtaskinstance(recurring_task_id)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS ix_recurringtaskinstance_task_id ON recurringtaskinstance(task_id)")
+            changes_made = True
+    except Exception as e:
+        print(f"⚠️  Could not check/create recurringtaskinstance table: {e}")
+    
+    # User Behavior table - for learning from user actions
+    print("\n📋 Checking 'userbehavior' table...")
+    try:
+        userbehavior_table_sql = """
+        CREATE TABLE IF NOT EXISTS userbehavior (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            workspace_id INTEGER NOT NULL,
+            action_type VARCHAR NOT NULL,
+            entity_type VARCHAR NOT NULL,
+            entity_id INTEGER,
+            project_id INTEGER,
+            field_name VARCHAR,
+            field_value VARCHAR,
+            context_data TEXT,
+            hour_of_day INTEGER DEFAULT 0,
+            day_of_week INTEGER DEFAULT 0,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (user_id) REFERENCES user(id),
+            FOREIGN KEY (workspace_id) REFERENCES workspace(id),
+            FOREIGN KEY (project_id) REFERENCES project(id)
+        )
+        """
+        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='userbehavior'")
+        if cursor.fetchone():
+            print("⏭️  Table 'userbehavior' already exists")
+        else:
+            cursor.execute(userbehavior_table_sql)
+            print("✅ Created table 'userbehavior'")
+            cursor.execute("CREATE INDEX IF NOT EXISTS ix_userbehavior_user_id ON userbehavior(user_id)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS ix_userbehavior_workspace_id ON userbehavior(workspace_id)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS ix_userbehavior_action_type ON userbehavior(action_type)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS ix_userbehavior_created_at ON userbehavior(created_at)")
+            changes_made = True
+    except Exception as e:
+        print(f"⚠️  Could not check/create userbehavior table: {e}")
+    
+    # User Preference table - learned preferences
+    print("\n📋 Checking 'userpreference' table...")
+    try:
+        userpreference_table_sql = """
+        CREATE TABLE IF NOT EXISTS userpreference (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            workspace_id INTEGER NOT NULL,
+            category VARCHAR NOT NULL,
+            preference_key VARCHAR NOT NULL,
+            preference_value VARCHAR NOT NULL,
+            confidence REAL DEFAULT 0.5,
+            occurrence_count INTEGER DEFAULT 1,
+            last_observed DATETIME DEFAULT CURRENT_TIMESTAMP,
+            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (user_id) REFERENCES user(id),
+            FOREIGN KEY (workspace_id) REFERENCES workspace(id)
+        )
+        """
+        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='userpreference'")
+        if cursor.fetchone():
+            print("⏭️  Table 'userpreference' already exists")
+        else:
+            cursor.execute(userpreference_table_sql)
+            print("✅ Created table 'userpreference'")
+            cursor.execute("CREATE INDEX IF NOT EXISTS ix_userpreference_user_id ON userpreference(user_id)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS ix_userpreference_category ON userpreference(category)")
+            changes_made = True
+    except Exception as e:
+        print(f"⚠️  Could not check/create userpreference table: {e}")
+    
+    # Smart Suggestion table - pre-computed suggestions
+    print("\n📋 Checking 'smartsuggestion' table...")
+    try:
+        smartsuggestion_table_sql = """
+        CREATE TABLE IF NOT EXISTS smartsuggestion (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            workspace_id INTEGER NOT NULL,
+            suggestion_type VARCHAR NOT NULL,
+            context_type VARCHAR,
+            context_value VARCHAR,
+            suggestion_data TEXT NOT NULL,
+            relevance_score REAL DEFAULT 0.5,
+            times_shown INTEGER DEFAULT 0,
+            times_accepted INTEGER DEFAULT 0,
+            times_dismissed INTEGER DEFAULT 0,
+            is_active BOOLEAN DEFAULT 1,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            expires_at DATETIME,
+            FOREIGN KEY (user_id) REFERENCES user(id),
+            FOREIGN KEY (workspace_id) REFERENCES workspace(id)
+        )
+        """
+        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='smartsuggestion'")
+        if cursor.fetchone():
+            print("⏭️  Table 'smartsuggestion' already exists")
+        else:
+            cursor.execute(smartsuggestion_table_sql)
+            print("✅ Created table 'smartsuggestion'")
+            cursor.execute("CREATE INDEX IF NOT EXISTS ix_smartsuggestion_user_id ON smartsuggestion(user_id)")
+            changes_made = True
+    except Exception as e:
+        print(f"⚠️  Could not check/create smartsuggestion table: {e}")
+    
+    # TimeLog table - for time tracking
+    print("\n📋 Checking 'timelog' table...")
+    try:
+        timelog_table_sql = """
+        CREATE TABLE IF NOT EXISTS timelog (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            task_id INTEGER NOT NULL,
+            user_id INTEGER NOT NULL,
+            hours REAL NOT NULL,
+            description TEXT,
+            logged_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (task_id) REFERENCES task(id),
+            FOREIGN KEY (user_id) REFERENCES user(id)
+        )
+        """
+        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='timelog'")
+        if cursor.fetchone():
+            print("⏭️  Table 'timelog' already exists")
+        else:
+            cursor.execute(timelog_table_sql)
+            print("✅ Created table 'timelog'")
+            cursor.execute("CREATE INDEX IF NOT EXISTS ix_timelog_task_id ON timelog(task_id)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS ix_timelog_user_id ON timelog(user_id)")
+            changes_made = True
+    except Exception as e:
+        print(f"⚠️  Could not check/create timelog table: {e}")
+    
     if changes_made:
         conn.commit()
         print("\n" + "=" * 60)
