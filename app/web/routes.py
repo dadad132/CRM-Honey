@@ -560,16 +560,20 @@ async def web_google_oauth_unlink(request: Request, db: AsyncSession = Depends(g
 # Dashboard
 # --------------------------
 @router.get('/dashboard', response_class=HTMLResponse)
-async def web_dashboard(request: Request, db: AsyncSession = Depends(get_session)):
+async def web_dashboard(request: Request, view: str = None, user_id: int = None, db: AsyncSession = Depends(get_session)):
     """Main dashboard with stats and overview"""
-    user_id = request.session.get('user_id')
-    if not user_id:
+    current_user_id = request.session.get('user_id')
+    if not current_user_id:
         return RedirectResponse('/web/login', status_code=303)
     
-    user = (await db.execute(select(User).where(User.id == user_id))).scalar_one_or_none()
+    user = (await db.execute(select(User).where(User.id == current_user_id))).scalar_one_or_none()
     if not user or not user.is_active:
         request.session.clear()
         return RedirectResponse('/web/login', status_code=303)
+    
+    # Only admins can see user view
+    if view == 'user' and not user.is_admin:
+        view = 'personal'
     
     from app.models.ticket import Ticket
     from app.models.project_member import ProjectMember
@@ -589,7 +593,7 @@ async def web_dashboard(request: Request, db: AsyncSession = Depends(get_session
     else:
         member_result = await db.execute(
             select(ProjectMember.project_id)
-            .where(ProjectMember.user_id == user_id)
+            .where(ProjectMember.user_id == current_user_id)
         )
         project_ids = [r[0] for r in member_result.fetchall()]
         projects_result = await db.execute(
@@ -602,7 +606,7 @@ async def web_dashboard(request: Request, db: AsyncSession = Depends(get_session
     my_tasks_result = await db.execute(
         select(Task)
         .join(Assignment, Task.id == Assignment.task_id)
-        .where(Assignment.assignee_id == user_id, Task.status != TaskStatus.done)
+        .where(Assignment.assignee_id == current_user_id, Task.status != TaskStatus.done)
     )
     my_tasks = my_tasks_result.scalars().all()
     
@@ -611,7 +615,7 @@ async def web_dashboard(request: Request, db: AsyncSession = Depends(get_session
         select(Task)
         .join(Assignment, Task.id == Assignment.task_id)
         .where(
-            Assignment.assignee_id == user_id,
+            Assignment.assignee_id == current_user_id,
             Task.status == TaskStatus.done,
             Task.updated_at >= datetime.combine(week_ago, time.min)
         )
@@ -624,7 +628,7 @@ async def web_dashboard(request: Request, db: AsyncSession = Depends(get_session
         .join(Project, Task.project_id == Project.id)
         .join(Assignment, Task.id == Assignment.task_id)
         .where(
-            Assignment.assignee_id == user_id,
+            Assignment.assignee_id == current_user_id,
             Task.status != TaskStatus.done,
             Task.due_date.isnot(None),
             Task.due_date <= today + timedelta(days=7)
@@ -664,7 +668,7 @@ async def web_dashboard(request: Request, db: AsyncSession = Depends(get_session
         select(Meeting)
         .join(MeetingAttendee, Meeting.id == MeetingAttendee.meeting_id)
         .where(
-            MeetingAttendee.user_id == user_id,
+            MeetingAttendee.user_id == current_user_id,
             Meeting.date == today,
             Meeting.is_cancelled == False
         )
@@ -676,7 +680,7 @@ async def web_dashboard(request: Request, db: AsyncSession = Depends(get_session
         select(Meeting)
         .join(MeetingAttendee, Meeting.id == MeetingAttendee.meeting_id)
         .where(
-            MeetingAttendee.user_id == user_id,
+            MeetingAttendee.user_id == current_user_id,
             Meeting.date >= today,
             Meeting.date <= today + timedelta(days=7),
             Meeting.is_cancelled == False
@@ -720,6 +724,11 @@ async def web_dashboard(request: Request, db: AsyncSession = Depends(get_session
     team_tasks_completed = 0
     team_tickets_resolved = 0
     avg_response_time = None
+    team_members = []
+    selected_user = None
+    selected_user_stats = {}
+    selected_user_tasks = []
+    selected_user_projects = []
     
     if user.is_admin:
         # Tasks completed by team this week
@@ -743,6 +752,108 @@ async def web_dashboard(request: Request, db: AsyncSession = Depends(get_session
             )
         )
         team_tickets_resolved = len(resolved_result.scalars().all())
+        
+        # User view - get all team members for selector
+        if view == 'user':
+            # Get all team members for the selector
+            team_members_result = await db.execute(
+                select(User)
+                .where(User.workspace_id == user.workspace_id, User.is_active == True)
+                .order_by(User.full_name)
+            )
+            team_members = team_members_result.scalars().all()
+            
+            # If a specific user_id is selected, get their data
+            if user_id:
+                selected_user_result = await db.execute(
+                    select(User).where(User.id == user_id, User.workspace_id == user.workspace_id)
+                )
+                selected_user = selected_user_result.scalar_one_or_none()
+                
+                if selected_user:
+                    # Get selected user's open tasks
+                    su_tasks_result = await db.execute(
+                        select(Task)
+                        .join(Assignment, Task.id == Assignment.task_id)
+                        .where(Assignment.assignee_id == user_id, Task.status != TaskStatus.done)
+                    )
+                    su_open_tasks = len(su_tasks_result.scalars().all())
+                    
+                    # Get selected user's done tasks this week
+                    su_done_result = await db.execute(
+                        select(Task)
+                        .join(Assignment, Task.id == Assignment.task_id)
+                        .where(
+                            Assignment.assignee_id == user_id,
+                            Task.status == TaskStatus.done,
+                            Task.updated_at >= datetime.combine(week_ago, time.min)
+                        )
+                    )
+                    su_done_tasks = len(su_done_result.scalars().all())
+                    
+                    # Get selected user's open tickets
+                    su_tickets_result = await db.execute(
+                        select(Ticket)
+                        .where(
+                            Ticket.assigned_to_id == user_id,
+                            Ticket.status.in_(['open', 'in_progress', 'waiting'])
+                        )
+                    )
+                    su_open_tickets = len(su_tickets_result.scalars().all())
+                    
+                    # Get selected user's overdue tasks
+                    su_overdue_result = await db.execute(
+                        select(Task)
+                        .join(Assignment, Task.id == Assignment.task_id)
+                        .where(
+                            Assignment.assignee_id == user_id,
+                            Task.status != TaskStatus.done,
+                            Task.due_date < today
+                        )
+                    )
+                    su_overdue_tasks = len(su_overdue_result.scalars().all())
+                    
+                    # Get selected user's projects
+                    su_projects_result = await db.execute(
+                        select(Project)
+                        .join(ProjectMember, Project.id == ProjectMember.project_id)
+                        .where(ProjectMember.user_id == user_id, Project.is_archived == False)
+                    )
+                    selected_user_projects = su_projects_result.scalars().all()
+                    
+                    selected_user_stats = {
+                        'open_tasks': su_open_tasks,
+                        'done_this_week': su_done_tasks,
+                        'open_tickets': su_open_tickets,
+                        'overdue_tasks': su_overdue_tasks,
+                        'projects': len(selected_user_projects)
+                    }
+                    
+                    # Get selected user's tasks due soon
+                    su_tasks_due_result = await db.execute(
+                        select(Task, Project.name.label('project_name'))
+                        .join(Project, Task.project_id == Project.id)
+                        .join(Assignment, Task.id == Assignment.task_id)
+                        .where(
+                            Assignment.assignee_id == user_id,
+                            Task.status != TaskStatus.done,
+                            Task.due_date.isnot(None),
+                            Task.due_date <= today + timedelta(days=14)
+                        )
+                        .order_by(Task.due_date)
+                        .limit(10)
+                    )
+                    su_tasks_rows = su_tasks_due_result.fetchall()
+                    for row in su_tasks_rows:
+                        task = row[0]
+                        selected_user_tasks.append({
+                            "id": task.id,
+                            "title": task.title,
+                            "status": task.status,
+                            "priority": task.priority,
+                            "due_date": task.due_date,
+                            "project_name": row[1]
+                        })
     
     stats = {
         'my_tasks': len(my_tasks),
@@ -757,7 +868,7 @@ async def web_dashboard(request: Request, db: AsyncSession = Depends(get_session
         'avg_response_time': avg_response_time
     }
     
-    workspace = await get_workspace_for_user(user_id, db)
+    workspace = await get_workspace_for_user(current_user_id, db)
     
     return templates.TemplateResponse('dashboard/index.html', {
         'request': request,
@@ -768,7 +879,13 @@ async def web_dashboard(request: Request, db: AsyncSession = Depends(get_session
         'recent_activities': recent_activities,
         'projects': projects,
         'today': today,
-        'workspace': workspace
+        'workspace': workspace,
+        'view': view or 'personal',
+        'team_members': team_members,
+        'selected_user': selected_user,
+        'selected_user_stats': selected_user_stats,
+        'selected_user_tasks': selected_user_tasks,
+        'selected_user_projects': selected_user_projects
     })
 
 
