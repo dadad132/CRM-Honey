@@ -1,5 +1,6 @@
 """
 System update manager - handles updates and rollbacks from GitHub
+Supports both HTTPS and SSH authentication for private repositories
 """
 import os
 import asyncio
@@ -14,13 +15,64 @@ logger = logging.getLogger(__name__)
 
 
 class UpdateManager:
-    """Manages system updates and rollbacks via git"""
+    """Manages system updates and rollbacks via git
+    
+    Supports SSH keys for private repositories. Configure by:
+    1. Generating an SSH key: ssh-keygen -t ed25519 -C "server-deploy-key"
+    2. Adding the public key to GitHub as a deploy key
+    3. Setting up SSH config or GIT_SSH_COMMAND environment variable
+    """
     
     def __init__(self, repo_owner: str = "dadad132", repo_name: str = "cem-backend"):
         self.repo_owner = repo_owner
         self.repo_name = repo_name
         self.github_api = f"https://api.github.com/repos/{repo_owner}/{repo_name}"
         self.app_dir = Path.cwd()
+        self.ssh_key_path = self._find_ssh_key()
+        
+    def _find_ssh_key(self) -> Optional[Path]:
+        """Find SSH key for GitHub authentication"""
+        # Check common locations for SSH keys
+        possible_paths = [
+            Path.home() / ".ssh" / "github_deploy_key",
+            Path.home() / ".ssh" / "crm_deploy_key", 
+            Path.home() / ".ssh" / "deploy_key",
+            Path.home() / ".ssh" / "id_ed25519",
+            Path.home() / ".ssh" / "id_rsa",
+            self.app_dir / ".ssh" / "deploy_key",
+        ]
+        
+        for key_path in possible_paths:
+            if key_path.exists():
+                logger.info(f"Found SSH key at: {key_path}")
+                return key_path
+        
+        return None
+    
+    def _get_git_env(self) -> Dict[str, str]:
+        """Get environment variables for git commands with SSH key"""
+        env = os.environ.copy()
+        
+        if self.ssh_key_path and self.ssh_key_path.exists():
+            # Use custom SSH command with the deploy key
+            ssh_command = f'ssh -i {self.ssh_key_path} -o StrictHostKeyChecking=accept-new -o IdentitiesOnly=yes'
+            env['GIT_SSH_COMMAND'] = ssh_command
+            logger.info(f"Using SSH key: {self.ssh_key_path}")
+        
+        return env
+    
+    def _run_git_command(self, args: List[str], **kwargs) -> subprocess.CompletedProcess:
+        """Run a git command with proper SSH environment"""
+        env = self._get_git_env()
+        return subprocess.run(
+            args,
+            cwd=kwargs.get('cwd', self.app_dir),
+            capture_output=kwargs.get('capture_output', True),
+            text=kwargs.get('text', True),
+            check=kwargs.get('check', True),
+            env=env,
+            timeout=kwargs.get('timeout', 120)
+        )
         
     async def get_current_version(self) -> Dict[str, str]:
         """Get current git commit info"""
@@ -113,7 +165,7 @@ class UpdateManager:
             return []
     
     async def update_to_latest(self) -> Dict[str, any]:
-        """Update to latest version from GitHub"""
+        """Update to latest version from GitHub (supports SSH for private repos)"""
         try:
             # Backup current state
             from app.core.backup import backup_manager
@@ -122,36 +174,23 @@ class UpdateManager:
             if not backup_file:
                 return {"success": False, "error": "Failed to create backup before update"}
             
-            # Fetch latest changes
-            result = subprocess.run(
-                ["git", "fetch", "origin"],
-                cwd=self.app_dir,
-                capture_output=True,
-                text=True,
-                check=True
-            )
+            # Fetch latest changes (using SSH key if available)
+            logger.info("Fetching updates from remote...")
+            result = self._run_git_command(["git", "fetch", "origin"])
             
             # Get info about what will be updated
-            result = subprocess.run(
+            result = self._run_git_command(
                 ["git", "log", "HEAD..origin/main", "--oneline"],
-                cwd=self.app_dir,
-                capture_output=True,
-                text=True,
-                check=True
+                check=False
             )
             changes = result.stdout.strip()
             
             if not changes:
                 return {"success": True, "message": "Already up to date", "changes": []}
             
-            # Pull changes
-            result = subprocess.run(
-                ["git", "reset", "--hard", "origin/main"],
-                cwd=self.app_dir,
-                capture_output=True,
-                text=True,
-                check=True
-            )
+            # Pull changes (reset hard to ensure clean update)
+            logger.info("Applying updates...")
+            result = self._run_git_command(["git", "reset", "--hard", "origin/main"])
             
             # Update dependencies if venv exists
             venv_python = self.app_dir / "venv" / "bin" / "python"
@@ -299,25 +338,16 @@ class UpdateManager:
                 return {"success": False, "error": "Failed to create backup before rollback"}
             
             # Verify commit exists
-            result = subprocess.run(
+            result = self._run_git_command(
                 ["git", "cat-file", "-t", commit_hash],
-                cwd=self.app_dir,
-                capture_output=True,
-                text=True,
-                check=True
+                check=False
             )
             
             if result.stdout.strip() != "commit":
                 return {"success": False, "error": "Invalid commit hash"}
             
             # Reset to commit
-            result = subprocess.run(
-                ["git", "reset", "--hard", commit_hash],
-                cwd=self.app_dir,
-                capture_output=True,
-                text=True,
-                check=True
-            )
+            result = self._run_git_command(["git", "reset", "--hard", commit_hash])
             
             # Update dependencies if venv exists
             venv_python = self.app_dir / "venv" / "bin" / "python"

@@ -46,6 +46,22 @@ echo -e "${YELLOW}[i]${NC} Stopping service..."
 sudo systemctl stop ${SERVICE_NAME}
 echo -e "${GREEN}[✓]${NC} Service stopped"
 
+# Setup SSH key for private repository access
+SSH_KEY_PATH=""
+for key in "$HOME/.ssh/github_deploy_key" "$HOME/.ssh/crm_deploy_key" "$HOME/.ssh/deploy_key" "$HOME/.ssh/id_ed25519" "$HOME/.ssh/id_rsa"; do
+    if [ -f "$key" ]; then
+        SSH_KEY_PATH="$key"
+        echo -e "${GREEN}[✓]${NC} Found SSH key: $SSH_KEY_PATH"
+        break
+    fi
+done
+
+# Configure git to use SSH key if found
+if [ -n "$SSH_KEY_PATH" ]; then
+    export GIT_SSH_COMMAND="ssh -i $SSH_KEY_PATH -o StrictHostKeyChecking=accept-new -o IdentitiesOnly=yes"
+    echo -e "${GREEN}[✓]${NC} SSH authentication configured"
+fi
+
 # Pull latest code (if using git)
 if [ -d ".git" ]; then
     echo -e "${YELLOW}[i]${NC} Pulling latest code from repository..."
