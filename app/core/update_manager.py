@@ -165,7 +165,7 @@ class UpdateManager:
             return []
     
     async def update_to_latest(self) -> Dict[str, any]:
-        """Update to latest version from GitHub (supports SSH for private repos)"""
+        """Update to latest version from GitHub (supports SSH for private repos, falls back to HTTPS)"""
         try:
             # Backup current state
             from app.core.backup import backup_manager
@@ -174,14 +174,41 @@ class UpdateManager:
             if not backup_file:
                 return {"success": False, "error": "Failed to create backup before update"}
             
-            # Fetch latest changes (using SSH key if available)
+            # Try to fetch - first with SSH if key exists, then fall back to HTTPS
             logger.info("Fetching updates from remote...")
-            result = self._run_git_command(["git", "fetch", "origin"])
+            fetch_success = False
+            
+            # Try SSH first if key exists
+            if self.ssh_key_path and self.ssh_key_path.exists():
+                try:
+                    result = self._run_git_command(["git", "fetch", "origin"], check=True)
+                    fetch_success = True
+                    logger.info("Fetched using SSH key")
+                except Exception as e:
+                    logger.warning(f"SSH fetch failed: {e}, trying HTTPS...")
+            
+            # Fall back to HTTPS if SSH failed or no key
+            if not fetch_success:
+                try:
+                    # Temporarily switch to HTTPS
+                    subprocess.run(
+                        ["git", "remote", "set-url", "origin", f"https://github.com/{self.repo_owner}/{self.repo_name}.git"],
+                        cwd=self.app_dir, capture_output=True, text=True, check=True
+                    )
+                    result = subprocess.run(
+                        ["git", "fetch", "origin"],
+                        cwd=self.app_dir, capture_output=True, text=True, check=True
+                    )
+                    fetch_success = True
+                    logger.info("Fetched using HTTPS")
+                except Exception as e:
+                    logger.error(f"HTTPS fetch also failed: {e}")
+                    return {"success": False, "error": f"Could not fetch from repository: {e}"}
             
             # Get info about what will be updated
-            result = self._run_git_command(
+            result = subprocess.run(
                 ["git", "log", "HEAD..origin/main", "--oneline"],
-                check=False
+                cwd=self.app_dir, capture_output=True, text=True, check=False
             )
             changes = result.stdout.strip()
             
@@ -190,7 +217,10 @@ class UpdateManager:
             
             # Pull changes (reset hard to ensure clean update)
             logger.info("Applying updates...")
-            result = self._run_git_command(["git", "reset", "--hard", "origin/main"])
+            result = subprocess.run(
+                ["git", "reset", "--hard", "origin/main"],
+                cwd=self.app_dir, capture_output=True, text=True, check=True
+            )
             
             # Update dependencies if venv exists
             venv_python = self.app_dir / "venv" / "bin" / "python"
