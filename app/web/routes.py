@@ -2976,13 +2976,95 @@ async def web_admin_updates(
         }
         commit_history = []
     
+    # Get SSH public key if it exists
+    ssh_public_key = None
+    from pathlib import Path
+    pub_key_path = Path.home() / ".ssh" / "crm_deploy_key.pub"
+    if pub_key_path.exists():
+        ssh_public_key = pub_key_path.read_text().strip()
+    
     return templates.TemplateResponse('admin/updates.html', {
         'request': request,
         'user': user,
         'current_version': current_version,
         'commit_history': commit_history,
+        'ssh_public_key': ssh_public_key,
         'success': request.query_params.get('success'),
         'error': request.query_params.get('error')
+    })
+
+
+@router.get('/admin/setup-ssh')
+async def web_admin_setup_ssh(
+    request: Request,
+    db: AsyncSession = Depends(get_session)
+):
+    """Generate SSH key and display public key for GitHub"""
+    user_id = request.session.get('user_id')
+    if not user_id:
+        return RedirectResponse('/web/login', status_code=303)
+    
+    user = (await db.execute(select(User).where(User.id == user_id))).scalar_one_or_none()
+    if not user or not user.is_active or not user.is_admin:
+        raise HTTPException(status_code=403, detail="Admin access required")
+    
+    import subprocess
+    from pathlib import Path
+    
+    home = Path.home()
+    ssh_dir = home / ".ssh"
+    key_path = ssh_dir / "crm_deploy_key"
+    pub_key_path = ssh_dir / "crm_deploy_key.pub"
+    
+    message = ""
+    
+    # Create .ssh directory
+    ssh_dir.mkdir(mode=0o700, exist_ok=True)
+    
+    # Generate key if it doesn't exist
+    if not key_path.exists():
+        try:
+            subprocess.run([
+                "ssh-keygen", "-t", "ed25519",
+                "-C", "crm-server-deploy-key",
+                "-f", str(key_path),
+                "-N", ""
+            ], check=True, capture_output=True)
+            message = "SSH key generated successfully!"
+        except Exception as e:
+            message = f"Failed to generate key: {e}"
+    else:
+        message = "SSH key already exists"
+    
+    # Add GitHub to known hosts
+    try:
+        known_hosts = ssh_dir / "known_hosts"
+        result = subprocess.run(["ssh-keyscan", "github.com"], capture_output=True, text=True)
+        if result.stdout:
+            with open(known_hosts, "a") as f:
+                f.write(result.stdout)
+    except:
+        pass
+    
+    # Update git remote to SSH
+    try:
+        subprocess.run([
+            "git", "remote", "set-url", "origin",
+            "git@github.com:dadad132/cem-backend.git"
+        ], capture_output=True)
+    except:
+        pass
+    
+    # Read public key
+    ssh_public_key = None
+    if pub_key_path.exists():
+        ssh_public_key = pub_key_path.read_text().strip()
+    
+    return templates.TemplateResponse('admin/ssh_setup.html', {
+        'request': request,
+        'user': user,
+        'ssh_public_key': ssh_public_key,
+        'message': message
     })
 
 
