@@ -815,19 +815,220 @@ async def process_workspace_emails(db: AsyncSession, workspace_id: int) -> List[
     return await service.process_emails(db)
 
 
+async def find_ticket_by_reply_for_account(
+    db: AsyncSession, 
+    workspace_id: int, 
+    in_reply_to: str, 
+    references: str
+) -> Optional[Ticket]:
+    """Find ticket from reply headers (In-Reply-To or References) for alternate email accounts"""
+    print(f"[DEBUG] find_ticket_by_reply_for_account called with:")
+    print(f"[DEBUG]   in_reply_to: '{in_reply_to}'")
+    print(f"[DEBUG]   references: '{references}'")
+    print(f"[DEBUG]   workspace_id: {workspace_id}")
+    
+    # Try In-Reply-To first
+    if in_reply_to:
+        print(f"[DEBUG] Searching processedmail for message_id: '{in_reply_to}'")
+        result = await db.execute(
+            select(ProcessedMail).where(
+                ProcessedMail.message_id == in_reply_to,
+                ProcessedMail.workspace_id == workspace_id
+            )
+        )
+        processed = result.scalar_one_or_none()
+        print(f"[DEBUG] ProcessedMail result: {processed}")
+        if processed and processed.ticket_id:
+            print(f"[DEBUG] Found ticket_id: {processed.ticket_id}")
+            ticket_result = await db.execute(
+                select(Ticket).where(Ticket.id == processed.ticket_id)
+            )
+            ticket = ticket_result.scalar_one_or_none()
+            print(f"[DEBUG] Returning ticket: {ticket.ticket_number if ticket else None}")
+            return ticket
+    
+    # Try References (can contain multiple message IDs)
+    if references:
+        print(f"[DEBUG] Trying References header")
+        ref_ids = references.strip().split()
+        print(f"[DEBUG] Parsed reference IDs: {ref_ids}")
+        for ref_id in reversed(ref_ids):  # Check from newest to oldest
+            ref_id = ref_id.strip()
+            print(f"[DEBUG] Checking reference: '{ref_id}'")
+            result = await db.execute(
+                select(ProcessedMail).where(
+                    ProcessedMail.message_id == ref_id,
+                    ProcessedMail.workspace_id == workspace_id
+                )
+            )
+            processed = result.scalar_one_or_none()
+            if processed and processed.ticket_id:
+                ticket_result = await db.execute(
+                    select(Ticket).where(Ticket.id == processed.ticket_id)
+                )
+                ticket = ticket_result.scalar_one_or_none()
+                print(f"[DEBUG] Found ticket via References: {ticket.ticket_number if ticket else None}")
+                return ticket
+    
+    print(f"[DEBUG] No ticket found via In-Reply-To or References")
+    return None
+
+
+async def find_ticket_by_subject_for_account(db: AsyncSession, workspace_id: int, subject: str) -> Optional[Ticket]:
+    """
+    Fallback: Find ticket by subject line pattern for alternate email accounts
+    Gmail/Outlook include "Re: Ticket #12345" in subject
+    """
+    import re
+    
+    print(f"[DEBUG] Trying to find ticket by subject: '{subject}'")
+    
+    # Clean up the subject - remove Re:, Fwd:, etc.
+    clean_subject = re.sub(r'^(Re:|RE:|Fwd:|FWD:|\[.*?\])\s*', '', subject, flags=re.IGNORECASE).strip()
+    print(f"[DEBUG] Cleaned subject: '{clean_subject}'")
+    
+    # Look for patterns like "Ticket #TKT-2025-00042" or "#TKT-2025-00042"
+    patterns = [
+        r'Ticket\s*#?\s*(TKT-\d{4}-\d+)',  # "Ticket #TKT-2025-00042"
+        r'Re:\s*Ticket\s*#?\s*(TKT-\d{4}-\d+)',  # "Re: Ticket #TKT-2025-00042"
+        r'#(TKT-\d{4}-\d+)',  # "#TKT-2025-00042"
+        r'\[(TKT-\d{4}-\d+)\]',  # "[TKT-2025-00042]"
+        r'(TKT-\d{4}-\d{5})',  # Just the ticket number pattern anywhere
+    ]
+    
+    # Try on both original and cleaned subject
+    for test_subject in [subject, clean_subject]:
+        for pattern in patterns:
+            match = re.search(pattern, test_subject, re.IGNORECASE)
+            if match:
+                ticket_number = match.group(1).upper()
+                print(f"[DEBUG] Found potential ticket number in subject: {ticket_number} (pattern: {pattern})")
+                
+                # Search for ticket by number
+                result = await db.execute(
+                    select(Ticket).where(
+                        Ticket.ticket_number == ticket_number,
+                        Ticket.workspace_id == workspace_id
+                    )
+                )
+                ticket = result.scalar_one_or_none()
+                if ticket:
+                    print(f"[DEBUG] ✅ Found ticket #{ticket.ticket_number} via subject line")
+                    return ticket
+                else:
+                    print(f"[DEBUG] Pattern matched '{ticket_number}' but no ticket found in database")
+    
+    print(f"[DEBUG] ❌ No ticket number found in subject")
+    return None
+
+
+async def find_ticket_by_sender_for_account(db: AsyncSession, workspace_id: int, sender_email: str) -> Optional[Ticket]:
+    """
+    Last resort fallback: Find most recent open ticket from this sender
+    Only matches if there's exactly ONE open ticket from this email
+    """
+    print(f"[DEBUG] Trying to find ticket by sender email: '{sender_email}'")
+    
+    # Search for open tickets from this email (not closed)
+    result = await db.execute(
+        select(Ticket).where(
+            Ticket.guest_email == sender_email,
+            Ticket.workspace_id == workspace_id,
+            Ticket.status.in_(['new', 'open', 'pending', 'in_progress'])
+        ).order_by(Ticket.created_at.desc())
+    )
+    tickets = result.scalars().all()
+    
+    if len(tickets) == 1:
+        # Only auto-match if there's exactly one open ticket
+        print(f"[DEBUG] ✅ Found single open ticket #{tickets[0].ticket_number} from sender")
+        return tickets[0]
+    elif len(tickets) > 1:
+        print(f"[DEBUG] Found {len(tickets)} open tickets from sender - ambiguous, creating new ticket")
+    else:
+        print(f"[DEBUG] No open tickets found from sender")
+    
+    return None
+
+
+async def add_comment_from_email_for_account(
+    db: AsyncSession,
+    ticket: Ticket,
+    sender_name: str,
+    sender_email: str,
+    body: str
+) -> TicketComment:
+    """Add a comment to an existing ticket from email reply (for alternate email accounts)"""
+    
+    # Create comment
+    comment = TicketComment(
+        ticket_id=ticket.id,
+        user_id=None,  # Guest comment from email
+        content=f"**Email reply from {sender_name} ({sender_email}):**\n\n{body}",
+        is_internal=False,
+        created_at=get_local_time()
+    )
+    db.add(comment)
+    
+    # Update ticket timestamp
+    ticket.updated_at = get_local_time()
+    
+    # Add history entry
+    history = TicketHistory(
+        ticket_id=ticket.id,
+        user_id=None,
+        action='comment_added',
+        comment=f'Email reply received from {sender_email}',
+        created_at=get_local_time()
+    )
+    db.add(history)
+    
+    # Notify all non-admin users in the workspace about email reply
+    from app.models.user import User
+    
+    # Get all non-admin users in the workspace
+    users_query = (
+        select(User)
+        .where(User.workspace_id == ticket.workspace_id)
+        .where(User.is_admin == False)
+    )
+    non_admin_users = (await db.execute(users_query)).scalars().all()
+    
+    # Create notification for each non-admin user
+    for user in non_admin_users:
+        notification = Notification(
+            user_id=user.id,
+            type='email_reply',
+            message=f'📧 Email reply received on ticket #{ticket.ticket_number} from {sender_email}',
+            url=f'/web/tickets/{ticket.id}',
+            related_id=ticket.id
+        )
+        db.add(notification)
+    
+    await db.commit()
+    await db.refresh(comment)
+    
+    return comment
+
+
 async def process_email_account(db: AsyncSession, account) -> List[Ticket]:
     """
-    Process emails for an IncomingEmailAccount and create tickets
+    Process emails for an IncomingEmailAccount and create tickets or add comments to existing tickets.
     
     Uses asyncio.to_thread() for blocking IMAP operations to prevent
     blocking the event loop and slowing down the website.
+    
+    Now supports reply detection via:
+    1. In-Reply-To / References headers
+    2. Subject line pattern matching (e.g., "Re: Ticket #TKT-2025-00042")
+    3. Sender email fallback (single open ticket from same sender)
     
     Args:
         db: Database session
         account: IncomingEmailAccount with IMAP settings
         
     Returns:
-        List of created tickets
+        List of created tickets (replies to existing tickets are not included)
     """
     from app.core.database import engine
     from sqlmodel.ext.asyncio.session import AsyncSession as NewAsyncSession
@@ -987,6 +1188,13 @@ async def process_email_account(db: AsyncSession, account) -> List[Ticket]:
                     print(f"[Email Account] From: {sender_name} <{sender_email_addr}>")
                     print(f"[Email Account] Subject: {subject}")
                     
+                    # Get reply headers for threading detection
+                    in_reply_to = msg.get('In-Reply-To', '').strip()
+                    references = msg.get('References', '').strip()
+                    
+                    print(f"[Email Account] In-Reply-To: '{in_reply_to}'")
+                    print(f"[Email Account] References: '{references}'")
+                    
                     # Extract body
                     body = ''
                     if msg.is_multipart():
@@ -1000,6 +1208,53 @@ async def process_email_account(db: AsyncSession, account) -> List[Ticket]:
                         payload = msg.get_payload(decode=True)
                         if payload:
                             body = payload.decode(errors='replace')
+                    
+                    # Check if this is a reply to an existing ticket
+                    existing_ticket = await find_ticket_by_reply_for_account(
+                        fresh_db, workspace_id, in_reply_to, references
+                    )
+                    
+                    # If not found via headers, try subject line (Gmail/Outlook fallback)
+                    if not existing_ticket:
+                        print(f"[Email Account] Trying subject line fallback...")
+                        existing_ticket = await find_ticket_by_subject_for_account(
+                            fresh_db, workspace_id, subject
+                        )
+                    
+                    # If still not found, try by sender email (last resort)
+                    if not existing_ticket:
+                        print(f"[Email Account] Trying sender email fallback...")
+                        existing_ticket = await find_ticket_by_sender_for_account(
+                            fresh_db, workspace_id, sender_email_addr
+                        )
+                    
+                    if existing_ticket:
+                        print(f"[Email Account] ✅ MATCH FOUND - Adding comment to ticket #{existing_ticket.ticket_number}")
+                        
+                        # Add as comment to existing ticket
+                        await add_comment_from_email_for_account(
+                            fresh_db, existing_ticket, sender_name, sender_email_addr, body
+                        )
+                        
+                        # Mark email as processed (linked to existing ticket)
+                        processed = ProcessedMail(
+                            message_id=message_id,
+                            email_from=sender_email_addr or 'unknown@unknown.com',
+                            subject=subject,
+                            ticket_id=existing_ticket.id,
+                            workspace_id=workspace_id
+                        )
+                        fresh_db.add(processed)
+                        await fresh_db.commit()
+                        
+                        # Mark as read (run in thread)
+                        if mail:
+                            await asyncio.to_thread(mail.store, email_id, '+FLAGS', '\\Seen')
+                        
+                        print(f"[Email Account] Added comment to ticket #{existing_ticket.ticket_number} from {sender_email_addr}")
+                        continue  # Move to next email, don't create new ticket
+                    
+                    print(f"[Email Account] ❌ NO MATCH - Creating new ticket")
                     
                     # Determine priority
                     content = (subject + ' ' + body).lower()

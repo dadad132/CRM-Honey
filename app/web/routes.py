@@ -3314,7 +3314,7 @@ async def web_admin_email_settings_test(request: Request, db: AsyncSession = Dep
 
 @router.post('/admin/email-settings/check-emails')
 async def web_admin_check_emails(request: Request, db: AsyncSession = Depends(get_session)):
-    """Manually trigger email check (for testing)"""
+    """Manually trigger email check (for testing) - processes ALL email sources"""
     user_id = request.session.get('user_id')
     if not user_id:
         return JSONResponse({'success': False, 'error': 'Not authenticated'})
@@ -3324,16 +3324,41 @@ async def web_admin_check_emails(request: Request, db: AsyncSession = Depends(ge
         return JSONResponse({'success': False, 'error': 'Admin access required'})
     
     try:
-        from app.core.email_to_ticket_v2 import process_workspace_emails
+        from app.core.email_to_ticket_v2 import process_workspace_emails, process_email_account
+        from app.models.incoming_email_account import IncomingEmailAccount
         
-        # Process emails for this workspace
-        tickets = await process_workspace_emails(db, user.workspace_id)
+        all_tickets = []
+        comments_added = 0
+        
+        # 1. Process main workspace emails (legacy support)
+        try:
+            tickets = await process_workspace_emails(db, user.workspace_id)
+            all_tickets.extend(tickets)
+        except Exception as e:
+            logger.warning(f"[Email] Error processing workspace emails: {e}")
+        
+        # 2. Process ALL alternate email accounts
+        accounts_result = await db.execute(
+            select(IncomingEmailAccount).where(
+                IncomingEmailAccount.workspace_id == user.workspace_id,
+                IncomingEmailAccount.is_active == True
+            )
+        )
+        accounts = accounts_result.scalars().all()
+        
+        for account in accounts:
+            try:
+                tickets = await process_email_account(db, account)
+                all_tickets.extend(tickets)
+            except Exception as e:
+                logger.warning(f"[Email] Error processing account {account.name}: {e}")
         
         return JSONResponse({
             'success': True, 
-            'message': f'Checked emails successfully',
-            'tickets_created': len(tickets),
-            'ticket_numbers': [t.ticket_number for t in tickets]
+            'message': f'Checked emails successfully ({len(accounts)} alternate account(s))',
+            'tickets_created': len(all_tickets),
+            'ticket_numbers': [t.ticket_number for t in all_tickets],
+            'accounts_checked': len(accounts)
         })
         
     except Exception as e:
@@ -7646,9 +7671,29 @@ async def send_ticket_comment_email(ticket, content: str, user_id: int, db: Asyn
             from email.mime.text import MIMEText
             from email.mime.multipart import MIMEMultipart
             from email.utils import make_msgid
+            from app.models.processed_mail import ProcessedMail
             
             # Generate unique Message-ID for email threading
             message_id = make_msgid(domain=from_email.split('@')[1])
+            
+            # Find the original email's Message-ID for threading (In-Reply-To / References)
+            original_message_id = None
+            all_message_ids = []
+            
+            # Get all processed emails for this ticket (ordered by date) to build References chain
+            processed_emails_result = await db.execute(
+                select(ProcessedMail)
+                .where(ProcessedMail.ticket_id == ticket.id)
+                .order_by(ProcessedMail.processed_at.asc())
+            )
+            processed_emails = processed_emails_result.scalars().all()
+            
+            if processed_emails:
+                # Original email is the first one
+                original_message_id = processed_emails[0].message_id
+                # Build References list (all message IDs in the thread)
+                all_message_ids = [pe.message_id for pe in processed_emails]
+                log(f"[EMAIL] Found {len(processed_emails)} emails in thread, original: {original_message_id[:50]}...")
             
             msg = MIMEMultipart('alternative')
             msg['From'] = f"{from_name} <{from_email}>"
@@ -7656,6 +7701,16 @@ async def send_ticket_comment_email(ticket, content: str, user_id: int, db: Asyn
             msg['Subject'] = f"Re: Ticket #{ticket.ticket_number} - {ticket.subject}"
             msg['Reply-To'] = from_email
             msg['Message-ID'] = message_id
+            
+            # Add threading headers if we have the original email
+            if original_message_id:
+                # In-Reply-To: most recent email in thread (for immediate context)
+                last_message_id = all_message_ids[-1] if all_message_ids else original_message_id
+                msg['In-Reply-To'] = last_message_id
+                # References: chain of all message IDs in the thread (for full context)
+                msg['References'] = ' '.join(all_message_ids)
+                log(f"[EMAIL] Added In-Reply-To: {last_message_id[:50]}...")
+                log(f"[EMAIL] Added References with {len(all_message_ids)} message IDs")
             
             # Build email body
             commenter_name = user.full_name or user.username if user else "Support Team"
