@@ -192,7 +192,11 @@
                             <div class="flex items-start justify-between mb-2">
                                 <div class="flex items-center gap-2">
                                     <span class="font-semibold text-gray-900">
-                                        {{ comment_authors[comment.user_id].full_name or comment_authors[comment.user_id].username }}
+                                        {% if comment.user_id and comment_authors.get(comment.user_id) %}
+                                            {{ comment_authors[comment.user_id].full_name or comment_authors[comment.user_id].username }}
+                                        {% else %}
+                                            <i class="fas fa-envelope mr-1 text-blue-500"></i>Email Reply
+                                        {% endif %}
                                     </span>
                                     {% if comment.is_internal %}
                                         <span class="px-2 py-0.5 text-xs font-semibold rounded bg-yellow-200 text-yellow-800">
