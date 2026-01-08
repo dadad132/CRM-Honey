@@ -69,11 +69,12 @@ class TicketAttachment(SQLModel, table=True):
     """File attachments for tickets"""
     id: Optional[int] = Field(default=None, primary_key=True)
     ticket_id: int = Field(foreign_key="ticket.id", ondelete="CASCADE", index=True)
+    comment_id: Optional[int] = Field(default=None, foreign_key="ticketcomment.id", ondelete="CASCADE", index=True)  # Link to specific comment if attached via comment
     filename: str
     file_path: str
     file_size: int  # in bytes
     mime_type: Optional[str] = None
-    uploaded_by_id: int = Field(foreign_key="user.id")
+    uploaded_by_id: Optional[int] = Field(default=None, foreign_key="user.id")  # Optional for guest uploads
     uploaded_at: datetime = Field(default_factory=datetime.utcnow)
 
 

@@ -7057,15 +7057,18 @@ async def web_tickets_guest_submit(
     guest_branch: Optional[str] = Form(None),
     subject: str = Form(...),
     description: str = Form(...),
+    files: list[UploadFile] = File(default=[]),
     db: AsyncSession = Depends(get_session)
 ):
-    """Handle guest ticket submission"""
-    from app.models.ticket import Ticket, TicketHistory
+    """Handle guest ticket submission with optional file attachments"""
+    from app.models.ticket import Ticket, TicketHistory, TicketAttachment
     from app.models.email_settings import EmailSettings
     from datetime import datetime
     import smtplib
     from email.mime.text import MIMEText
     from email.mime.multipart import MIMEMultipart
+    import uuid
+    import os
     
     try:
         # Use workspace 1 as default for guest tickets
@@ -7104,12 +7107,52 @@ async def web_tickets_guest_submit(
         db.add(ticket)
         await db.flush()
         
+        # Handle file attachments
+        attachment_count = 0
+        if files:
+            # Create uploads directory if it doesn't exist
+            upload_dir = BASE_DIR / 'uploads' / 'tickets'
+            upload_dir.mkdir(parents=True, exist_ok=True)
+            
+            for file in files:
+                if file.filename:  # Only process if file was actually uploaded
+                    # Read file content
+                    file_content = await file.read()
+                    
+                    # Validate file size (max 10MB)
+                    if len(file_content) > 10 * 1024 * 1024:
+                        continue  # Skip files that are too large
+                    
+                    # Generate unique filename
+                    file_extension = os.path.splitext(file.filename)[1]
+                    unique_filename = f"{uuid.uuid4()}{file_extension}"
+                    file_path = upload_dir / unique_filename
+                    
+                    # Save file to disk
+                    with open(file_path, 'wb') as f:
+                        f.write(file_content)
+                    
+                    # Store relative path from app directory
+                    relative_path = f"app/uploads/tickets/{unique_filename}"
+                    
+                    # Create attachment record
+                    attachment = TicketAttachment(
+                        ticket_id=ticket.id,
+                        filename=file.filename,
+                        file_path=relative_path,
+                        file_size=len(file_content),
+                        mime_type=file.content_type or 'application/octet-stream',
+                        uploaded_by_id=None  # Guest upload
+                    )
+                    db.add(attachment)
+                    attachment_count += 1
+        
         # Create history entry
         history = TicketHistory(
             ticket_id=ticket.id,
             user_id=None,
             action='created',
-            new_value=f'Guest ticket created from {guest_email}'
+            new_value=f'Guest ticket created from {guest_email}' + (f' with {attachment_count} attachment(s)' if attachment_count > 0 else '')
         )
         db.add(history)
         
@@ -7461,14 +7504,17 @@ async def web_tickets_add_comment(
     ticket_id: int,
     content: str = Form(...),
     is_internal: bool = Form(False),
+    files: list[UploadFile] = File(default=[]),
     background_tasks: BackgroundTasks = BackgroundTasks(),
     db: AsyncSession = Depends(get_session)
 ):
-    """Add comment to ticket"""
+    """Add comment to ticket with optional file attachments"""
     from fastapi import BackgroundTasks
     import logging
     from datetime import datetime
     from pathlib import Path
+    import uuid
+    import os
     
     logger = logging.getLogger(__name__)
     logger.warning(f"🔔 COMMENT: Received comment for ticket {ticket_id}, is_internal={is_internal}")
@@ -7568,6 +7614,51 @@ Thank you.
         is_internal=is_internal
     )
     db.add(comment)
+    await db.flush()  # Get comment.id for attachments
+    
+    # Handle file attachments
+    from app.models.ticket import TicketAttachment
+    attachment_count = 0
+    if files:
+        # Create uploads directory if it doesn't exist
+        upload_dir = BASE_DIR / 'uploads' / 'tickets'
+        upload_dir.mkdir(parents=True, exist_ok=True)
+        
+        for file in files:
+            if file.filename:  # Only process if file was actually uploaded
+                # Read file content
+                file_content = await file.read()
+                
+                # Validate file size (max 10MB)
+                if len(file_content) > 10 * 1024 * 1024:
+                    write_log(f"⚠️ File {file.filename} is too large, skipping")
+                    continue
+                
+                # Generate unique filename
+                file_extension = os.path.splitext(file.filename)[1]
+                unique_filename = f"{uuid.uuid4()}{file_extension}"
+                file_path = upload_dir / unique_filename
+                
+                # Save file to disk
+                with open(file_path, 'wb') as f:
+                    f.write(file_content)
+                
+                # Store relative path from app directory
+                relative_path = f"app/uploads/tickets/{unique_filename}"
+                
+                # Create attachment record
+                attachment = TicketAttachment(
+                    ticket_id=ticket_id,
+                    comment_id=comment.id,
+                    filename=file.filename,
+                    file_path=relative_path,
+                    file_size=len(file_content),
+                    mime_type=file.content_type or 'application/octet-stream',
+                    uploaded_by_id=user_id
+                )
+                db.add(attachment)
+                attachment_count += 1
+                write_log(f"✓ Attachment saved: {file.filename} ({len(file_content)} bytes)")
     
     # Update ticket timestamp
     from datetime import datetime
@@ -7578,14 +7669,14 @@ Thank you.
         ticket_id=ticket_id,
         user_id=user_id,
         action='commented',
-        new_value='Added a comment'
+        new_value=f'Added a comment' + (f' with {attachment_count} attachment(s)' if attachment_count > 0 else '')
     )
     db.add(history)
     
     await db.commit()
     await db.refresh(comment)
     
-    write_log(f"✓ Comment added successfully, ID={comment.id}")
+    write_log(f"✓ Comment added successfully, ID={comment.id}, attachments={attachment_count}")
     
     # Send email notification to client in background (if not internal comment)
     write_log(f"📧 EMAIL CHECK: is_internal={is_internal}, guest_email='{ticket.guest_email}', is_guest={ticket.is_guest}")
@@ -8006,6 +8097,109 @@ async def web_tickets_assign(
     
     await db.commit()
     return RedirectResponse(f'/web/tickets/{ticket_id}', status_code=303)
+
+
+@router.get('/tickets/attachments/{attachment_id}/download')
+async def web_ticket_attachment_download(
+    request: Request,
+    attachment_id: int,
+    db: AsyncSession = Depends(get_session)
+):
+    """Download a ticket attachment"""
+    user_id = request.session.get('user_id')
+    if not user_id:
+        return RedirectResponse('/web/login', status_code=303)
+    
+    user = (await db.execute(select(User).where(User.id == user_id))).scalar_one_or_none()
+    if not user:
+        request.session.clear()
+        return RedirectResponse('/web/login', status_code=303)
+    
+    from app.models.ticket import TicketAttachment, Ticket
+    
+    # Get attachment
+    attachment = (await db.execute(
+        select(TicketAttachment).where(TicketAttachment.id == attachment_id)
+    )).scalar_one_or_none()
+    
+    if not attachment:
+        raise HTTPException(status_code=404, detail="Attachment not found")
+    
+    # Verify user has access to this ticket's workspace
+    ticket = (await db.execute(
+        select(Ticket).where(
+            Ticket.id == attachment.ticket_id,
+            Ticket.workspace_id == user.workspace_id
+        )
+    )).scalar_one_or_none()
+    
+    if not ticket:
+        raise HTTPException(status_code=403, detail="Access denied")
+    
+    # Build file path
+    file_path = BASE_DIR.parent / attachment.file_path if attachment.file_path.startswith('app/') else BASE_DIR / attachment.file_path
+    
+    if not file_path.exists():
+        raise HTTPException(status_code=404, detail="File not found on disk")
+    
+    return FileResponse(
+        path=str(file_path),
+        filename=attachment.filename,
+        media_type=attachment.mime_type or 'application/octet-stream'
+    )
+
+
+@router.get('/tickets/attachments/{attachment_id}/preview')
+async def web_ticket_attachment_preview(
+    request: Request,
+    attachment_id: int,
+    db: AsyncSession = Depends(get_session)
+):
+    """Preview a ticket attachment (images only)"""
+    user_id = request.session.get('user_id')
+    if not user_id:
+        return RedirectResponse('/web/login', status_code=303)
+    
+    user = (await db.execute(select(User).where(User.id == user_id))).scalar_one_or_none()
+    if not user:
+        request.session.clear()
+        return RedirectResponse('/web/login', status_code=303)
+    
+    from app.models.ticket import TicketAttachment, Ticket
+    
+    # Get attachment
+    attachment = (await db.execute(
+        select(TicketAttachment).where(TicketAttachment.id == attachment_id)
+    )).scalar_one_or_none()
+    
+    if not attachment:
+        raise HTTPException(status_code=404, detail="Attachment not found")
+    
+    # Verify user has access to this ticket's workspace
+    ticket = (await db.execute(
+        select(Ticket).where(
+            Ticket.id == attachment.ticket_id,
+            Ticket.workspace_id == user.workspace_id
+        )
+    )).scalar_one_or_none()
+    
+    if not ticket:
+        raise HTTPException(status_code=403, detail="Access denied")
+    
+    # Only allow preview for images
+    if not attachment.mime_type or not attachment.mime_type.startswith('image/'):
+        raise HTTPException(status_code=400, detail="Preview only available for images")
+    
+    # Build file path
+    file_path = BASE_DIR.parent / attachment.file_path if attachment.file_path.startswith('app/') else BASE_DIR / attachment.file_path
+    
+    if not file_path.exists():
+        raise HTTPException(status_code=404, detail="File not found on disk")
+    
+    return FileResponse(
+        path=str(file_path),
+        media_type=attachment.mime_type
+    )
 
 
 @router.post('/tickets/process-emails')

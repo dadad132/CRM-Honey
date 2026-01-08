@@ -138,7 +138,7 @@
 
             <!-- Submit Ticket Form -->
             <div id="submit-form" class="bg-white rounded-xl shadow-xl overflow-hidden border border-slate-200">
-                <form method="post" action="/web/tickets/guest" class="p-8" autocomplete="off">
+                <form method="post" action="/web/tickets/guest" class="p-8" autocomplete="off" enctype="multipart/form-data">
                     <!-- Personal Information -->
                     <div class="mb-8">
                         <h2 class="text-xl font-semibold text-gray-900 mb-4 flex items-center">
@@ -250,6 +250,25 @@
                             <p class="text-sm text-gray-500 mt-1">
                                 <i class="fas fa-info-circle mr-1"></i>
                                 Include any error messages, screenshots descriptions, or steps to reproduce the issue.
+                            </p>
+                        </div>
+                        
+                        <!-- File Attachments -->
+                        <div class="mt-4">
+                            <label class="block text-sm font-medium text-gray-700 mb-1">
+                                <i class="fas fa-paperclip mr-1"></i>Attachments (optional)
+                            </label>
+                            <input type="file" name="files" multiple
+                                   accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.txt,.zip,.rar"
+                                   class="block w-full text-sm text-gray-500
+                                          file:mr-4 file:py-2 file:px-4
+                                          file:rounded-lg file:border-0
+                                          file:text-sm file:font-semibold
+                                          file:bg-blue-50 file:text-blue-700
+                                          hover:file:bg-blue-100">
+                            <p class="text-sm text-gray-500 mt-1">
+                                <i class="fas fa-info-circle mr-1"></i>
+                                You can attach screenshots, error logs, or any files that help explain your issue (max 10MB each)
                             </p>
                         </div>
                     </div>
