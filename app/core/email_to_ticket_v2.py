@@ -1059,8 +1059,12 @@ async def process_email_account(db: AsyncSession, account) -> List[Ticket]:
         import imaplib
         import poplib
         import email as email_lib
+        import socket
         from email.header import decode_header
         from email.utils import parseaddr
+        
+        # Set socket timeout to prevent hanging
+        socket.setdefaulttimeout(30)  # 30 second timeout
         
         # Run blocking mail operations in thread pool
         def connect_and_fetch():

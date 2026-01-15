@@ -3684,8 +3684,8 @@ async def web_admin_email_settings_test(request: Request, db: AsyncSession = Dep
 
 
 @router.post('/admin/email-settings/check-emails')
-async def web_admin_check_emails(request: Request, db: AsyncSession = Depends(get_session)):
-    """Manually trigger email check (for testing) - processes ALL email sources"""
+async def web_admin_check_emails(request: Request, background_tasks: BackgroundTasks, db: AsyncSession = Depends(get_session)):
+    """Manually trigger email check (for testing) - runs in background to not block website"""
     user_id = request.session.get('user_id')
     if not user_id:
         return JSONResponse({'success': False, 'error': 'Not authenticated'})
@@ -3694,60 +3694,55 @@ async def web_admin_check_emails(request: Request, db: AsyncSession = Depends(ge
     if not user or not user.is_admin:
         return JSONResponse({'success': False, 'error': 'Admin access required'})
     
-    try:
+    workspace_id = user.workspace_id
+    
+    # Run email check in background so we don't block the website
+    async def check_emails_background():
+        """Background task to check emails"""
+        from app.core.database import async_session_factory
         from app.core.email_to_ticket_v2 import process_workspace_emails, process_email_account
         from app.models.incoming_email_account import IncomingEmailAccount
         
-        all_tickets = []
-        errors = []
-        account_results = []
-        
-        # 1. Process main workspace emails (legacy support)
-        try:
-            logger.info(f"[Email Check] Processing legacy workspace emails for workspace {user.workspace_id}")
-            tickets = await process_workspace_emails(db, user.workspace_id)
-            all_tickets.extend(tickets)
-            account_results.append({'name': 'Legacy Email Settings', 'tickets': len(tickets), 'status': 'ok'})
-        except Exception as e:
-            error_msg = f"Legacy email error: {str(e)}"
-            logger.warning(f"[Email] {error_msg}")
-            errors.append(error_msg)
-            account_results.append({'name': 'Legacy Email Settings', 'tickets': 0, 'status': 'error', 'error': str(e)})
-        
-        # 2. Process ALL alternate email accounts
-        accounts_result = await db.execute(
-            select(IncomingEmailAccount).where(
-                IncomingEmailAccount.workspace_id == user.workspace_id,
-                IncomingEmailAccount.is_active == True
-            )
-        )
-        accounts = accounts_result.scalars().all()
-        
-        logger.info(f"[Email Check] Found {len(accounts)} active incoming email account(s)")
-        
-        for account in accounts:
+        async with async_session_factory() as db:
             try:
-                logger.info(f"[Email Check] Processing account: {account.name} ({account.email_address})")
-                tickets = await process_email_account(db, account)
-                all_tickets.extend(tickets)
-                account_results.append({'name': account.name, 'email': account.email_address, 'tickets': len(tickets), 'status': 'ok'})
+                # 1. Process legacy workspace emails
+                try:
+                    logger.info(f"[Email Check BG] Processing legacy workspace emails for workspace {workspace_id}")
+                    await process_workspace_emails(db, workspace_id)
+                except Exception as e:
+                    logger.warning(f"[Email Check BG] Legacy email error: {e}")
+                
+                # 2. Process all alternate email accounts
+                accounts_result = await db.execute(
+                    select(IncomingEmailAccount).where(
+                        IncomingEmailAccount.workspace_id == workspace_id,
+                        IncomingEmailAccount.is_active == True
+                    )
+                )
+                accounts = accounts_result.scalars().all()
+                
+                logger.info(f"[Email Check BG] Found {len(accounts)} active email accounts")
+                
+                for account in accounts:
+                    try:
+                        logger.info(f"[Email Check BG] Processing: {account.name}")
+                        await process_email_account(db, account)
+                    except Exception as e:
+                        logger.warning(f"[Email Check BG] Error processing {account.name}: {e}")
+                
+                logger.info(f"[Email Check BG] ✅ Email check complete")
             except Exception as e:
-                error_msg = f"Account {account.name}: {str(e)}"
-                logger.warning(f"[Email] {error_msg}")
-                import traceback
-                logger.warning(f"[Email] Traceback: {traceback.format_exc()}")
-                errors.append(error_msg)
-                account_results.append({'name': account.name, 'email': account.email_address, 'tickets': 0, 'status': 'error', 'error': str(e)})
-        
-        return JSONResponse({
-            'success': True, 
-            'message': f'Checked {len(accounts)} email account(s)',
-            'tickets_created': len(all_tickets),
-            'ticket_numbers': [t.ticket_number for t in all_tickets],
-            'accounts_checked': len(accounts),
-            'account_results': account_results,
-            'errors': errors
-        })
+                logger.error(f"[Email Check BG] ❌ Error: {e}")
+    
+    # Start background task
+    import asyncio
+    asyncio.create_task(check_emails_background())
+    
+    return JSONResponse({
+        'success': True, 
+        'message': '📧 Email check started in background. Check tickets page in a few seconds.',
+        'background': True
+    })
         
     except Exception as e:
         import traceback
