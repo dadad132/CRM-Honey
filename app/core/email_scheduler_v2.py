@@ -4,6 +4,7 @@ Uses database settings for each workspace - supports multiple email accounts
 """
 
 import asyncio
+import traceback
 from datetime import datetime
 from sqlmodel.ext.asyncio.session import AsyncSession
 from sqlmodel import select
@@ -36,6 +37,9 @@ class EmailScheduler:
         
         while self.running:
             try:
+                timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+                print(f"[{timestamp}] [Email-to-Ticket] Checking emails...")
+                
                 # Process legacy workspace email settings (single account)
                 workspace_ids = []
                 
@@ -46,6 +50,8 @@ class EmailScheduler:
                     )
                     workspace_ids = [row[0] for row in result.all()]
                 
+                print(f"[Email-to-Ticket] Found {len(workspace_ids)} workspaces with legacy email settings")
+                
                 # Process legacy workspaces sequentially
                 for ws_id in workspace_ids:
                     await self._process_workspace(ws_id)
@@ -53,11 +59,18 @@ class EmailScheduler:
                 # Process new multi-account email settings
                 await self._process_email_accounts()
                 
+                print(f"[{timestamp}] [Email-to-Ticket] Check complete. Next check in {self.check_interval}s")
+                
                 # Wait for next check
                 await asyncio.sleep(self.check_interval)
                 
+            except asyncio.CancelledError:
+                print("[Email-to-Ticket] Task cancelled")
+                raise
             except Exception as e:
                 print(f"[Email-to-Ticket] Error in background task: {e}")
+                print(f"[Email-to-Ticket] Traceback: {traceback.format_exc()}")
+                await asyncio.sleep(self.check_interval)
                 await asyncio.sleep(self.check_interval)
     
     async def _process_workspace(self, workspace_id: int):
@@ -110,7 +123,21 @@ class EmailScheduler:
         
         self.running = True
         self.task = asyncio.create_task(self.check_emails_task())
+        # Add exception handler to log if task crashes
+        self.task.add_done_callback(self._task_done_callback)
         print("[Email-to-Ticket] Scheduler started successfully")
+    
+    def _task_done_callback(self, task):
+        """Handle task completion/failure"""
+        try:
+            exception = task.exception()
+            if exception:
+                print(f"[Email-to-Ticket] ❌ Background task crashed: {exception}")
+                print(f"[Email-to-Ticket] Traceback: {traceback.format_exception(type(exception), exception, exception.__traceback__)}")
+        except asyncio.CancelledError:
+            print("[Email-to-Ticket] Task was cancelled")
+        except asyncio.InvalidStateError:
+            pass  # Task not done yet
     
     async def stop(self):
         """Stop the scheduler"""
