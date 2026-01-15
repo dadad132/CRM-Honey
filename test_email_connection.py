@@ -22,10 +22,14 @@ def test_email_system():
     tables = [t[0] for t in cursor.fetchall()]
     
     has_emailsettings = 'emailsettings' in tables
-    has_incoming_account = 'incoming_email_account' in tables
+    # Check for both possible table names (with and without underscores)
+    has_incoming_account = 'incoming_email_account' in tables or 'incomingemailaccount' in tables
+    incoming_table_name = 'incoming_email_account' if 'incoming_email_account' in tables else 'incomingemailaccount' if 'incomingemailaccount' in tables else None
     
     print(f"   emailsettings table: {'✅ EXISTS' if has_emailsettings else '❌ MISSING'}")
     print(f"   incoming_email_account table: {'✅ EXISTS' if has_incoming_account else '❌ MISSING'}")
+    if incoming_table_name:
+        print(f"      (actual table name: {incoming_table_name})")
     
     # 2. Check legacy email settings
     print("\n[2] LEGACY EMAIL SETTINGS (emailsettings table)...")
@@ -93,10 +97,10 @@ def test_email_system():
     # 3. Check incoming email accounts
     print("\n[3] INCOMING EMAIL ACCOUNTS (incoming_email_account table)...")
     if has_incoming_account:
-        cursor.execute("""
+        cursor.execute(f"""
             SELECT id, name, email_address, imap_host, imap_port, 
                    imap_username, imap_password, imap_use_ssl, is_active, workspace_id
-            FROM incoming_email_account
+            FROM {incoming_table_name}
         """)
         accounts = cursor.fetchall()
         if accounts:
