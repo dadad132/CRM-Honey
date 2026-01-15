@@ -2864,15 +2864,33 @@ async def web_admin_user_activity_view(
         })
     
     for comment in comments[:10]:
+        # comment[4] may be string or datetime from raw SQL
+        comment_date = comment[4]
+        if isinstance(comment_date, str):
+            try:
+                comment_date = datetime.fromisoformat(comment_date.replace('Z', '+00:00'))
+            except:
+                comment_date = None
         recent_activity.append({
             'type': 'comment',
             'description': f'Commented on task #{comment[1]}',
             'detail': (comment[3] or '')[:60],
-            'created_at': comment[4],
+            'created_at': comment_date,
         })
     
-    # Sort by date
-    recent_activity.sort(key=lambda x: x['created_at'] if x['created_at'] else datetime.min, reverse=True)
+    # Sort by date - ensure all values are datetime
+    def get_sort_date(x):
+        dt = x['created_at']
+        if dt is None:
+            return datetime.min
+        if isinstance(dt, str):
+            try:
+                return datetime.fromisoformat(dt.replace('Z', '+00:00'))
+            except:
+                return datetime.min
+        return dt
+    
+    recent_activity.sort(key=get_sort_date, reverse=True)
     
     # Prepare summary data
     summary = {
