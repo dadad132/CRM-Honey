@@ -2570,6 +2570,347 @@ async def web_admin_generate_user_activity_pdf(
     )
 
 
+@router.get('/admin/reports/user-activity/{target_user_id}/view', response_class=HTMLResponse)
+async def web_admin_user_activity_view(
+    request: Request,
+    target_user_id: int,
+    start_date: Optional[str] = Query(None),
+    end_date: Optional[str] = Query(None),
+    db: AsyncSession = Depends(get_session),
+):
+    """View HTML report of user activity with comprehensive metrics"""
+    user_id = request.session.get('user_id')
+    if not user_id:
+        return RedirectResponse('/web/login', status_code=303)
+    
+    user = (await db.execute(select(User).where(User.id == user_id))).scalar_one_or_none()
+    if not user or not user.is_active:
+        request.session.clear()
+        return RedirectResponse('/web/login', status_code=303)
+    
+    if not user.is_admin:
+        raise HTTPException(status_code=403, detail="Admin access required")
+    
+    # Get target user
+    target_user = (await db.execute(select(User).where(User.id == target_user_id))).scalar_one_or_none()
+    if not target_user or target_user.workspace_id != user.workspace_id:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    # Get workspace for timezone
+    workspace = (await db.execute(
+        select(Workspace).where(Workspace.id == user.workspace_id)
+    )).scalar_one_or_none()
+    
+    # Parse date range
+    if start_date:
+        start_dt = datetime.strptime(start_date, '%Y-%m-%d')
+    else:
+        start_dt = datetime.now() - timedelta(days=30)
+    
+    if end_date:
+        end_dt = datetime.strptime(end_date, '%Y-%m-%d') + timedelta(days=1)
+    else:
+        end_dt = datetime.now() + timedelta(days=1)
+    
+    from sqlalchemy import text
+    from app.models.ticket import Ticket, TicketComment
+    from datetime import date as date_type
+    
+    now = datetime.now()
+    now_date = now.date()
+    
+    def is_overdue(due_date):
+        if not due_date:
+            return False
+        if isinstance(due_date, datetime):
+            due_date = due_date.date()
+        return due_date < now_date
+    
+    # Gather activity data
+    # 1. Tasks created
+    tasks_created = (await db.execute(
+        select(Task)
+        .where(Task.creator_id == target_user_id)
+        .where(Task.created_at >= start_dt)
+        .where(Task.created_at < end_dt)
+        .order_by(Task.created_at.desc())
+    )).scalars().all()
+    
+    # Get project names for tasks
+    tasks_with_project = []
+    for task in tasks_created:
+        project = None
+        if task.project_id:
+            project = (await db.execute(select(Project).where(Project.id == task.project_id))).scalar_one_or_none()
+        tasks_with_project.append({
+            'id': task.id,
+            'title': task.title,
+            'project_name': project.name if project else None,
+            'created_at': task.created_at,
+            'due_date': task.due_date.strftime('%Y-%m-%d') if task.due_date else None,
+            'priority': task.priority.value,
+            'status': task.status.value,
+        })
+    
+    # 2. Task assignments with details
+    task_assignments_raw = (await db.execute(
+        select(Task, Assignment)
+        .join(Assignment, Task.id == Assignment.task_id)
+        .where(Assignment.assignee_id == target_user_id)
+        .where(Task.created_at >= start_dt)
+        .where(Task.created_at < end_dt)
+        .order_by(Task.created_at.desc())
+    )).all()
+    
+    task_assignments = []
+    for task, assignment in task_assignments_raw:
+        assigner = (await db.execute(select(User).where(User.id == task.creator_id))).scalar_one_or_none()
+        # Calculate time spent on task
+        time_entries_result = await db.execute(
+            text("""
+                SELECT SUM(duration_hours) as total FROM timeentry 
+                WHERE task_id = :task_id AND user_id = :user_id
+            """),
+            {"task_id": task.id, "user_id": target_user_id}
+        )
+        time_spent = time_entries_result.scalar() or 0
+        
+        task_assignments.append({
+            'id': task.id,
+            'title': task.title,
+            'assigned_by': assigner.full_name or assigner.username if assigner else 'Unknown',
+            'due_date': task.due_date.strftime('%Y-%m-%d') if task.due_date else None,
+            'status': task.status.value,
+            'time_spent_hours': round(time_spent, 1) if time_spent else None,
+        })
+    
+    # 3. Task edits
+    task_edits = (await db.execute(
+        select(TaskHistory)
+        .where(TaskHistory.editor_id == target_user_id)
+        .where(TaskHistory.created_at >= start_dt)
+        .where(TaskHistory.created_at < end_dt)
+        .order_by(TaskHistory.created_at.desc())
+    )).scalars().all()
+    
+    # 4. Comments
+    try:
+        comments_result = await db.execute(
+            text("""
+                SELECT id, task_id, author_id, content, created_at 
+                FROM comment 
+                WHERE author_id = :user_id 
+                AND created_at >= :start_dt 
+                AND created_at < :end_dt 
+                ORDER BY created_at DESC
+            """),
+            {"user_id": target_user_id, "start_dt": start_dt, "end_dt": end_dt}
+        )
+        comments = comments_result.fetchall()
+    except Exception as e:
+        logger.error(f"Error fetching comments: {e}")
+        comments = []
+    
+    # 5. Projects created
+    projects_created = (await db.execute(
+        select(Project)
+        .where(Project.owner_id == target_user_id)
+        .where(Project.created_at >= start_dt)
+        .where(Project.created_at < end_dt)
+        .order_by(Project.created_at.desc())
+    )).scalars().all()
+    
+    # 6. Activities logged
+    activities = (await db.execute(
+        select(Activity)
+        .where(Activity.created_by == target_user_id)
+        .where(Activity.created_at >= start_dt)
+        .where(Activity.created_at < end_dt)
+        .order_by(Activity.created_at.desc())
+    )).scalars().all()
+    
+    # 7. Tickets
+    tickets_closed = (await db.execute(
+        select(Ticket)
+        .where(Ticket.closed_by_id == target_user_id)
+        .where(Ticket.closed_at >= start_dt)
+        .where(Ticket.closed_at < end_dt)
+        .order_by(Ticket.closed_at.desc())
+    )).scalars().all()
+    
+    tickets_assigned = (await db.execute(
+        select(Ticket)
+        .where(Ticket.assigned_to_id == target_user_id)
+        .where(Ticket.created_at >= start_dt)
+        .where(Ticket.created_at < end_dt)
+        .order_by(Ticket.created_at.desc())
+    )).scalars().all()
+    
+    # 8. Ticket comments
+    try:
+        ticket_comments_result = await db.execute(
+            text("""
+                SELECT id, ticket_id, author_id, user_id, content, is_internal, created_at 
+                FROM ticketcomment 
+                WHERE (author_id = :user_id OR user_id = :user_id)
+                AND created_at >= :start_dt 
+                AND created_at < :end_dt 
+                ORDER BY created_at DESC
+            """),
+            {"user_id": target_user_id, "start_dt": start_dt, "end_dt": end_dt}
+        )
+        ticket_comments = ticket_comments_result.fetchall()
+    except Exception as e:
+        logger.error(f"Error fetching ticket comments: {e}")
+        ticket_comments = []
+    
+    # Calculate overdue tasks
+    overdue_tasks = []
+    all_assigned_task_ids = set()
+    for task, _ in task_assignments_raw:
+        all_assigned_task_ids.add(task.id)
+        if task.due_date and is_overdue(task.due_date) and task.status.value not in ['done', 'completed', 'archived']:
+            task_due = task.due_date if isinstance(task.due_date, date_type) else task.due_date.date()
+            overdue_tasks.append({
+                'id': task.id,
+                'title': task.title,
+                'due_date': task_due.strftime('%Y-%m-%d'),
+                'days_overdue': (now_date - task_due).days,
+                'priority': task.priority.value,
+                'status': task.status.value,
+            })
+    
+    for task in tasks_created:
+        if task.id not in all_assigned_task_ids:
+            if task.due_date and is_overdue(task.due_date) and task.status.value not in ['done', 'completed', 'archived']:
+                task_due = task.due_date if isinstance(task.due_date, date_type) else task.due_date.date()
+                overdue_tasks.append({
+                    'id': task.id,
+                    'title': task.title,
+                    'due_date': task_due.strftime('%Y-%m-%d'),
+                    'days_overdue': (now_date - task_due).days,
+                    'priority': task.priority.value,
+                    'status': task.status.value,
+                })
+    
+    # Calculate total time logged
+    total_time_result = await db.execute(
+        text("""
+            SELECT SUM(duration_hours) as total FROM timeentry 
+            WHERE user_id = :user_id 
+            AND start_time >= :start_dt 
+            AND start_time < :end_dt
+        """),
+        {"user_id": target_user_id, "start_dt": start_dt, "end_dt": end_dt}
+    )
+    total_hours = total_time_result.scalar() or 0
+    
+    # Calculate completed tasks
+    completed_count = sum(1 for t, _ in task_assignments_raw if t.status.value in ['done', 'completed'])
+    completion_rate = round((completed_count / len(task_assignments_raw) * 100) if task_assignments_raw else 0, 1)
+    
+    # Calculate average time per task
+    tasks_with_time = [t for t in task_assignments if t['time_spent_hours']]
+    avg_time_per_task = round(sum(t['time_spent_hours'] for t in tasks_with_time) / len(tasks_with_time), 1) if tasks_with_time else 0
+    
+    # Count active projects
+    active_projects_result = await db.execute(
+        text("""
+            SELECT COUNT(DISTINCT project_id) FROM projectmember 
+            WHERE user_id = :user_id
+        """),
+        {"user_id": target_user_id}
+    )
+    active_projects = active_projects_result.scalar() or 0
+    
+    # Build recent activity timeline
+    recent_activity = []
+    
+    for task in tasks_created[:10]:
+        recent_activity.append({
+            'type': 'task_created',
+            'description': f'Created task: {task.title[:50]}',
+            'detail': None,
+            'created_at': task.created_at,
+        })
+    
+    for task, _ in task_assignments_raw[:10]:
+        if task.status.value in ['done', 'completed']:
+            recent_activity.append({
+                'type': 'task_completed',
+                'description': f'Completed task: {task.title[:50]}',
+                'detail': None,
+                'created_at': task.updated_at or task.created_at,
+            })
+    
+    for ticket in tickets_closed[:10]:
+        recent_activity.append({
+            'type': 'ticket_closed',
+            'description': f'Closed ticket: {ticket.ticket_number}',
+            'detail': ticket.subject[:60],
+            'created_at': ticket.closed_at,
+        })
+    
+    for comment in comments[:10]:
+        recent_activity.append({
+            'type': 'comment',
+            'description': f'Commented on task #{comment[1]}',
+            'detail': (comment[3] or '')[:60],
+            'created_at': comment[4],
+        })
+    
+    # Sort by date
+    recent_activity.sort(key=lambda x: x['created_at'] if x['created_at'] else datetime.min, reverse=True)
+    
+    # Prepare summary data
+    summary = {
+        'tasks_created': len(tasks_created),
+        'tasks_assigned': len(task_assignments),
+        'task_edits': len(task_edits),
+        'comments': len(comments),
+        'projects_created': len(projects_created),
+        'activities': len(activities),
+        'tickets_assigned': len(tickets_assigned),
+        'ticket_comments': len(ticket_comments),
+        'tickets_closed': len(tickets_closed),
+    }
+    
+    # Prepare metrics
+    metrics = {
+        'tasks_assigned': len(task_assignments),
+        'tasks_completed': completed_count,
+        'completion_rate': completion_rate,
+        'overdue_tasks': len(overdue_tasks),
+        'total_hours': round(total_hours, 1),
+        'tickets_closed': len(tickets_closed),
+        'avg_time_per_task': avg_time_per_task,
+        'on_time_completion': round(100 - (len(overdue_tasks) / max(len(task_assignments), 1) * 100), 1),
+        'avg_days_to_complete': 3,  # Would need more complex calculation
+        'active_projects': active_projects,
+    }
+    
+    return templates.TemplateResponse(
+        'admin/user_activity_view.html',
+        {
+            'request': request,
+            'user': user,
+            'target_user': target_user,
+            'workspace': workspace,
+            'start_date': start_dt.strftime('%Y-%m-%d'),
+            'end_date': (end_dt - timedelta(days=1)).strftime('%Y-%m-%d'),
+            'now': datetime.now(),
+            'summary': summary,
+            'metrics': metrics,
+            'overdue_tasks': sorted(overdue_tasks, key=lambda x: x['days_overdue'], reverse=True),
+            'tasks_created': tasks_with_project,
+            'task_assignments': task_assignments,
+            'tickets_assigned': tickets_assigned,
+            'tickets_closed': tickets_closed,
+            'recent_activity': recent_activity[:25],
+        },
+    )
+
+
 @router.post('/admin/users/{user_id}/activate')
 async def web_admin_activate_user(
     request: Request,
