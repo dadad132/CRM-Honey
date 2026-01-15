@@ -1,6 +1,7 @@
 from fastapi import FastAPI, Request, Depends, HTTPException
 # restart trigger: updated timestamp
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.templating import Jinja2Templates
 from fastapi.staticfiles import StaticFiles
@@ -30,6 +31,9 @@ app = FastAPI(
     openapi_url=None
 )
 
+# GZip compression for faster page loads (compresses responses > 500 bytes)
+app.add_middleware(GZipMiddleware, minimum_size=500)
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origins,
@@ -45,7 +49,6 @@ from starlette.middleware.base import BaseHTTPMiddleware
 class WorkspaceMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
         # Add workspace to request state for templates
-        print(f"[DEBUG] WorkspaceMiddleware called for: {request.url.path}")
         user_id = None
         
         # Safely check for session - MUST check in request.scope, not hasattr
@@ -53,11 +56,7 @@ class WorkspaceMiddleware(BaseHTTPMiddleware):
             # SessionMiddleware stores session in request.scope, not as attribute
             if "session" in request.scope:
                 user_id = request.scope["session"].get('user_id')
-                print(f"[DEBUG] Found user_id in session: {user_id}")
-            else:
-                print(f"[DEBUG] No session in request.scope")
-        except Exception as e:
-            print(f"[DEBUG] Session access error: {e}")
+        except Exception:
             pass
         
         if user_id:
@@ -78,24 +77,27 @@ class WorkspaceMiddleware(BaseHTTPMiddleware):
                         
                         if workspace:
                             request.state.workspace = workspace
-                            print(f"[DEBUG] Workspace SET: name={workspace.name}, logo={workspace.logo_url}, title={workspace.site_title}")
-                        else:
-                            print(f"[DEBUG] No workspace found for workspace_id={user.workspace_id}")
                         break
-                    else:
-                        print(f"[DEBUG] User found but no workspace_id: user={user}")
-            except Exception as e:
-                # Log error but continue
-                print(f"[DEBUG] WorkspaceMiddleware exception: {e}")
-                import traceback
-                traceback.print_exc()
-        else:
-            print(f"[DEBUG] No user_id in session")
+            except Exception:
+                # Continue silently on workspace fetch errors
+                pass
         
         response = await call_next(request)
         return response
 
 app.add_middleware(WorkspaceMiddleware)
+
+# Cache control middleware for static assets
+class CacheControlMiddleware(BaseHTTPMiddleware):
+    """Add cache headers to static files for better performance"""
+    async def dispatch(self, request: Request, call_next):
+        response = await call_next(request)
+        # Cache uploaded files (images, attachments) for 1 day
+        if request.url.path.startswith('/uploads'):
+            response.headers['Cache-Control'] = 'public, max-age=86400'
+        return response
+
+app.add_middleware(CacheControlMiddleware)
 
 # Session middleware for server-rendered web UI
 app.add_middleware(SessionMiddleware, secret_key=settings.secret_key)
