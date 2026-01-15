@@ -4812,17 +4812,9 @@ async def web_project_report(
     if not project:
         raise HTTPException(status_code=404, detail='Project not found')
     
-    # Check access (admin or project member)
+    # Only admins can access reports
     if not user.is_admin:
-        from app.models.project_member import ProjectMember
-        member = (await db.execute(
-            select(ProjectMember).where(
-                ProjectMember.project_id == project_id,
-                ProjectMember.user_id == user_id
-            )
-        )).scalar_one_or_none()
-        if not member:
-            raise HTTPException(status_code=403, detail='Access denied')
+        raise HTTPException(status_code=403, detail='Admin access required')
     
     # Parse date range (default to last 30 days)
     if start_date:
@@ -5050,6 +5042,10 @@ async def web_project_report_pdf(
     if not user:
         request.session.clear()
         return RedirectResponse('/web/login', status_code=303)
+    
+    # Only admins can access reports
+    if not user.is_admin:
+        raise HTTPException(status_code=403, detail='Admin access required')
     
     # Get project
     project = (await db.execute(
