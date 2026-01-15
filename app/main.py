@@ -45,16 +45,10 @@ app.add_middleware(
 # Workspace injection middleware - adds workspace to all requests
 # MUST be added BEFORE SessionMiddleware so it runs AFTER (middleware order is reversed)
 from starlette.middleware.base import BaseHTTPMiddleware
-import time
-
-# Simple in-memory cache for workspace data (reduces DB queries)
-_workspace_cache = {}  # {workspace_id: (workspace_data, timestamp)}
-_user_workspace_cache = {}  # {user_id: (workspace_id, timestamp)}
-CACHE_TTL = 300  # Cache for 5 minutes
 
 class WorkspaceMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
-        # Skip workspace lookup for static files and health checks
+        # Skip workspace lookup for static files, health checks, and API calls
         path = request.url.path
         if path.startswith('/uploads') or path == '/health' or path.startswith('/api/'):
             return await call_next(request)
@@ -70,24 +64,9 @@ class WorkspaceMiddleware(BaseHTTPMiddleware):
         
         if user_id:
             try:
-                current_time = time.time()
-                
-                # Check user->workspace cache first
-                if user_id in _user_workspace_cache:
-                    workspace_id, cached_time = _user_workspace_cache[user_id]
-                    if current_time - cached_time < CACHE_TTL:
-                        # Check workspace cache
-                        if workspace_id in _workspace_cache:
-                            ws_data, ws_time = _workspace_cache[workspace_id]
-                            if current_time - ws_time < CACHE_TTL:
-                                request.state.workspace = ws_data
-                                return await call_next(request)
-                
-                # Cache miss - fetch from database using session factory directly
-                from app.core.database import async_session_factory
+                from app.core.database import get_session
                 from app.models.workspace import Workspace
-                
-                async with async_session_factory() as db:
+                async for db in get_session():
                     user = (await db.execute(
                         select(User).where(User.id == user_id)
                     )).scalar_one_or_none()
@@ -98,10 +77,8 @@ class WorkspaceMiddleware(BaseHTTPMiddleware):
                         )).scalar_one_or_none()
                         
                         if workspace:
-                            # Update caches
-                            _user_workspace_cache[user_id] = (user.workspace_id, current_time)
-                            _workspace_cache[user.workspace_id] = (workspace, current_time)
                             request.state.workspace = workspace
+                    break
             except Exception:
                 pass
         
