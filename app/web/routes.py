@@ -7571,6 +7571,544 @@ async def web_calendar(
 # ====================================
 # Tickets System
 # ====================================
+
+@router.get('/tickets/report', response_class=HTMLResponse)
+async def web_tickets_report(
+    request: Request,
+    start_date: Optional[str] = Query(None),
+    end_date: Optional[str] = Query(None),
+    db: AsyncSession = Depends(get_session),
+):
+    """Detailed ticket report - admin only"""
+    user_id = request.session.get('user_id')
+    if not user_id:
+        return RedirectResponse('/web/login', status_code=303)
+    
+    user = (await db.execute(select(User).where(User.id == user_id))).scalar_one_or_none()
+    if not user or not user.is_active:
+        request.session.clear()
+        return RedirectResponse('/web/login', status_code=303)
+    
+    if not user.is_admin:
+        raise HTTPException(status_code=403, detail="Admin access required")
+    
+    from app.models.ticket import Ticket, TicketComment, TicketHistory
+    from sqlalchemy import text, func
+    
+    # Get workspace
+    workspace = (await db.execute(
+        select(Workspace).where(Workspace.id == user.workspace_id)
+    )).scalar_one_or_none()
+    
+    # Parse date range
+    if start_date:
+        start_dt = datetime.strptime(start_date, '%Y-%m-%d')
+    else:
+        start_dt = datetime.now() - timedelta(days=30)
+    
+    if end_date:
+        end_dt = datetime.strptime(end_date, '%Y-%m-%d') + timedelta(days=1)
+    else:
+        end_dt = datetime.now() + timedelta(days=1)
+    
+    # Get all tickets in period
+    all_tickets = (await db.execute(
+        select(Ticket)
+        .where(Ticket.workspace_id == user.workspace_id)
+        .where(Ticket.created_at >= start_dt)
+        .where(Ticket.created_at < end_dt)
+        .order_by(Ticket.created_at.desc())
+    )).scalars().all()
+    
+    ticket_ids = [t.id for t in all_tickets]
+    
+    # Get all comments for these tickets
+    all_comments = []
+    if ticket_ids:
+        all_comments = (await db.execute(
+            select(TicketComment)
+            .where(TicketComment.ticket_id.in_(ticket_ids))
+            .order_by(TicketComment.created_at.desc())
+        )).scalars().all()
+    
+    # Get ticket history
+    all_history = []
+    if ticket_ids:
+        all_history = (await db.execute(
+            select(TicketHistory)
+            .where(TicketHistory.ticket_id.in_(ticket_ids))
+            .order_by(TicketHistory.created_at.desc())
+        )).scalars().all()
+    
+    # Get all users for lookups
+    users_result = (await db.execute(
+        select(User).where(User.workspace_id == user.workspace_id)
+    )).scalars().all()
+    users_dict = {u.id: u for u in users_result}
+    
+    # Create ticket lookup
+    tickets_dict = {t.id: t for t in all_tickets}
+    
+    # Calculate agent performance
+    agent_stats = {}
+    for usr in users_result:
+        agent_stats[usr.id] = {
+            'user': usr,
+            'name': usr.full_name or usr.username,
+            'email': usr.email,
+            'initials': ''.join([n[0].upper() for n in (usr.full_name or usr.email).split()[:2]]),
+            'tickets_assigned': 0,
+            'tickets_closed': 0,
+            'comments_made': 0,
+            'resolution_times': [],
+            'first_response_times': [],
+        }
+    
+    # Process tickets for agent stats
+    for ticket in all_tickets:
+        if ticket.assigned_to_id and ticket.assigned_to_id in agent_stats:
+            agent_stats[ticket.assigned_to_id]['tickets_assigned'] += 1
+        
+        if ticket.closed_by_id and ticket.closed_by_id in agent_stats:
+            agent_stats[ticket.closed_by_id]['tickets_closed'] += 1
+            # Calculate resolution time
+            if ticket.closed_at:
+                resolution_hours = (ticket.closed_at - ticket.created_at).total_seconds() / 3600
+                agent_stats[ticket.closed_by_id]['resolution_times'].append(resolution_hours)
+    
+    # Process comments
+    comment_by_ticket = {}  # ticket_id -> [comments]
+    for comment in all_comments:
+        if comment.ticket_id not in comment_by_ticket:
+            comment_by_ticket[comment.ticket_id] = []
+        comment_by_ticket[comment.ticket_id].append(comment)
+        
+        # Count comments per user
+        if comment.user_id and comment.user_id in agent_stats:
+            agent_stats[comment.user_id]['comments_made'] += 1
+    
+    # Calculate first response times
+    for ticket in all_tickets:
+        ticket_comments = comment_by_ticket.get(ticket.id, [])
+        # Find first non-guest comment (staff response)
+        staff_comments = [c for c in ticket_comments if c.user_id and c.user_id in agent_stats]
+        if staff_comments:
+            first_response = min(staff_comments, key=lambda c: c.created_at)
+            response_hours = (first_response.created_at - ticket.created_at).total_seconds() / 3600
+            if first_response.user_id in agent_stats:
+                agent_stats[first_response.user_id]['first_response_times'].append(response_hours)
+    
+    # Format agent data
+    agents = []
+    for uid, stats in agent_stats.items():
+        if stats['tickets_assigned'] > 0 or stats['tickets_closed'] > 0 or stats['comments_made'] > 0:
+            close_rate = round((stats['tickets_closed'] / stats['tickets_assigned'] * 100) if stats['tickets_assigned'] > 0 else 0)
+            avg_resolution = round(sum(stats['resolution_times']) / len(stats['resolution_times']), 1) if stats['resolution_times'] else 0
+            avg_first_response = round(sum(stats['first_response_times']) / len(stats['first_response_times']), 1) if stats['first_response_times'] else 0
+            
+            agents.append({
+                'name': stats['name'],
+                'email': stats['email'],
+                'initials': stats['initials'],
+                'tickets_assigned': stats['tickets_assigned'],
+                'tickets_closed': stats['tickets_closed'],
+                'close_rate': close_rate,
+                'avg_resolution_hours': avg_resolution,
+                'comments_made': stats['comments_made'],
+                'avg_first_response_hours': avg_first_response,
+            })
+    
+    # Sort by tickets closed
+    agents.sort(key=lambda x: x['tickets_closed'], reverse=True)
+    
+    # Status distribution
+    status_distribution = {}
+    for ticket in all_tickets:
+        status = ticket.status
+        if status not in status_distribution:
+            status_distribution[status] = 0
+        status_distribution[status] += 1
+    
+    # Category distribution
+    category_distribution = {}
+    for ticket in all_tickets:
+        category = ticket.category
+        if category not in category_distribution:
+            category_distribution[category] = 0
+        category_distribution[category] += 1
+    
+    # Priority distribution with closed counts
+    priority_distribution = {}
+    for ticket in all_tickets:
+        priority = ticket.priority
+        if priority not in priority_distribution:
+            priority_distribution[priority] = {'count': 0, 'closed': 0}
+        priority_distribution[priority]['count'] += 1
+        if ticket.status == 'closed':
+            priority_distribution[priority]['closed'] += 1
+    
+    # Closed tickets with details
+    closed_tickets = []
+    for ticket in all_tickets:
+        if ticket.status == 'closed' and ticket.closed_at:
+            closed_by = users_dict.get(ticket.closed_by_id)
+            resolution_hours = round((ticket.closed_at - ticket.created_at).total_seconds() / 3600, 1)
+            closed_tickets.append({
+                'id': ticket.id,
+                'ticket_number': ticket.ticket_number,
+                'subject': ticket.subject,
+                'priority': ticket.priority,
+                'category': ticket.category,
+                'created_at': ticket.created_at,
+                'closed_at': ticket.closed_at,
+                'closed_by_name': (closed_by.full_name or closed_by.username) if closed_by else 'Unknown',
+                'resolution_hours': resolution_hours,
+            })
+    
+    # Sort by closed date
+    closed_tickets.sort(key=lambda x: x['closed_at'], reverse=True)
+    
+    # Comment stats by user
+    comment_stats_dict = {}
+    for comment in all_comments:
+        if comment.user_id:
+            if comment.user_id not in comment_stats_dict:
+                usr = users_dict.get(comment.user_id)
+                if usr:
+                    comment_stats_dict[comment.user_id] = {
+                        'name': usr.full_name or usr.username,
+                        'initials': ''.join([n[0].upper() for n in (usr.full_name or usr.email).split()[:2]]),
+                        'total_comments': 0,
+                        'public_comments': 0,
+                        'internal_comments': 0,
+                        'unique_tickets': set(),
+                    }
+            if comment.user_id in comment_stats_dict:
+                comment_stats_dict[comment.user_id]['total_comments'] += 1
+                if comment.is_internal:
+                    comment_stats_dict[comment.user_id]['internal_comments'] += 1
+                else:
+                    comment_stats_dict[comment.user_id]['public_comments'] += 1
+                comment_stats_dict[comment.user_id]['unique_tickets'].add(comment.ticket_id)
+    
+    comment_stats = []
+    for uid, stats in comment_stats_dict.items():
+        comment_stats.append({
+            'name': stats['name'],
+            'initials': stats['initials'],
+            'total_comments': stats['total_comments'],
+            'public_comments': stats['public_comments'],
+            'internal_comments': stats['internal_comments'],
+            'unique_tickets': len(stats['unique_tickets']),
+        })
+    comment_stats.sort(key=lambda x: x['total_comments'], reverse=True)
+    
+    # Recent comments with details
+    recent_comments = []
+    for comment in all_comments[:50]:
+        author = users_dict.get(comment.user_id)
+        ticket = tickets_dict.get(comment.ticket_id)
+        if ticket:
+            recent_comments.append({
+                'ticket_id': ticket.id,
+                'ticket_number': ticket.ticket_number,
+                'author_name': (author.full_name or author.username) if author else 'Guest',
+                'author_initials': ''.join([n[0].upper() for n in ((author.full_name or author.email) if author else 'GU').split()[:2]]),
+                'content': comment.content,
+                'is_internal': comment.is_internal,
+                'created_at': comment.created_at,
+            })
+    
+    # Activity timeline from history
+    activities = []
+    for history in all_history[:50]:
+        usr = users_dict.get(history.user_id)
+        ticket = tickets_dict.get(history.ticket_id)
+        if ticket:
+            action = history.action
+            description = f"{action.replace('_', ' ')}"
+            
+            if action == 'created':
+                description = 'created ticket'
+            elif action == 'closed':
+                description = 'closed ticket'
+            elif action == 'status_changed':
+                description = f'changed status to {history.new_value}'
+            elif action == 'priority_changed':
+                description = f'changed priority to {history.new_value}'
+            elif action == 'assigned':
+                assignee = users_dict.get(int(history.new_value)) if history.new_value else None
+                description = f'assigned to {assignee.full_name or assignee.username}' if assignee else 'assigned'
+            elif action == 'commented':
+                description = 'added a comment'
+            
+            activities.append({
+                'action': action,
+                'description': description,
+                'user_name': (usr.full_name or usr.username) if usr else 'System',
+                'ticket_id': ticket.id,
+                'ticket_number': ticket.ticket_number,
+                'ticket_subject': ticket.subject,
+                'created_at': history.created_at,
+            })
+    
+    # Summary stats
+    total_tickets = len(all_tickets)
+    closed_count = sum(1 for t in all_tickets if t.status == 'closed')
+    open_count = sum(1 for t in all_tickets if t.status in ['open', 'in_progress', 'waiting'])
+    resolution_rate = round((closed_count / total_tickets * 100) if total_tickets > 0 else 0)
+    
+    # Average resolution time
+    resolution_times = []
+    for ticket in all_tickets:
+        if ticket.status == 'closed' and ticket.closed_at:
+            hours = (ticket.closed_at - ticket.created_at).total_seconds() / 3600
+            resolution_times.append(hours)
+    avg_resolution = round(sum(resolution_times) / len(resolution_times), 1) if resolution_times else 0
+    
+    summary = {
+        'total_tickets': total_tickets,
+        'closed_tickets': closed_count,
+        'open_tickets': open_count,
+        'resolution_rate': resolution_rate,
+        'avg_resolution_hours': avg_resolution,
+        'total_comments': len(all_comments),
+    }
+    
+    return templates.TemplateResponse(
+        'tickets/report.html',
+        {
+            'request': request,
+            'user': user,
+            'workspace': workspace,
+            'start_date': start_dt.strftime('%Y-%m-%d'),
+            'end_date': (end_dt - timedelta(days=1)).strftime('%Y-%m-%d'),
+            'now': datetime.now(),
+            'summary': summary,
+            'agents': agents,
+            'status_distribution': status_distribution,
+            'category_distribution': category_distribution,
+            'priority_distribution': priority_distribution,
+            'closed_tickets': closed_tickets,
+            'comment_stats': comment_stats,
+            'recent_comments': recent_comments,
+            'activities': activities,
+        },
+    )
+
+
+@router.get('/tickets/report/pdf')
+async def web_tickets_report_pdf(
+    request: Request,
+    start_date: Optional[str] = Query(None),
+    end_date: Optional[str] = Query(None),
+    db: AsyncSession = Depends(get_session),
+):
+    """Generate PDF ticket report - admin only"""
+    user_id = request.session.get('user_id')
+    if not user_id:
+        return RedirectResponse('/web/login', status_code=303)
+    
+    user = (await db.execute(select(User).where(User.id == user_id))).scalar_one_or_none()
+    if not user or not user.is_active:
+        request.session.clear()
+        return RedirectResponse('/web/login', status_code=303)
+    
+    if not user.is_admin:
+        raise HTTPException(status_code=403, detail="Admin access required")
+    
+    from app.models.ticket import Ticket, TicketComment, TicketHistory
+    
+    # Parse date range
+    if start_date:
+        start_dt = datetime.strptime(start_date, '%Y-%m-%d')
+    else:
+        start_dt = datetime.now() - timedelta(days=30)
+    
+    if end_date:
+        end_dt = datetime.strptime(end_date, '%Y-%m-%d') + timedelta(days=1)
+    else:
+        end_dt = datetime.now() + timedelta(days=1)
+    
+    # Get all tickets in period
+    all_tickets = (await db.execute(
+        select(Ticket)
+        .where(Ticket.workspace_id == user.workspace_id)
+        .where(Ticket.created_at >= start_dt)
+        .where(Ticket.created_at < end_dt)
+        .order_by(Ticket.created_at.desc())
+    )).scalars().all()
+    
+    ticket_ids = [t.id for t in all_tickets]
+    
+    # Get all comments
+    all_comments = []
+    if ticket_ids:
+        all_comments = (await db.execute(
+            select(TicketComment)
+            .where(TicketComment.ticket_id.in_(ticket_ids))
+        )).scalars().all()
+    
+    # Get all users for lookups
+    users_result = (await db.execute(
+        select(User).where(User.workspace_id == user.workspace_id)
+    )).scalars().all()
+    users_dict = {u.id: u for u in users_result}
+    
+    # Calculate agent performance
+    agent_stats = {}
+    for usr in users_result:
+        agent_stats[usr.id] = {
+            'name': usr.full_name or usr.username,
+            'tickets_assigned': 0,
+            'tickets_closed': 0,
+            'comments_made': 0,
+            'resolution_times': [],
+        }
+    
+    for ticket in all_tickets:
+        if ticket.assigned_to_id and ticket.assigned_to_id in agent_stats:
+            agent_stats[ticket.assigned_to_id]['tickets_assigned'] += 1
+        if ticket.closed_by_id and ticket.closed_by_id in agent_stats:
+            agent_stats[ticket.closed_by_id]['tickets_closed'] += 1
+            if ticket.closed_at:
+                resolution_hours = (ticket.closed_at - ticket.created_at).total_seconds() / 3600
+                agent_stats[ticket.closed_by_id]['resolution_times'].append(resolution_hours)
+    
+    for comment in all_comments:
+        if comment.user_id and comment.user_id in agent_stats:
+            agent_stats[comment.user_id]['comments_made'] += 1
+    
+    # Generate PDF
+    from reportlab.lib.pagesizes import letter
+    from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+    from reportlab.lib.units import inch
+    from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
+    from reportlab.lib import colors
+    from reportlab.lib.enums import TA_CENTER
+    
+    import io
+    buffer = io.BytesIO()
+    doc = SimpleDocTemplate(buffer, pagesize=letter, topMargin=0.5*inch, bottomMargin=0.5*inch)
+    
+    elements = []
+    styles = getSampleStyleSheet()
+    
+    title_style = ParagraphStyle('CustomTitle', parent=styles['Heading1'], fontSize=24, textColor=colors.HexColor('#1F2937'), spaceAfter=30, alignment=TA_CENTER)
+    heading_style = ParagraphStyle('CustomHeading', parent=styles['Heading2'], fontSize=16, textColor=colors.HexColor('#374151'), spaceAfter=12, spaceBefore=20)
+    subheading_style = ParagraphStyle('CustomSubheading', parent=styles['Heading3'], fontSize=12, textColor=colors.HexColor('#6B7280'), spaceAfter=8)
+    
+    # Title
+    elements.append(Paragraph("Ticket Report", title_style))
+    elements.append(Paragraph(f"Period: {start_dt.strftime('%B %d, %Y')} - {(end_dt - timedelta(days=1)).strftime('%B %d, %Y')}", subheading_style))
+    elements.append(Paragraph(f"Generated: {datetime.now().strftime('%B %d, %Y at %I:%M %p')}", subheading_style))
+    elements.append(Spacer(1, 0.3*inch))
+    
+    # Summary
+    total_tickets = len(all_tickets)
+    closed_count = sum(1 for t in all_tickets if t.status == 'closed')
+    open_count = sum(1 for t in all_tickets if t.status in ['open', 'in_progress', 'waiting'])
+    resolution_rate = round((closed_count / total_tickets * 100) if total_tickets > 0 else 0)
+    
+    elements.append(Paragraph("Summary", heading_style))
+    summary_data = [
+        ['Metric', 'Value'],
+        ['Total Tickets', str(total_tickets)],
+        ['Closed Tickets', str(closed_count)],
+        ['Open Tickets', str(open_count)],
+        ['Resolution Rate', f'{resolution_rate}%'],
+        ['Total Comments', str(len(all_comments))],
+    ]
+    
+    summary_table = Table(summary_data, colWidths=[4*inch, 2*inch])
+    summary_table.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#8B5CF6')),
+        ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+        ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+        ('FONTSIZE', (0, 0), (-1, 0), 12),
+        ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
+        ('BACKGROUND', (0, 1), (-1, -1), colors.beige),
+        ('GRID', (0, 0), (-1, -1), 1, colors.black),
+    ]))
+    elements.append(summary_table)
+    elements.append(Spacer(1, 0.3*inch))
+    
+    # Agent Performance
+    elements.append(Paragraph("Agent Performance", heading_style))
+    agent_data = [['Agent', 'Assigned', 'Closed', 'Close Rate', 'Comments']]
+    for uid, stats in sorted(agent_stats.items(), key=lambda x: x[1]['tickets_closed'], reverse=True):
+        if stats['tickets_assigned'] > 0 or stats['tickets_closed'] > 0 or stats['comments_made'] > 0:
+            close_rate = round((stats['tickets_closed'] / stats['tickets_assigned'] * 100) if stats['tickets_assigned'] > 0 else 0)
+            agent_data.append([
+                stats['name'][:25],
+                str(stats['tickets_assigned']),
+                str(stats['tickets_closed']),
+                f'{close_rate}%',
+                str(stats['comments_made']),
+            ])
+    
+    if len(agent_data) > 1:
+        agent_table = Table(agent_data, colWidths=[2*inch, 1*inch, 1*inch, 1*inch, 1.2*inch])
+        agent_table.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#6366F1')),
+            ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+            ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+            ('FONTSIZE', (0, 0), (-1, -1), 9),
+            ('BOTTOMPADDING', (0, 0), (-1, 0), 8),
+            ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
+            ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.lightgrey]),
+        ]))
+        elements.append(agent_table)
+    else:
+        elements.append(Paragraph("No agent activity during this period.", styles['Normal']))
+    elements.append(Spacer(1, 0.3*inch))
+    
+    # Tickets Closed
+    elements.append(Paragraph("Tickets Closed", heading_style))
+    closed_data = [['Ticket #', 'Subject', 'Closed By', 'Priority', 'Resolution']]
+    for ticket in all_tickets:
+        if ticket.status == 'closed' and ticket.closed_at:
+            closed_by = users_dict.get(ticket.closed_by_id)
+            resolution_hours = round((ticket.closed_at - ticket.created_at).total_seconds() / 3600, 1)
+            closed_data.append([
+                ticket.ticket_number,
+                ticket.subject[:30],
+                (closed_by.full_name or closed_by.username)[:15] if closed_by else 'Unknown',
+                ticket.priority.title(),
+                f'{resolution_hours}h',
+            ])
+    
+    if len(closed_data) > 1:
+        closed_table = Table(closed_data[:26], colWidths=[1.2*inch, 2*inch, 1.3*inch, 0.9*inch, 0.9*inch])
+        closed_table.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#10B981')),
+            ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+            ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+            ('FONTSIZE', (0, 0), (-1, -1), 8),
+            ('BOTTOMPADDING', (0, 0), (-1, 0), 8),
+            ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
+            ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.lightgrey]),
+        ]))
+        elements.append(closed_table)
+    else:
+        elements.append(Paragraph("No tickets closed during this period.", styles['Normal']))
+    
+    # Build PDF
+    doc.build(elements)
+    buffer.seek(0)
+    
+    from fastapi.responses import StreamingResponse
+    filename = f"ticket_report_{start_dt.strftime('%Y%m%d')}_{end_dt.strftime('%Y%m%d')}.pdf"
+    return StreamingResponse(
+        buffer,
+        media_type='application/pdf',
+        headers={'Content-Disposition': f'attachment; filename="{filename}"'}
+    )
+
+
 @router.get('/tickets', response_class=HTMLResponse)
 async def web_tickets_list(request: Request, db: AsyncSession = Depends(get_session)):
     """List all tickets with filters"""
