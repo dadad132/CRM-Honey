@@ -7577,8 +7577,8 @@ async def web_tickets_report(
     request: Request,
     start_date: Optional[str] = Query(None),
     end_date: Optional[str] = Query(None),
-    user_id: Optional[int] = Query(None, alias='user_id'),
-    project_id: Optional[int] = Query(None, alias='project_id'),
+    user_id: Optional[str] = Query(None),  # Accept as string to handle empty values
+    project_id: Optional[str] = Query(None),  # Accept as string to handle empty values
     db: AsyncSession = Depends(get_session),
 ):
     """Detailed ticket report - admin only"""
@@ -7596,6 +7596,21 @@ async def web_tickets_report(
     
     from app.models.ticket import Ticket, TicketComment, TicketHistory
     from sqlalchemy import text, func
+    
+    # Parse user_id and project_id (handle empty strings)
+    user_id_int = None
+    if user_id and user_id.strip():
+        try:
+            user_id_int = int(user_id)
+        except ValueError:
+            pass
+    
+    project_id_int = None
+    if project_id and project_id.strip():
+        try:
+            project_id_int = int(project_id)
+        except ValueError:
+            pass
     
     # Get workspace
     workspace = (await db.execute(
@@ -7619,27 +7634,32 @@ async def web_tickets_report(
     )).scalars().all()
     users_dict = {u.id: u for u in users_result}
     
-    # Get all projects for dropdown
+    # Get all projects for dropdown - only projects with support_email configured
     all_projects = (await db.execute(
-        select(Project).where(Project.workspace_id == user.workspace_id, Project.is_archived == False).order_by(Project.name)
+        select(Project).where(
+            Project.workspace_id == user.workspace_id, 
+            Project.is_archived == False,
+            Project.support_email != None,
+            Project.support_email != ''
+        ).order_by(Project.name)
     )).scalars().all()
     projects_dict = {p.id: p for p in all_projects}
     
     # Get selected user for filtering
     selected_user = None
     selected_user_id = None
-    if user_id:
-        selected_user = users_dict.get(user_id)
+    if user_id_int:
+        selected_user = users_dict.get(user_id_int)
         if selected_user:
-            selected_user_id = user_id
+            selected_user_id = user_id_int
     
     # Get selected project for filtering
     selected_project = None
     selected_project_id = None
-    if project_id:
-        selected_project = projects_dict.get(project_id)
+    if project_id_int:
+        selected_project = projects_dict.get(project_id_int)
         if selected_project:
-            selected_project_id = project_id
+            selected_project_id = project_id_int
     
     # Get all tickets in period - optionally filtered by user and/or project
     ticket_query = select(Ticket).where(
