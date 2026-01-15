@@ -18,6 +18,9 @@ engine: AsyncEngine = create_async_engine(
     echo=False,  # Disable SQL logging for performance
     future=True,
     pool_pre_ping=True,  # Check connections are alive
+    pool_size=10,  # Increase connection pool for better concurrency
+    max_overflow=20,  # Allow extra connections under load
+    pool_recycle=3600,  # Recycle connections every hour
 )
 
 async_session_factory = sessionmaker(

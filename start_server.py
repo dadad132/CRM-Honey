@@ -108,14 +108,18 @@ def start_server(host=None, port=8000, use_public_ip=True):
     print("[!] Important: Ensure your firewall allows incoming connections on port", port)
     print()
     
-    # Start uvicorn server
+    # Start uvicorn server with optimized settings
     # Note: reload=False on Windows to avoid multiprocessing issues
     uvicorn.run(
         "app.main:app",
         host=host,
         port=port,
         reload=False,  # Disabled to prevent Windows multiprocessing errors
-        log_level="info"
+        log_level="warning",  # Reduce log noise for better performance
+        access_log=False,  # Disable access log for faster responses
+        workers=1,  # Single worker for SQLite (SQLite doesn't support concurrent writes)
+        limit_concurrency=100,  # Limit concurrent connections
+        timeout_keep_alive=30,  # Reduce keepalive timeout
     )
 
 
