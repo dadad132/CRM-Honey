@@ -4569,6 +4569,9 @@ async def web_admin_site_settings_save(
     site_title: str = Form(None),
     primary_color: str = Form("#2563eb"),
     timezone: str = Form("UTC"),
+    business_hours_start: str = Form("07:30"),
+    business_hours_end: str = Form("16:00"),
+    business_hours_exclude_weekends: str = Form(None),
     db: AsyncSession = Depends(get_session)
 ):
     """Save site branding settings"""
@@ -4590,6 +4593,11 @@ async def web_admin_site_settings_save(
             workspace.site_title = site_title if site_title else None
             workspace.primary_color = primary_color
             workspace.timezone = timezone
+            
+            # Business hours settings
+            workspace.business_hours_start = business_hours_start or "07:30"
+            workspace.business_hours_end = business_hours_end or "16:00"
+            workspace.business_hours_exclude_weekends = business_hours_exclude_weekends == "1"
             
             await db.commit()
             request.session['success_message'] = 'Site settings saved successfully!'
@@ -7757,6 +7765,13 @@ async def web_tickets_report(
     tickets_dict = {t.id: t for t in all_tickets}
     
     # Calculate agent performance
+    from app.core.business_hours import calculate_business_hours
+    
+    # Get business hours settings from workspace
+    biz_start = workspace.business_hours_start if workspace and hasattr(workspace, 'business_hours_start') else "07:30"
+    biz_end = workspace.business_hours_end if workspace and hasattr(workspace, 'business_hours_end') else "16:00"
+    biz_exclude_weekends = workspace.business_hours_exclude_weekends if workspace and hasattr(workspace, 'business_hours_exclude_weekends') else True
+    
     agent_stats = {}
     for usr in users_result:
         agent_stats[usr.id] = {
@@ -7778,9 +7793,12 @@ async def web_tickets_report(
         
         if ticket.closed_by_id and ticket.closed_by_id in agent_stats:
             agent_stats[ticket.closed_by_id]['tickets_closed'] += 1
-            # Calculate resolution time
+            # Calculate resolution time using business hours
             if ticket.closed_at:
-                resolution_hours = (ticket.closed_at - ticket.created_at).total_seconds() / 3600
+                resolution_hours = calculate_business_hours(
+                    ticket.created_at, ticket.closed_at,
+                    biz_start, biz_end, biz_exclude_weekends
+                )
                 agent_stats[ticket.closed_by_id]['resolution_times'].append(resolution_hours)
     
     # Process comments
@@ -7859,7 +7877,11 @@ async def web_tickets_report(
     for ticket in all_tickets:
         if ticket.status == 'closed' and ticket.closed_at:
             closed_by = users_dict.get(ticket.closed_by_id)
-            resolution_hours = round((ticket.closed_at - ticket.created_at).total_seconds() / 3600, 1)
+            # Use business hours for resolution time
+            resolution_hours = calculate_business_hours(
+                ticket.created_at, ticket.closed_at,
+                biz_start, biz_end, biz_exclude_weekends
+            )
             closed_tickets.append({
                 'id': ticket.id,
                 'ticket_number': ticket.ticket_number,
@@ -7965,11 +7987,14 @@ async def web_tickets_report(
     open_count = sum(1 for t in all_tickets if t.status in ['open', 'in_progress', 'waiting'])
     resolution_rate = round((closed_count / total_tickets * 100) if total_tickets > 0 else 0)
     
-    # Average resolution time
+    # Average resolution time using business hours
     resolution_times = []
     for ticket in all_tickets:
         if ticket.status == 'closed' and ticket.closed_at:
-            hours = (ticket.closed_at - ticket.created_at).total_seconds() / 3600
+            hours = calculate_business_hours(
+                ticket.created_at, ticket.closed_at,
+                biz_start, biz_end, biz_exclude_weekends
+            )
             resolution_times.append(hours)
     avg_resolution = round(sum(resolution_times) / len(resolution_times), 1) if resolution_times else 0
     
@@ -7980,6 +8005,8 @@ async def web_tickets_report(
         'resolution_rate': resolution_rate,
         'avg_resolution_hours': avg_resolution,
         'total_comments': len(all_comments),
+        'business_hours': f"{biz_start} - {biz_end}",
+        'exclude_weekends': biz_exclude_weekends,
     }
     
     # Count tickets for selected project
@@ -8073,6 +8100,12 @@ async def web_tickets_report_pdf(
     )).scalars().all()
     users_dict = {u.id: u for u in users_result}
     
+    # Get business hours settings
+    from app.core.business_hours import calculate_business_hours
+    biz_start = workspace.business_hours_start if workspace and hasattr(workspace, 'business_hours_start') else "07:30"
+    biz_end = workspace.business_hours_end if workspace and hasattr(workspace, 'business_hours_end') else "16:00"
+    biz_exclude_weekends = workspace.business_hours_exclude_weekends if workspace and hasattr(workspace, 'business_hours_exclude_weekends') else True
+    
     # Calculate agent performance
     agent_stats = {}
     for usr in users_result:
@@ -8090,7 +8123,11 @@ async def web_tickets_report_pdf(
         if ticket.closed_by_id and ticket.closed_by_id in agent_stats:
             agent_stats[ticket.closed_by_id]['tickets_closed'] += 1
             if ticket.closed_at:
-                resolution_hours = (ticket.closed_at - ticket.created_at).total_seconds() / 3600
+                # Use business hours calculation
+                resolution_hours = calculate_business_hours(
+                    ticket.created_at, ticket.closed_at,
+                    biz_start, biz_end, biz_exclude_weekends
+                )
                 agent_stats[ticket.closed_by_id]['resolution_times'].append(resolution_hours)
     
     for comment in all_comments:
@@ -8189,7 +8226,11 @@ async def web_tickets_report_pdf(
     for ticket in all_tickets:
         if ticket.status == 'closed' and ticket.closed_at:
             closed_by = users_dict.get(ticket.closed_by_id)
-            resolution_hours = round((ticket.closed_at - ticket.created_at).total_seconds() / 3600, 1)
+            # Use business hours calculation
+            resolution_hours = calculate_business_hours(
+                ticket.created_at, ticket.closed_at,
+                biz_start, biz_end, biz_exclude_weekends
+            )
             closed_data.append([
                 ticket.ticket_number,
                 ticket.subject[:30],

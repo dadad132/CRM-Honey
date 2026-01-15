@@ -18,5 +18,10 @@ class Workspace(SQLModel, table=True):
     primary_color: Optional[str] = Field(default="#2563eb")  # Default blue
     timezone: Optional[str] = Field(default="UTC")  # Default timezone
     
+    # Business hours settings for ticket resolution calculation
+    business_hours_start: Optional[str] = Field(default="07:30")  # HH:MM format
+    business_hours_end: Optional[str] = Field(default="16:00")  # HH:MM format
+    business_hours_exclude_weekends: bool = Field(default=True)  # Skip Sat/Sun
+    
     # Relationships are defined from User/Project side to avoid SQLAlchemy 2.0
     # typing issues with generic list annotations in this minimal setup.
