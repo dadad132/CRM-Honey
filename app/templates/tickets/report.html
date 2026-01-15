@@ -70,12 +70,12 @@
                     </select>
                 </div>
                 <div>
-                    <label class="block text-sm font-medium text-gray-700 mb-1">Filter by Project</label>
-                    <select name="project_id" class="px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 min-w-[180px]">
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Filter by Project (Email)</label>
+                    <select name="project_id" class="px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 min-w-[250px]">
                         <option value="">All Projects</option>
                         {% for proj in all_projects %}
                         <option value="{{ proj.id }}" {% if selected_project_id == proj.id %}selected{% endif %}>
-                            {{ proj.name }}
+                            {{ proj.name }}{% if proj.support_email %} ({{ proj.support_email }}){% endif %} - {{ project_ticket_counts.get(proj.id, 0) }} tickets
                         </option>
                         {% endfor %}
                     </select>

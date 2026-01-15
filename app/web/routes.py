@@ -7634,16 +7634,40 @@ async def web_tickets_report(
     )).scalars().all()
     users_dict = {u.id: u for u in users_result}
     
-    # Get all projects for dropdown - only projects with support_email configured
-    all_projects = (await db.execute(
-        select(Project).where(
-            Project.workspace_id == user.workspace_id, 
-            Project.is_archived == False,
-            Project.support_email != None,
-            Project.support_email != ''
-        ).order_by(Project.name)
-    )).scalars().all()
+    # Get projects that have tickets in the date range (projects with actual ticket data)
+    # First get all project IDs that have tickets
+    from sqlalchemy import distinct
+    projects_with_tickets_query = select(distinct(Ticket.related_project_id)).where(
+        Ticket.workspace_id == user.workspace_id,
+        Ticket.related_project_id != None,
+        Ticket.created_at >= start_dt,
+        Ticket.created_at < end_dt
+    )
+    project_ids_with_tickets = (await db.execute(projects_with_tickets_query)).scalars().all()
+    
+    # Get those projects with their details
+    all_projects = []
+    if project_ids_with_tickets:
+        all_projects = (await db.execute(
+            select(Project).where(
+                Project.id.in_(project_ids_with_tickets),
+                Project.is_archived == False
+            ).order_by(Project.name)
+        )).scalars().all()
     projects_dict = {p.id: p for p in all_projects}
+    
+    # Count tickets per project for display
+    project_ticket_counts = {}
+    for pid in project_ids_with_tickets:
+        if pid:
+            count_query = select(func.count(Ticket.id)).where(
+                Ticket.workspace_id == user.workspace_id,
+                Ticket.related_project_id == pid,
+                Ticket.created_at >= start_dt,
+                Ticket.created_at < end_dt
+            )
+            count = (await db.execute(count_query)).scalar() or 0
+            project_ticket_counts[pid] = count
     
     # Get selected user for filtering
     selected_user = None
@@ -7956,6 +7980,7 @@ async def web_tickets_report(
             'selected_project': selected_project,
             'selected_project_id': selected_project_id,
             'project_ticket_count': project_ticket_count,
+            'project_ticket_counts': project_ticket_counts,
         },
     )
 
