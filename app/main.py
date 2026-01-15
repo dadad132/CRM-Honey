@@ -45,7 +45,6 @@ app.add_middleware(
 # Workspace injection middleware - adds workspace to all requests
 # MUST be added BEFORE SessionMiddleware so it runs AFTER (middleware order is reversed)
 from starlette.middleware.base import BaseHTTPMiddleware
-from functools import lru_cache
 import time
 
 # Simple in-memory cache for workspace data (reduces DB queries)
@@ -72,7 +71,6 @@ class WorkspaceMiddleware(BaseHTTPMiddleware):
         if user_id:
             try:
                 current_time = time.time()
-                workspace = None
                 
                 # Check user->workspace cache first
                 if user_id in _user_workspace_cache:
@@ -85,10 +83,11 @@ class WorkspaceMiddleware(BaseHTTPMiddleware):
                                 request.state.workspace = ws_data
                                 return await call_next(request)
                 
-                # Cache miss - fetch from database
-                from app.core.database import get_session
+                # Cache miss - fetch from database using session factory directly
+                from app.core.database import async_session_factory
                 from app.models.workspace import Workspace
-                async for db in get_session():
+                
+                async with async_session_factory() as db:
                     user = (await db.execute(
                         select(User).where(User.id == user_id)
                     )).scalar_one_or_none()
@@ -103,7 +102,6 @@ class WorkspaceMiddleware(BaseHTTPMiddleware):
                             _user_workspace_cache[user_id] = (user.workspace_id, current_time)
                             _workspace_cache[user.workspace_id] = (workspace, current_time)
                             request.state.workspace = workspace
-                    break
             except Exception:
                 pass
         
