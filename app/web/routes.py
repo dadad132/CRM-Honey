@@ -2665,15 +2665,19 @@ async def web_admin_user_activity_view(
     task_assignments = []
     for task, assignment in task_assignments_raw:
         assigner = (await db.execute(select(User).where(User.id == task.creator_id))).scalar_one_or_none()
-        # Calculate time spent on task
-        time_entries_result = await db.execute(
-            text("""
-                SELECT SUM(duration_hours) as total FROM timeentry 
-                WHERE task_id = :task_id AND user_id = :user_id
-            """),
-            {"task_id": task.id, "user_id": target_user_id}
-        )
-        time_spent = time_entries_result.scalar() or 0
+        # Calculate time spent on task (timeentry table may not exist)
+        time_spent = 0
+        try:
+            time_entries_result = await db.execute(
+                text("""
+                    SELECT SUM(duration_hours) as total FROM timeentry 
+                    WHERE task_id = :task_id AND user_id = :user_id
+                """),
+                {"task_id": task.id, "user_id": target_user_id}
+            )
+            time_spent = time_entries_result.scalar() or 0
+        except Exception:
+            pass  # timeentry table doesn't exist
         
         task_assignments.append({
             'id': task.id,
@@ -2793,17 +2797,21 @@ async def web_admin_user_activity_view(
                     'status': task.status.value,
                 })
     
-    # Calculate total time logged
-    total_time_result = await db.execute(
-        text("""
-            SELECT SUM(duration_hours) as total FROM timeentry 
-            WHERE user_id = :user_id 
-            AND start_time >= :start_dt 
-            AND start_time < :end_dt
-        """),
-        {"user_id": target_user_id, "start_dt": start_dt, "end_dt": end_dt}
-    )
-    total_hours = total_time_result.scalar() or 0
+    # Calculate total time logged (timeentry table may not exist)
+    total_hours = 0
+    try:
+        total_time_result = await db.execute(
+            text("""
+                SELECT SUM(duration_hours) as total FROM timeentry 
+                WHERE user_id = :user_id 
+                AND start_time >= :start_dt 
+                AND start_time < :end_dt
+            """),
+            {"user_id": target_user_id, "start_dt": start_dt, "end_dt": end_dt}
+        )
+        total_hours = total_time_result.scalar() or 0
+    except Exception:
+        pass  # timeentry table doesn't exist
     
     # Calculate completed tasks
     completed_count = sum(1 for t, _ in task_assignments_raw if t.status.value in ['done', 'completed'])
