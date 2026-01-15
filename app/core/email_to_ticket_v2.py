@@ -728,6 +728,11 @@ class EmailToTicketService:
                     project = await self.find_project_by_email(db, to_email)
                     
                     if existing_ticket:
+                        # Refresh to ensure all attributes are loaded
+                        await db.refresh(existing_ticket)
+                        existing_ticket_id = existing_ticket.id
+                        existing_ticket_number = existing_ticket.ticket_number
+                        
                         # Add as comment to existing ticket
                         await self.add_comment_from_email(
                             db, existing_ticket, sender_name, sender_email, body
@@ -735,22 +740,26 @@ class EmailToTicketService:
                         
                         # Mark as processed
                         await self.mark_email_processed(
-                            db, message_id, sender_email, subject, existing_ticket.id
+                            db, message_id, sender_email, subject, existing_ticket_id
                         )
                         
                         # Mark email as read (run in thread - blocking operation)
                         await asyncio.to_thread(mail.store, email_id, '+FLAGS', '\\Seen')
                         
-                        print(f"[IMAP] Added comment to ticket {existing_ticket.ticket_number} from {sender_email}")
+                        print(f"[IMAP] Added comment to ticket {existing_ticket_number} from {sender_email}")
                     else:
                         # Always create tickets (linked to project if matched)
                         ticket = await self.create_ticket_from_email(
                             db, sender_name, sender_email, subject, body, to_email, project
                         )
                         
+                        # Refresh and store ID immediately
+                        await db.refresh(ticket)
+                        ticket_id = ticket.id
+                        
                         # Mark as processed
                         await self.mark_email_processed(
-                            db, message_id, sender_email, subject, ticket.id
+                            db, message_id, sender_email, subject, ticket_id
                         )
                         
                         # Mark email as read (run in thread)
