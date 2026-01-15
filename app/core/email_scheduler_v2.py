@@ -33,12 +33,13 @@ class EmailScheduler:
     async def check_emails_task(self):
         """Background task to check emails periodically"""
         
-        print(f"[Email-to-Ticket] Scheduler started (checking every {self.check_interval}s)")
+        print(f"[Email-to-Ticket] ✅ Scheduler started (checking every {self.check_interval}s)")
+        print(f"[Email-to-Ticket] Scheduler will check: legacy emailsettings + incoming_email_account tables")
         
         while self.running:
             try:
                 timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-                print(f"[{timestamp}] [Email-to-Ticket] Checking emails...")
+                print(f"\n[{timestamp}] [Email-to-Ticket] ========== CHECKING EMAILS ==========")
                 
                 # Process legacy workspace email settings (single account)
                 workspace_ids = []
@@ -51,21 +52,25 @@ class EmailScheduler:
                         )
                         workspace_ids = [row[0] for row in result.all()]
                     
-                    print(f"[Email-to-Ticket] Found {len(workspace_ids)} workspaces with legacy email settings")
+                    print(f"[Email-to-Ticket] Legacy email settings: {len(workspace_ids)} workspace(s)")
                     
                     # Process legacy workspaces sequentially
                     for ws_id in workspace_ids:
+                        print(f"[Email-to-Ticket] Processing legacy workspace {ws_id}...")
                         await self._process_workspace(ws_id)
                 except Exception as e:
                     if "no such table" in str(e).lower():
-                        print(f"[Email-to-Ticket] EmailSettings table not found - skipping legacy email check")
+                        print(f"[Email-to-Ticket] Legacy emailsettings table not found - skipping")
                     else:
-                        print(f"[Email-to-Ticket] Error checking legacy email settings: {e}")
+                        print(f"[Email-to-Ticket] ❌ Error checking legacy email settings: {e}")
+                        import traceback
+                        traceback.print_exc()
                 
                 # Process new multi-account email settings
+                print(f"[Email-to-Ticket] Checking incoming_email_account table...")
                 await self._process_email_accounts()
                 
-                print(f"[{timestamp}] [Email-to-Ticket] Check complete. Next check in {self.check_interval}s")
+                print(f"[{timestamp}] [Email-to-Ticket] ========== CHECK COMPLETE ==========\n")
                 
                 # Wait for next check
                 await asyncio.sleep(self.check_interval)
@@ -104,22 +109,28 @@ class EmailScheduler:
                 )
                 accounts = result.scalars().all()
                 
-                if accounts:
-                    print(f"[Email-to-Ticket] Found {len(accounts)} active incoming email account(s)")
+                print(f"[Email-to-Ticket] Found {len(accounts)} active incoming email account(s)")
+                
+                if not accounts:
+                    print(f"[Email-to-Ticket] No active email accounts configured - nothing to process")
+                    return
                 
                 for account in accounts:
+                    print(f"[Email-to-Ticket] Processing account: {account.name} ({account.email_address})")
                     try:
                         tickets = await process_email_account(db, account)
                         if tickets:
                             timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-                            print(f"[{timestamp}] Email '{account.name}': Created {len(tickets)} ticket(s) from emails")
+                            print(f"[{timestamp}] ✅ Email '{account.name}': Created {len(tickets)} ticket(s)")
+                        else:
+                            print(f"[Email-to-Ticket] Account '{account.name}': No new tickets created")
                         
                         # Update last_checked_at
                         account.last_checked_at = datetime.utcnow()
                         db.add(account)
                         await db.commit()
                     except Exception as e:
-                        print(f"[Email-to-Ticket] Error processing email account '{account.name}': {e}")
+                        print(f"[Email-to-Ticket] ❌ Error processing email account '{account.name}': {e}")
                         print(f"[Email-to-Ticket] Traceback: {traceback.format_exc()}")
         
         except Exception as e:
