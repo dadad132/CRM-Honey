@@ -7578,6 +7578,7 @@ async def web_tickets_report(
     start_date: Optional[str] = Query(None),
     end_date: Optional[str] = Query(None),
     user_id: Optional[int] = Query(None, alias='user_id'),
+    project_id: Optional[int] = Query(None, alias='project_id'),
     db: AsyncSession = Depends(get_session),
 ):
     """Detailed ticket report - admin only"""
@@ -7618,6 +7619,12 @@ async def web_tickets_report(
     )).scalars().all()
     users_dict = {u.id: u for u in users_result}
     
+    # Get all projects for dropdown
+    all_projects = (await db.execute(
+        select(Project).where(Project.workspace_id == user.workspace_id, Project.is_archived == False).order_by(Project.name)
+    )).scalars().all()
+    projects_dict = {p.id: p for p in all_projects}
+    
     # Get selected user for filtering
     selected_user = None
     selected_user_id = None
@@ -7626,7 +7633,15 @@ async def web_tickets_report(
         if selected_user:
             selected_user_id = user_id
     
-    # Get all tickets in period - optionally filtered by user
+    # Get selected project for filtering
+    selected_project = None
+    selected_project_id = None
+    if project_id:
+        selected_project = projects_dict.get(project_id)
+        if selected_project:
+            selected_project_id = project_id
+    
+    # Get all tickets in period - optionally filtered by user and/or project
     ticket_query = select(Ticket).where(
         Ticket.workspace_id == user.workspace_id,
         Ticket.created_at >= start_dt,
@@ -7638,6 +7653,10 @@ async def web_tickets_report(
         ticket_query = ticket_query.where(
             (Ticket.assigned_to_id == selected_user_id) | (Ticket.closed_by_id == selected_user_id)
         )
+    
+    if selected_project_id:
+        # Filter tickets by project
+        ticket_query = ticket_query.where(Ticket.related_project_id == selected_project_id)
     
     all_tickets = (await db.execute(ticket_query.order_by(Ticket.created_at.desc()))).scalars().all()
     
@@ -7889,6 +7908,9 @@ async def web_tickets_report(
         'total_comments': len(all_comments),
     }
     
+    # Count tickets for selected project
+    project_ticket_count = len(all_tickets) if selected_project_id else 0
+    
     return templates.TemplateResponse(
         'tickets/report.html',
         {
@@ -7910,6 +7932,10 @@ async def web_tickets_report(
             'all_users': users_result,
             'selected_user': selected_user,
             'selected_user_id': selected_user_id,
+            'all_projects': all_projects,
+            'selected_project': selected_project,
+            'selected_project_id': selected_project_id,
+            'project_ticket_count': project_ticket_count,
         },
     )
 

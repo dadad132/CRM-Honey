@@ -60,11 +60,22 @@
                 </div>
                 <div>
                     <label class="block text-sm font-medium text-gray-700 mb-1">Filter by User</label>
-                    <select name="user_id" class="px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 min-w-[200px]">
-                        <option value="">All Users (General Report)</option>
+                    <select name="user_id" class="px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 min-w-[180px]">
+                        <option value="">All Users</option>
                         {% for usr in all_users %}
                         <option value="{{ usr.id }}" {% if selected_user_id == usr.id %}selected{% endif %}>
                             {{ usr.full_name or usr.username }}
+                        </option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Filter by Project</label>
+                    <select name="project_id" class="px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 min-w-[180px]">
+                        <option value="">All Projects</option>
+                        {% for proj in all_projects %}
+                        <option value="{{ proj.id }}" {% if selected_project_id == proj.id %}selected{% endif %}>
+                            {{ proj.name }}
                         </option>
                         {% endfor %}
                     </select>
@@ -83,22 +94,51 @@
         </form>
     </div>
     
-    <!-- User-specific report indicator -->
-    {% if selected_user %}
-    <div class="bg-indigo-50 border border-indigo-200 rounded-lg p-4 mb-6 flex items-center justify-between">
-        <div class="flex items-center gap-3">
-            <div class="w-10 h-10 bg-indigo-600 rounded-full flex items-center justify-center text-white font-semibold">
-                {{ (selected_user.full_name or selected_user.username)[:2]|upper }}
+    <!-- Filter indicators -->
+    {% if selected_user or selected_project %}
+    <div class="flex flex-wrap gap-4 mb-6">
+        {% if selected_user %}
+        <div class="bg-indigo-50 border border-indigo-200 rounded-lg p-4 flex items-center justify-between flex-1">
+            <div class="flex items-center gap-3">
+                <div class="w-10 h-10 bg-indigo-600 rounded-full flex items-center justify-center text-white font-semibold">
+                    {{ (selected_user.full_name or selected_user.username)[:2]|upper }}
+                </div>
+                <div>
+                    <p class="font-semibold text-indigo-900">User: {{ selected_user.full_name or selected_user.username }}</p>
+                    <p class="text-sm text-indigo-600">{{ selected_user.email }}</p>
+                </div>
             </div>
-            <div>
-                <p class="font-semibold text-indigo-900">Viewing report for: {{ selected_user.full_name or selected_user.username }}</p>
-                <p class="text-sm text-indigo-600">{{ selected_user.email }}</p>
-            </div>
+            <a href="/web/tickets/report?start_date={{ start_date }}&end_date={{ end_date }}{% if selected_project_id %}&project_id={{ selected_project_id }}{% endif %}" 
+               class="px-3 py-1.5 bg-indigo-600 text-white rounded-lg text-sm hover:bg-indigo-700">
+                Clear User
+            </a>
         </div>
-        <a href="/web/tickets/report?start_date={{ start_date }}&end_date={{ end_date }}" 
-           class="px-3 py-1.5 bg-indigo-600 text-white rounded-lg text-sm hover:bg-indigo-700">
-            View All Users
-        </a>
+        {% endif %}
+        {% if selected_project %}
+        <div class="bg-emerald-50 border border-emerald-200 rounded-lg p-4 flex items-center justify-between flex-1">
+            <div class="flex items-center gap-3">
+                <div class="w-10 h-10 bg-emerald-600 rounded-full flex items-center justify-center text-white">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"/>
+                    </svg>
+                </div>
+                <div>
+                    <p class="font-semibold text-emerald-900">Project: {{ selected_project.name }}</p>
+                    <p class="text-sm text-emerald-600">{{ project_ticket_count }} tickets in this project</p>
+                </div>
+            </div>
+            <a href="/web/tickets/report?start_date={{ start_date }}&end_date={{ end_date }}{% if selected_user_id %}&user_id={{ selected_user_id }}{% endif %}" 
+               class="px-3 py-1.5 bg-emerald-600 text-white rounded-lg text-sm hover:bg-emerald-700">
+                Clear Project
+            </a>
+        </div>
+        {% endif %}
+    </div>
+    {% endif %}
+    
+    {% if not selected_user and not selected_project %}
+    <div class="bg-gray-50 border border-gray-200 rounded-lg p-4 mb-6">
+        <p class="text-gray-700"><strong>General Report</strong> - Showing all tickets from all users and projects</p>
     </div>
     {% endif %}
     
