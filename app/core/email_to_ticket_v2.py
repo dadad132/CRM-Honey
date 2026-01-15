@@ -685,7 +685,11 @@ class EmailToTicketService:
             
             print(f"[IMAP] Found {len(raw_emails)} messages from last 7 days")
             
-            # Process each email (async operations can use event loop)
+            # Import for fresh sessions
+            from sqlmodel.ext.asyncio.session import AsyncSession as NewAsyncSession
+            from app.core.database import engine
+            
+            # Process each email with fresh db sessions to avoid greenlet issues
             for raw_email in raw_emails:
                 email_id = raw_email['email_id']
                 try:
@@ -694,100 +698,103 @@ class EmailToTicketService:
                     # Get message ID
                     message_id = msg.get('Message-ID', f'no-id-{email_id.decode()}')
                     
-                    # Check if already processed
-                    if await self.is_email_processed(db, message_id):
-                        # Mark as read but don't process again (run in thread)
-                        await asyncio.to_thread(mail.store, email_id, '+FLAGS', '\\Seen')
-                        continue
-                    
-                    # Extract email info
-                    from_header = msg.get('From', '')
-                    sender_name, sender_email = self.extract_email_address(from_header)
-                    to_header = msg.get('To', '')
-                    _, to_email = self.extract_email_address(to_header)
-                    
-                    subject = self.decode_header_value(msg.get('Subject', 'No Subject'))
-                    body = self.extract_email_body(msg)
-                    
-                    print(f"\n{'='*80}")
-                    print(f"[IMAP] Processing email")
-                    print(f"[IMAP] From: {sender_name} <{sender_email}>")
-                    print(f"[IMAP] To: {to_email}")
-                    print(f"[IMAP] Subject: {subject}")
-                    print(f"[IMAP] Message-ID: {message_id}")
-                    
-                    # Check if this is a reply to an existing ticket
-                    # Keep Message-ID with angle brackets for matching
-                    in_reply_to = msg.get('In-Reply-To', '').strip()
-                    references = msg.get('References', '').strip()
-                    
-                    print(f"[IMAP] In-Reply-To: '{in_reply_to}'")
-                    print(f"[IMAP] References: '{references}'")
-                    
-                    existing_ticket = await self.find_ticket_by_reply(db, in_reply_to, references)
-                    
-                    # If not found via headers, try subject line (Gmail/Outlook fallback)
-                    if not existing_ticket:
-                        print(f"[IMAP] Trying subject line fallback...")
-                        existing_ticket = await self.find_ticket_by_subject(db, subject)
-                    
-                    # If still not found, try by sender email (last resort)
-                    if not existing_ticket:
-                        print(f"[IMAP] Trying sender email fallback...")
-                        existing_ticket = await self.find_ticket_by_sender(db, sender_email)
-                    
-                    if existing_ticket:
-                        print(f"[IMAP] ✅ MATCH FOUND - Adding to ticket #{existing_ticket.ticket_number}")
-                    else:
-                        print(f"[IMAP] ❌ NO MATCH - Will create new ticket")
-                    print(f"{'='*80}\n")
-                    
-                    # Find project by support email
-                    project = await self.find_project_by_email(db, to_email)
-                    
-                    if existing_ticket:
-                        # Refresh to ensure all attributes are loaded
-                        await db.refresh(existing_ticket)
-                        existing_ticket_id = existing_ticket.id
-                        existing_ticket_number = existing_ticket.ticket_number
+                    # Use fresh session for each email to avoid greenlet context issues
+                    async with NewAsyncSession(engine) as fresh_db:
+                        # Check if already processed
+                        if await self.is_email_processed(fresh_db, message_id):
+                            # Mark as read but don't process again (run in thread)
+                            await asyncio.to_thread(mail.store, email_id, '+FLAGS', '\\Seen')
+                            continue
                         
-                        # Add as comment to existing ticket
-                        await self.add_comment_from_email(
-                            db, existing_ticket, sender_name, sender_email, body
-                        )
+                        # Extract email info
+                        from_header = msg.get('From', '')
+                        sender_name, sender_email = self.extract_email_address(from_header)
+                        to_header = msg.get('To', '')
+                        _, to_email = self.extract_email_address(to_header)
                         
-                        # Mark as processed
-                        await self.mark_email_processed(
-                            db, message_id, sender_email, subject, existing_ticket_id
-                        )
+                        subject = self.decode_header_value(msg.get('Subject', 'No Subject'))
+                        body = self.extract_email_body(msg)
                         
-                        # Mark email as read (run in thread - blocking operation)
-                        await asyncio.to_thread(mail.store, email_id, '+FLAGS', '\\Seen')
+                        print(f"\n{'='*80}")
+                        print(f"[IMAP] Processing email")
+                        print(f"[IMAP] From: {sender_name} <{sender_email}>")
+                        print(f"[IMAP] To: {to_email}")
+                        print(f"[IMAP] Subject: {subject}")
+                        print(f"[IMAP] Message-ID: {message_id}")
                         
-                        print(f"[IMAP] Added comment to ticket {existing_ticket_number} from {sender_email}")
-                    else:
-                        # Always create tickets (linked to project if matched)
-                        ticket = await self.create_ticket_from_email(
-                            db, sender_name, sender_email, subject, body, to_email, project
-                        )
+                        # Check if this is a reply to an existing ticket
+                        # Keep Message-ID with angle brackets for matching
+                        in_reply_to = msg.get('In-Reply-To', '').strip()
+                        references = msg.get('References', '').strip()
                         
-                        # Refresh and store ID immediately
-                        await db.refresh(ticket)
-                        ticket_id = ticket.id
+                        print(f"[IMAP] In-Reply-To: '{in_reply_to}'")
+                        print(f"[IMAP] References: '{references}'")
                         
-                        # Mark as processed
-                        await self.mark_email_processed(
-                            db, message_id, sender_email, subject, ticket_id
-                        )
+                        existing_ticket = await self.find_ticket_by_reply(fresh_db, in_reply_to, references)
                         
-                        # Mark email as read (run in thread)
-                        await asyncio.to_thread(mail.store, email_id, '+FLAGS', '\\Seen')
+                        # If not found via headers, try subject line (Gmail/Outlook fallback)
+                        if not existing_ticket:
+                            print(f"[IMAP] Trying subject line fallback...")
+                            existing_ticket = await self.find_ticket_by_subject(fresh_db, subject)
                         
-                        tickets_created.append(ticket)
-                        if project:
-                            print(f"[IMAP] Created ticket {ticket.ticket_number} for project '{project.name}' from {sender_email}")
+                        # If still not found, try by sender email (last resort)
+                        if not existing_ticket:
+                            print(f"[IMAP] Trying sender email fallback...")
+                            existing_ticket = await self.find_ticket_by_sender(fresh_db, sender_email)
+                        
+                        if existing_ticket:
+                            print(f"[IMAP] ✅ MATCH FOUND - Adding to ticket #{existing_ticket.ticket_number}")
                         else:
-                            print(f"[IMAP] Created ticket {ticket.ticket_number} from {sender_email}")
+                            print(f"[IMAP] ❌ NO MATCH - Will create new ticket")
+                        print(f"{'='*80}\n")
+                        
+                        # Find project by support email
+                        project = await self.find_project_by_email(fresh_db, to_email)
+                        
+                        if existing_ticket:
+                            # Refresh to ensure all attributes are loaded
+                            await fresh_db.refresh(existing_ticket)
+                            existing_ticket_id = existing_ticket.id
+                            existing_ticket_number = existing_ticket.ticket_number
+                            
+                            # Add as comment to existing ticket
+                            await self.add_comment_from_email(
+                                fresh_db, existing_ticket, sender_name, sender_email, body
+                            )
+                            
+                            # Mark as processed
+                            await self.mark_email_processed(
+                                fresh_db, message_id, sender_email, subject, existing_ticket_id
+                            )
+                            
+                            # Mark email as read (run in thread - blocking operation)
+                            await asyncio.to_thread(mail.store, email_id, '+FLAGS', '\\Seen')
+                            
+                            print(f"[IMAP] Added comment to ticket {existing_ticket_number} from {sender_email}")
+                        else:
+                            # Always create tickets (linked to project if matched)
+                            ticket = await self.create_ticket_from_email(
+                                fresh_db, sender_name, sender_email, subject, body, to_email, project
+                            )
+                            
+                            # Refresh and store ID immediately
+                            await fresh_db.refresh(ticket)
+                            ticket_id = ticket.id
+                            ticket_number = ticket.ticket_number
+                            
+                            # Mark as processed
+                            await self.mark_email_processed(
+                                fresh_db, message_id, sender_email, subject, ticket_id
+                            )
+                            
+                            # Mark email as read (run in thread)
+                            await asyncio.to_thread(mail.store, email_id, '+FLAGS', '\\Seen')
+                            
+                            tickets_created.append(ticket)
+                            if project:
+                                print(f"[IMAP] Created ticket {ticket_number} for project '{project.name}' from {sender_email}")
+                            else:
+                                print(f"[IMAP] Created ticket {ticket_number} from {sender_email}")
                     
                 except Exception as e:
                     print(f"[IMAP] Error processing email {email_id}: {e}")
