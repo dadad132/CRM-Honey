@@ -1298,12 +1298,15 @@ async def process_email_account(db: AsyncSession, account) -> List[Ticket]:
                     await fresh_db.commit()
                     await fresh_db.refresh(new_ticket)
                     
+                    # Store ID immediately after refresh to avoid lazy loading issues
+                    ticket_id = new_ticket.id
+                    
                     # Mark email as processed
                     processed = ProcessedMail(
                         message_id=message_id,
                         email_from=sender_email_addr or 'unknown@unknown.com',
                         subject=subject,
-                        ticket_id=new_ticket.id,
+                        ticket_id=ticket_id,
                         workspace_id=workspace_id
                     )
                     fresh_db.add(processed)
@@ -1327,15 +1330,15 @@ async def process_email_account(db: AsyncSession, account) -> List[Ticket]:
                             title=f"📧 New Ticket: #{ticket_number}",
                             message=f"Email from {sender_name} ({sender_email_addr}): {subject[:100]}",
                             type='ticket',
-                            url=f'/web/tickets/{new_ticket.id}',
-                            related_id=new_ticket.id
+                            url=f'/web/tickets/{ticket_id}',
+                            related_id=ticket_id
                         )
                         fresh_db.add(notification)
                     
                     await fresh_db.commit()
                     
                     tickets_created.append(new_ticket)
-                    print(f"[Email Account] Created ticket #{ticket_number} from {sender_email_addr} via {account_name}")
+                    print(f"[Email Account] ✅ Created ticket #{ticket_number} (ID: {ticket_id}) from {sender_email_addr} via {account_name}")
                 
             except Exception as e:
                 print(f"[Email Account] Error processing email {email_id}: {e}")
