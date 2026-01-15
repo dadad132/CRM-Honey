@@ -4785,6 +4785,516 @@ async def web_project_members_remove(
     return RedirectResponse(f'/web/projects/{project_id}/members', status_code=303)
 
 
+# Project Report
+@router.get('/projects/{project_id}/report', response_class=HTMLResponse)
+async def web_project_report(
+    request: Request, 
+    project_id: int, 
+    start_date: Optional[str] = Query(None),
+    end_date: Optional[str] = Query(None),
+    db: AsyncSession = Depends(get_session)
+):
+    """Project report showing who did what tasks and time spent"""
+    user_id = request.session.get('user_id')
+    if not user_id:
+        return RedirectResponse('/web/login', status_code=303)
+    
+    user = (await db.execute(select(User).where(User.id == user_id))).scalar_one_or_none()
+    if not user:
+        request.session.clear()
+        return RedirectResponse('/web/login', status_code=303)
+    
+    # Get project
+    project = (await db.execute(
+        select(Project).where(Project.id == project_id, Project.workspace_id == user.workspace_id)
+    )).scalar_one_or_none()
+    
+    if not project:
+        raise HTTPException(status_code=404, detail='Project not found')
+    
+    # Check access (admin or project member)
+    if not user.is_admin:
+        from app.models.project_member import ProjectMember
+        member = (await db.execute(
+            select(ProjectMember).where(
+                ProjectMember.project_id == project_id,
+                ProjectMember.user_id == user_id
+            )
+        )).scalar_one_or_none()
+        if not member:
+            raise HTTPException(status_code=403, detail='Access denied')
+    
+    # Parse date range (default to last 30 days)
+    if start_date:
+        start_dt = datetime.strptime(start_date, '%Y-%m-%d')
+    else:
+        start_dt = datetime.now() - timedelta(days=30)
+        start_date = start_dt.strftime('%Y-%m-%d')
+    
+    if end_date:
+        end_dt = datetime.strptime(end_date, '%Y-%m-%d') + timedelta(days=1)
+    else:
+        end_dt = datetime.now() + timedelta(days=1)
+        end_date = (end_dt - timedelta(days=1)).strftime('%Y-%m-%d')
+    
+    # Get all tasks for the project
+    all_tasks = (await db.execute(
+        select(Task).where(Task.project_id == project_id)
+    )).scalars().all()
+    
+    # Get tasks in date range
+    tasks_in_range = (await db.execute(
+        select(Task).where(
+            Task.project_id == project_id,
+            Task.created_at >= start_dt,
+            Task.created_at < end_dt
+        ).order_by(Task.created_at.desc())
+    )).scalars().all()
+    
+    # Get all assignments
+    task_ids = [t.id for t in all_tasks]
+    assignments = []
+    if task_ids:
+        assignments = (await db.execute(
+            select(Assignment, User)
+            .join(User, User.id == Assignment.assignee_id)
+            .where(Assignment.task_id.in_(task_ids))
+        )).all()
+    
+    # Build assignees map
+    assignees_map = {}  # task_id -> [(name, email), ...]
+    for assignment, assignee_user in assignments:
+        if assignment.task_id not in assignees_map:
+            assignees_map[assignment.task_id] = []
+        assignees_map[assignment.task_id].append((
+            assignee_user.full_name or assignee_user.username,
+            assignee_user.email
+        ))
+    
+    # Get task history for completion dates
+    task_completions = {}  # task_id -> completion datetime
+    if task_ids:
+        completions = (await db.execute(
+            select(TaskHistory)
+            .where(
+                TaskHistory.task_id.in_(task_ids),
+                TaskHistory.field == 'status',
+                TaskHistory.new_value == 'done'
+            )
+            .order_by(TaskHistory.created_at.desc())
+        )).scalars().all()
+        
+        for completion in completions:
+            if completion.task_id not in task_completions:
+                task_completions[completion.task_id] = completion.created_at
+    
+    # Calculate contributor stats
+    contributor_stats = {}  # user_id -> stats
+    
+    for assignment, assignee_user in assignments:
+        uid = assignee_user.id
+        if uid not in contributor_stats:
+            contributor_stats[uid] = {
+                'user': assignee_user,
+                'name': assignee_user.full_name or assignee_user.username,
+                'email': assignee_user.email,
+                'initials': ''.join([n[0].upper() for n in (assignee_user.full_name or assignee_user.email).split()[:2]]),
+                'tasks_assigned': 0,
+                'tasks_completed': 0,
+                'hours_logged': 0.0
+            }
+        
+        # Find the task
+        task = next((t for t in all_tasks if t.id == assignment.task_id), None)
+        if task:
+            contributor_stats[uid]['tasks_assigned'] += 1
+            if task.status == TaskStatus.done:
+                contributor_stats[uid]['tasks_completed'] += 1
+            if task.time_spent_hours:
+                contributor_stats[uid]['hours_logged'] += task.time_spent_hours
+    
+    # Format contributor data
+    contributors = []
+    for uid, stats in contributor_stats.items():
+        completion_rate = round((stats['tasks_completed'] / stats['tasks_assigned'] * 100) if stats['tasks_assigned'] > 0 else 0)
+        avg_hours = round(stats['hours_logged'] / stats['tasks_completed'], 1) if stats['tasks_completed'] > 0 else 0
+        contributors.append({
+            'name': stats['name'],
+            'email': stats['email'],
+            'initials': stats['initials'],
+            'tasks_assigned': stats['tasks_assigned'],
+            'tasks_completed': stats['tasks_completed'],
+            'completion_rate': completion_rate,
+            'hours_logged': round(stats['hours_logged'], 1),
+            'avg_hours_per_task': avg_hours
+        })
+    
+    # Sort by tasks completed (descending)
+    contributors.sort(key=lambda x: x['tasks_completed'], reverse=True)
+    
+    # Build task details
+    tasks_detail = []
+    for task in all_tasks:
+        completed_at = task_completions.get(task.id)
+        duration_days = None
+        if completed_at:
+            duration_days = (completed_at - task.created_at).days
+        
+        tasks_detail.append({
+            'id': task.id,
+            'title': task.title,
+            'description': task.description,
+            'status': task.status.value if hasattr(task.status, 'value') else task.status,
+            'priority': task.priority.value if hasattr(task.priority, 'value') else task.priority,
+            'assignees': [a[0] for a in assignees_map.get(task.id, [])],
+            'created_at': task.created_at,
+            'completed_at': completed_at,
+            'time_spent_hours': task.time_spent_hours,
+            'duration_days': duration_days
+        })
+    
+    # Sort by created_at descending
+    tasks_detail.sort(key=lambda x: x['created_at'], reverse=True)
+    
+    # Get activity timeline from TaskHistory
+    activities = []
+    if task_ids:
+        history_entries = (await db.execute(
+            select(TaskHistory, User, Task)
+            .join(User, User.id == TaskHistory.editor_id)
+            .join(Task, Task.id == TaskHistory.task_id)
+            .where(
+                TaskHistory.task_id.in_(task_ids),
+                TaskHistory.created_at >= start_dt,
+                TaskHistory.created_at < end_dt
+            )
+            .order_by(TaskHistory.created_at.desc())
+            .limit(50)
+        )).all()
+        
+        for history, editor, task in history_entries:
+            action = 'updated'
+            description = f'updated {history.field}'
+            
+            if history.field == 'created':
+                action = 'created'
+                description = 'created the task'
+            elif history.field == 'status':
+                action = 'status_changed'
+                if history.new_value == 'done':
+                    action = 'completed'
+                    description = 'completed the task'
+                else:
+                    description = f'changed status from {history.old_value or "none"} to {history.new_value}'
+            elif history.field == 'priority':
+                description = f'changed priority from {history.old_value or "none"} to {history.new_value}'
+            elif history.field == 'assignee':
+                description = f'changed assignee'
+            
+            activities.append({
+                'action': action,
+                'description': description,
+                'user_name': editor.full_name or editor.username,
+                'task_title': task.title,
+                'created_at': history.created_at
+            })
+    
+    # Calculate summary
+    total_tasks = len(all_tasks)
+    completed_tasks = sum(1 for t in all_tasks if t.status == TaskStatus.done)
+    completion_rate = round((completed_tasks / total_tasks * 100) if total_tasks > 0 else 0)
+    total_hours = round(sum(t.time_spent_hours or 0 for t in all_tasks), 1)
+    active_contributors = len(contributor_stats)
+    
+    summary = {
+        'total_tasks': total_tasks,
+        'completed_tasks': completed_tasks,
+        'completion_rate': completion_rate,
+        'total_hours': total_hours,
+        'active_contributors': active_contributors
+    }
+    
+    # Get workspace for timezone
+    workspace = (await db.execute(
+        select(Workspace).where(Workspace.id == user.workspace_id)
+    )).scalar_one_or_none()
+    
+    return templates.TemplateResponse('projects/report.html', {
+        'request': request,
+        'user': user,
+        'project': project,
+        'workspace': workspace,
+        'start_date': start_date,
+        'end_date': end_date,
+        'summary': summary,
+        'contributors': contributors,
+        'tasks_detail': tasks_detail,
+        'activities': activities
+    })
+
+
+@router.get('/projects/{project_id}/report/pdf')
+async def web_project_report_pdf(
+    request: Request, 
+    project_id: int,
+    start_date: Optional[str] = Query(None),
+    end_date: Optional[str] = Query(None),
+    db: AsyncSession = Depends(get_session)
+):
+    """Generate PDF report for project"""
+    user_id = request.session.get('user_id')
+    if not user_id:
+        return RedirectResponse('/web/login', status_code=303)
+    
+    user = (await db.execute(select(User).where(User.id == user_id))).scalar_one_or_none()
+    if not user:
+        request.session.clear()
+        return RedirectResponse('/web/login', status_code=303)
+    
+    # Get project
+    project = (await db.execute(
+        select(Project).where(Project.id == project_id, Project.workspace_id == user.workspace_id)
+    )).scalar_one_or_none()
+    
+    if not project:
+        raise HTTPException(status_code=404, detail='Project not found')
+    
+    # Parse date range
+    if start_date:
+        start_dt = datetime.strptime(start_date, '%Y-%m-%d')
+    else:
+        start_dt = datetime.now() - timedelta(days=30)
+    
+    if end_date:
+        end_dt = datetime.strptime(end_date, '%Y-%m-%d') + timedelta(days=1)
+    else:
+        end_dt = datetime.now() + timedelta(days=1)
+    
+    # Get all tasks for the project
+    all_tasks = (await db.execute(
+        select(Task).where(Task.project_id == project_id)
+    )).scalars().all()
+    
+    # Get assignments
+    task_ids = [t.id for t in all_tasks]
+    assignments = []
+    if task_ids:
+        assignments = (await db.execute(
+            select(Assignment, User)
+            .join(User, User.id == Assignment.assignee_id)
+            .where(Assignment.task_id.in_(task_ids))
+        )).all()
+    
+    # Build assignees map
+    assignees_map = {}
+    for assignment, assignee_user in assignments:
+        if assignment.task_id not in assignees_map:
+            assignees_map[assignment.task_id] = []
+        assignees_map[assignment.task_id].append(assignee_user.full_name or assignee_user.username)
+    
+    # Get completion dates
+    task_completions = {}
+    if task_ids:
+        completions = (await db.execute(
+            select(TaskHistory)
+            .where(
+                TaskHistory.task_id.in_(task_ids),
+                TaskHistory.field == 'status',
+                TaskHistory.new_value == 'done'
+            )
+            .order_by(TaskHistory.created_at.desc())
+        )).scalars().all()
+        
+        for completion in completions:
+            if completion.task_id not in task_completions:
+                task_completions[completion.task_id] = completion.created_at
+    
+    # Calculate contributor stats
+    contributor_stats = {}
+    for assignment, assignee_user in assignments:
+        uid = assignee_user.id
+        if uid not in contributor_stats:
+            contributor_stats[uid] = {
+                'name': assignee_user.full_name or assignee_user.username,
+                'tasks_assigned': 0,
+                'tasks_completed': 0,
+                'hours_logged': 0.0
+            }
+        
+        task = next((t for t in all_tasks if t.id == assignment.task_id), None)
+        if task:
+            contributor_stats[uid]['tasks_assigned'] += 1
+            if task.status == TaskStatus.done:
+                contributor_stats[uid]['tasks_completed'] += 1
+            if task.time_spent_hours:
+                contributor_stats[uid]['hours_logged'] += task.time_spent_hours
+    
+    # Generate PDF
+    from reportlab.lib.pagesizes import letter, A4
+    from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+    from reportlab.lib.units import inch
+    from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, PageBreak
+    from reportlab.lib import colors
+    from reportlab.lib.enums import TA_CENTER, TA_LEFT
+    
+    import io
+    buffer = io.BytesIO()
+    doc = SimpleDocTemplate(buffer, pagesize=letter, topMargin=0.5*inch, bottomMargin=0.5*inch)
+    
+    elements = []
+    styles = getSampleStyleSheet()
+    
+    # Custom styles
+    title_style = ParagraphStyle(
+        'CustomTitle',
+        parent=styles['Heading1'],
+        fontSize=24,
+        textColor=colors.HexColor('#1F2937'),
+        spaceAfter=20,
+        alignment=TA_CENTER,
+    )
+    
+    heading_style = ParagraphStyle(
+        'CustomHeading',
+        parent=styles['Heading2'],
+        fontSize=14,
+        textColor=colors.HexColor('#374151'),
+        spaceAfter=12,
+        spaceBefore=20,
+    )
+    
+    # Title
+    elements.append(Paragraph(f"Project Report: {project.name}", title_style))
+    elements.append(Paragraph(
+        f"Period: {start_dt.strftime('%B %d, %Y')} - {(end_dt - timedelta(days=1)).strftime('%B %d, %Y')}",
+        styles['Normal']
+    ))
+    elements.append(Paragraph(
+        f"Generated: {datetime.now().strftime('%B %d, %Y at %I:%M %p')}",
+        styles['Normal']
+    ))
+    elements.append(Spacer(1, 0.3*inch))
+    
+    # Summary
+    total_tasks = len(all_tasks)
+    completed_tasks = sum(1 for t in all_tasks if t.status == TaskStatus.done)
+    completion_rate = round((completed_tasks / total_tasks * 100) if total_tasks > 0 else 0)
+    total_hours = round(sum(t.time_spent_hours or 0 for t in all_tasks), 1)
+    
+    elements.append(Paragraph("Summary", heading_style))
+    summary_data = [
+        ['Total Tasks', 'Completed', 'Completion Rate', 'Total Hours'],
+        [str(total_tasks), str(completed_tasks), f'{completion_rate}%', f'{total_hours}h']
+    ]
+    summary_table = Table(summary_data, colWidths=[1.5*inch, 1.5*inch, 1.5*inch, 1.5*inch])
+    summary_table.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#4F46E5')),
+        ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
+        ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+        ('FONTSIZE', (0, 0), (-1, 0), 10),
+        ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
+        ('BACKGROUND', (0, 1), (-1, -1), colors.HexColor('#F3F4F6')),
+        ('FONTSIZE', (0, 1), (-1, -1), 12),
+        ('TOPPADDING', (0, 1), (-1, -1), 10),
+        ('BOTTOMPADDING', (0, 1), (-1, -1), 10),
+        ('GRID', (0, 0), (-1, -1), 1, colors.white),
+    ]))
+    elements.append(summary_table)
+    elements.append(Spacer(1, 0.3*inch))
+    
+    # Contributor Performance
+    elements.append(Paragraph("Contributor Performance", heading_style))
+    contrib_headers = ['Contributor', 'Assigned', 'Completed', 'Rate', 'Hours']
+    contrib_data = [contrib_headers]
+    
+    for uid, stats in sorted(contributor_stats.items(), key=lambda x: x[1]['tasks_completed'], reverse=True):
+        rate = round((stats['tasks_completed'] / stats['tasks_assigned'] * 100) if stats['tasks_assigned'] > 0 else 0)
+        contrib_data.append([
+            stats['name'],
+            str(stats['tasks_assigned']),
+            str(stats['tasks_completed']),
+            f'{rate}%',
+            f"{round(stats['hours_logged'], 1)}h"
+        ])
+    
+    if len(contrib_data) > 1:
+        contrib_table = Table(contrib_data, colWidths=[2.5*inch, 1*inch, 1*inch, 1*inch, 1*inch])
+        contrib_table.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#4F46E5')),
+            ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
+            ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+            ('ALIGN', (0, 0), (0, -1), 'LEFT'),
+            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+            ('FONTSIZE', (0, 0), (-1, 0), 9),
+            ('BOTTOMPADDING', (0, 0), (-1, 0), 10),
+            ('FONTSIZE', (0, 1), (-1, -1), 9),
+            ('TOPPADDING', (0, 1), (-1, -1), 8),
+            ('BOTTOMPADDING', (0, 1), (-1, -1), 8),
+            ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#E5E7EB')),
+            ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor('#F9FAFB')]),
+        ]))
+        elements.append(contrib_table)
+    else:
+        elements.append(Paragraph("No contributors found.", styles['Normal']))
+    
+    elements.append(Spacer(1, 0.3*inch))
+    
+    # Task Details
+    elements.append(Paragraph("Task Details", heading_style))
+    task_headers = ['Task', 'Assignees', 'Status', 'Priority', 'Time']
+    task_data = [task_headers]
+    
+    for task in sorted(all_tasks, key=lambda t: t.created_at, reverse=True):
+        assignee_names = ', '.join(assignees_map.get(task.id, ['Unassigned']))
+        if len(assignee_names) > 25:
+            assignee_names = assignee_names[:22] + '...'
+        
+        title = task.title
+        if len(title) > 35:
+            title = title[:32] + '...'
+        
+        status = task.status.value if hasattr(task.status, 'value') else str(task.status)
+        priority = task.priority.value if hasattr(task.priority, 'value') else str(task.priority)
+        time_str = f"{task.time_spent_hours}h" if task.time_spent_hours else '-'
+        
+        task_data.append([title, assignee_names, status.title(), priority.title(), time_str])
+    
+    if len(task_data) > 1:
+        task_table = Table(task_data, colWidths=[2.5*inch, 1.5*inch, 1*inch, 1*inch, 0.7*inch])
+        task_table.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#4F46E5')),
+            ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
+            ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+            ('ALIGN', (0, 0), (0, -1), 'LEFT'),
+            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+            ('FONTSIZE', (0, 0), (-1, 0), 8),
+            ('BOTTOMPADDING', (0, 0), (-1, 0), 8),
+            ('FONTSIZE', (0, 1), (-1, -1), 8),
+            ('TOPPADDING', (0, 1), (-1, -1), 6),
+            ('BOTTOMPADDING', (0, 1), (-1, -1), 6),
+            ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#E5E7EB')),
+            ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor('#F9FAFB')]),
+        ]))
+        elements.append(task_table)
+    else:
+        elements.append(Paragraph("No tasks found.", styles['Normal']))
+    
+    # Build PDF
+    doc.build(elements)
+    buffer.seek(0)
+    
+    # Return PDF
+    from fastapi.responses import StreamingResponse
+    filename = f"project_report_{project.name.replace(' ', '_')}_{datetime.now().strftime('%Y%m%d')}.pdf"
+    
+    return StreamingResponse(
+        buffer,
+        media_type='application/pdf',
+        headers={'Content-Disposition': f'attachment; filename="{filename}"'}
+    )
+
+
 # Project detail + simple Kanban
 @router.get('/projects/{project_id}', response_class=HTMLResponse)
 async def web_project_detail(request: Request, project_id: int, db: AsyncSession = Depends(get_session)):
