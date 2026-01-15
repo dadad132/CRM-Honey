@@ -13,14 +13,13 @@ _settings = get_settings()
 
 _initialized: bool = False
 
+# SQLite uses StaticPool by default with aiosqlite, so we don't set pool parameters
+# For production with PostgreSQL, you would add: pool_size=10, max_overflow=20
 engine: AsyncEngine = create_async_engine(
     _settings.database_url,
     echo=False,  # Disable SQL logging for performance
     future=True,
     pool_pre_ping=True,  # Check connections are alive
-    pool_size=10,  # Increase connection pool for better concurrency
-    max_overflow=20,  # Allow extra connections under load
-    pool_recycle=3600,  # Recycle connections every hour
 )
 
 async_session_factory = sessionmaker(
