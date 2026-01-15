@@ -7766,14 +7766,39 @@ async def web_tickets_report(
     
     # Calculate agent performance
     from app.core.business_hours import calculate_business_hours
+    from app.models.project_member import ProjectMember
     
     # Get business hours settings from workspace
     biz_start = workspace.business_hours_start if workspace and hasattr(workspace, 'business_hours_start') else "07:30"
     biz_end = workspace.business_hours_end if workspace and hasattr(workspace, 'business_hours_end') else "16:00"
     biz_exclude_weekends = workspace.business_hours_exclude_weekends if workspace and hasattr(workspace, 'business_hours_exclude_weekends') else True
     
+    # Get project assignments per user (for close rate calculation)
+    user_project_ids = {}  # user_id -> set of project_ids they have access to
+    try:
+        project_members = (await db.execute(
+            select(ProjectMember).where(ProjectMember.user_id.in_([u.id for u in users_result]))
+        )).scalars().all()
+        for pm in project_members:
+            if pm.user_id not in user_project_ids:
+                user_project_ids[pm.user_id] = set()
+            user_project_ids[pm.user_id].add(pm.project_id)
+    except Exception:
+        pass  # project_member table may not exist
+    
     agent_stats = {}
     for usr in users_result:
+        # Calculate accessible tickets for this user
+        if usr.is_admin:
+            # Admins have access to all tickets
+            accessible_tickets = len(all_tickets)
+            accessible_closed = sum(1 for t in all_tickets if t.status == 'closed')
+        else:
+            # Non-admins only have access to tickets from their assigned projects
+            user_projects = user_project_ids.get(usr.id, set())
+            accessible_tickets = sum(1 for t in all_tickets if t.related_project_id in user_projects)
+            accessible_closed = sum(1 for t in all_tickets if t.related_project_id in user_projects and t.status == 'closed')
+        
         agent_stats[usr.id] = {
             'user': usr,
             'name': usr.full_name or usr.username,
@@ -7781,6 +7806,8 @@ async def web_tickets_report(
             'initials': ''.join([n[0].upper() for n in (usr.full_name or usr.email).split()[:2]]),
             'tickets_assigned': 0,
             'tickets_closed': 0,
+            'accessible_tickets': accessible_tickets,  # Total tickets user has access to
+            'accessible_closed': accessible_closed,  # Closed tickets user has access to
             'comments_made': 0,
             'resolution_times': [],
             'first_response_times': [],
@@ -7827,7 +7854,12 @@ async def web_tickets_report(
     agents = []
     for uid, stats in agent_stats.items():
         if stats['tickets_assigned'] > 0 or stats['tickets_closed'] > 0 or stats['comments_made'] > 0:
-            close_rate = round((stats['tickets_closed'] / stats['tickets_assigned'] * 100) if stats['tickets_assigned'] > 0 else 0)
+            # Close rate is based on accessible tickets (tickets user has access to via project assignments)
+            # This gives a fair rate based on what tickets the user can actually work on
+            accessible = stats['accessible_tickets']
+            accessible_closed = stats['accessible_closed']
+            close_rate = round((accessible_closed / accessible * 100) if accessible > 0 else 0)
+            
             avg_resolution = round(sum(stats['resolution_times']) / len(stats['resolution_times']), 1) if stats['resolution_times'] else 0
             avg_first_response = round(sum(stats['first_response_times']) / len(stats['first_response_times']), 1) if stats['first_response_times'] else 0
             
@@ -7837,6 +7869,7 @@ async def web_tickets_report(
                 'initials': stats['initials'],
                 'tickets_assigned': stats['tickets_assigned'],
                 'tickets_closed': stats['tickets_closed'],
+                'accessible_tickets': accessible,  # Tickets user has access to
                 'close_rate': close_rate,
                 'avg_resolution_hours': avg_resolution,
                 'comments_made': stats['comments_made'],
