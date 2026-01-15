@@ -324,6 +324,9 @@ class EmailToTicketService:
                     select(Ticket).where(Ticket.id == processed.ticket_id)
                 )
                 ticket = ticket_result.scalar_one_or_none()
+                if ticket and ticket.status in ['closed', 'resolved']:
+                    print(f"[DEBUG] Found ticket #{ticket.ticket_number} but it's CLOSED - will create new ticket")
+                    return None
                 print(f"[DEBUG] Returning ticket: {ticket.ticket_number if ticket else None}")
                 return ticket
         
@@ -349,6 +352,9 @@ class EmailToTicketService:
                         select(Ticket).where(Ticket.id == processed.ticket_id)
                     )
                     ticket = ticket_result.scalar_one_or_none()
+                    if ticket and ticket.status in ['closed', 'resolved']:
+                        print(f"[DEBUG] Found ticket #{ticket.ticket_number} via References but it's CLOSED - will create new ticket")
+                        continue  # Try next reference
                     print(f"[DEBUG] Found ticket via References: {ticket.ticket_number if ticket else None}")
                     return ticket
         
@@ -395,6 +401,10 @@ class EmailToTicketService:
                     )
                     ticket = result.scalar_one_or_none()
                     if ticket:
+                        # Don't add comments to closed tickets - create new ticket instead
+                        if ticket.status in ['closed', 'resolved']:
+                            print(f"[DEBUG] Found ticket #{ticket.ticket_number} but it's CLOSED - will create new ticket")
+                            return None
                         print(f"[DEBUG] ✅ Found ticket #{ticket.ticket_number} via subject line")
                         return ticket
                     else:
@@ -439,17 +449,25 @@ class EmailToTicketService:
         subject: str, 
         ticket_id: int
     ):
-        """Mark email as processed"""
-        processed = ProcessedMail(
-            message_id=message_id,
-            email_from=email_from,
-            subject=subject,
-            ticket_id=ticket_id,
-            workspace_id=self.workspace_id,
-            processed_at=get_local_time()
-        )
-        db.add(processed)
-        await db.commit()
+        """Mark email as processed - with duplicate protection"""
+        try:
+            processed = ProcessedMail(
+                message_id=message_id,
+                email_from=email_from,
+                subject=subject,
+                ticket_id=ticket_id,
+                workspace_id=self.workspace_id,
+                processed_at=get_local_time()
+            )
+            db.add(processed)
+            await db.commit()
+        except Exception as e:
+            # Handle duplicate key error gracefully (already processed by another worker)
+            if 'UNIQUE constraint' in str(e) or 'duplicate' in str(e).lower():
+                print(f"[IMAP] Email already marked as processed (race condition handled): {message_id[:50]}")
+                await db.rollback()
+            else:
+                raise
     
     async def find_project_by_email(self, db: AsyncSession, to_email: str) -> Optional[Project]:
         """Find project by support email address"""
@@ -853,6 +871,9 @@ async def find_ticket_by_reply_for_account(
                 select(Ticket).where(Ticket.id == processed.ticket_id)
             )
             ticket = ticket_result.scalar_one_or_none()
+            if ticket and ticket.status in ['closed', 'resolved']:
+                print(f"[DEBUG] Found ticket #{ticket.ticket_number} but it's CLOSED - will create new ticket")
+                return None
             print(f"[DEBUG] Returning ticket: {ticket.ticket_number if ticket else None}")
             return ticket
     
@@ -876,6 +897,9 @@ async def find_ticket_by_reply_for_account(
                     select(Ticket).where(Ticket.id == processed.ticket_id)
                 )
                 ticket = ticket_result.scalar_one_or_none()
+                if ticket and ticket.status in ['closed', 'resolved']:
+                    print(f"[DEBUG] Found ticket #{ticket.ticket_number} via References but it's CLOSED - will create new ticket")
+                    continue  # Try next reference
                 print(f"[DEBUG] Found ticket via References: {ticket.ticket_number if ticket else None}")
                 return ticket
     
@@ -913,7 +937,7 @@ async def find_ticket_by_subject_for_account(db: AsyncSession, workspace_id: int
                 ticket_number = match.group(1).upper()
                 print(f"[DEBUG] Found potential ticket number in subject: {ticket_number} (pattern: {pattern})")
                 
-                # Search for ticket by number
+                # Search for ticket by number (exclude closed tickets)
                 result = await db.execute(
                     select(Ticket).where(
                         Ticket.ticket_number == ticket_number,
@@ -922,6 +946,10 @@ async def find_ticket_by_subject_for_account(db: AsyncSession, workspace_id: int
                 )
                 ticket = result.scalar_one_or_none()
                 if ticket:
+                    # Don't add comments to closed tickets - create new ticket instead
+                    if ticket.status in ['closed', 'resolved']:
+                        print(f"[DEBUG] Found ticket #{ticket.ticket_number} but it's CLOSED - will create new ticket")
+                        return None
                     print(f"[DEBUG] ✅ Found ticket #{ticket.ticket_number} via subject line")
                     return ticket
                 else:

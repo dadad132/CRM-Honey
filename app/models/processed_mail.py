@@ -11,7 +11,7 @@ class ProcessedMail(SQLModel, table=True):
     __tablename__ = "processedmail"
     
     id: Optional[int] = Field(default=None, primary_key=True)
-    message_id: str = Field(index=True)  # Email Message-ID header (unique identifier)
+    message_id: str = Field(index=True, unique=True)  # Email Message-ID header (must be unique)
     email_from: str  # Sender email address
     subject: str  # Email subject
     processed_at: datetime = Field(default_factory=datetime.utcnow)
