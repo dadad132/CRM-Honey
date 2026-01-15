@@ -427,8 +427,8 @@
                             </span>
                         </td>
                         <td class="px-6 py-4 text-sm text-gray-600 capitalize">{{ ticket.category }}</td>
-                        <td class="px-6 py-4 text-sm text-gray-600">{{ ticket.created_at.strftime('%b %d, %H:%M') }}</td>
-                        <td class="px-6 py-4 text-sm text-gray-600">{{ ticket.closed_at.strftime('%b %d, %H:%M') if ticket.closed_at else '-' }}</td>
+                        <td class="px-6 py-4 text-sm text-gray-600">{{ ticket.created_at | format_datetime_tz(workspace.timezone if workspace else 'UTC', '%b %d, %H:%M') }}</td>
+                        <td class="px-6 py-4 text-sm text-gray-600">{{ ticket.closed_at | format_datetime_tz(workspace.timezone if workspace else 'UTC', '%b %d, %H:%M') if ticket.closed_at else '-' }}</td>
                         <td class="px-6 py-4">
                             <span class="font-medium {% if ticket.resolution_hours <= 4 %}text-green-600{% elif ticket.resolution_hours <= 24 %}text-yellow-600{% else %}text-red-600{% endif %}">
                                 {{ ticket.resolution_hours }}h
@@ -516,7 +516,7 @@
                             {% endif %}
                         </div>
                         <p class="text-gray-600 text-sm line-clamp-2">{{ comment.content[:150] }}{% if comment.content|length > 150 %}...{% endif %}</p>
-                        <p class="text-xs text-gray-400 mt-1">{{ comment.created_at.strftime('%b %d, %Y at %H:%M') }}</p>
+                        <p class="text-xs text-gray-400 mt-1">{{ comment.created_at | format_datetime_tz(workspace.timezone if workspace else 'UTC', '%b %d, %Y at %H:%M') }}</p>
                     </div>
                 </div>
             </div>
@@ -592,7 +592,7 @@
                                         </p>
                                     </div>
                                     <div class="whitespace-nowrap text-right text-xs text-gray-500">
-                                        {{ activity.created_at.strftime('%b %d, %H:%M') }}
+                                        {{ activity.created_at | format_datetime_tz(workspace.timezone if workspace else 'UTC', '%b %d, %H:%M') }}
                                     </div>
                                 </div>
                             </div>
