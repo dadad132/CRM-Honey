@@ -25,14 +25,12 @@ from app.models.project import Project
 # Setup logger
 logger = logging.getLogger(__name__)
 
+# Timezone offset (UTC+2 for South Africa)
+LOCAL_TZ_OFFSET = timedelta(hours=2)
 
 def get_local_time() -> datetime:
-    """Get current time in UTC for consistent database storage.
-    
-    Timestamps are stored in UTC and converted to workspace timezone for display.
-    This ensures consistency across different server locations.
-    """
-    return datetime.now(timezone.utc)
+    """Get current time in local timezone (UTC+2)"""
+    return datetime.now(timezone(LOCAL_TZ_OFFSET))
 
 
 async def generate_unique_ticket_number(db: AsyncSession, workspace_id: int) -> str:
@@ -642,9 +640,11 @@ class EmailToTicketService:
                 mail = self.connect_imap()
                 mail.select('INBOX')
                 
-                # Search for UNSEEN (unread) emails only
-                # Once processed, emails are marked as read so they won't be processed again
-                status, messages = mail.search(None, 'UNSEEN')
+                # Search for emails from the last 7 days (not just unread)
+                # This ensures we catch emails even if they're marked as read by other clients
+                from datetime import datetime, timedelta
+                date_since = (datetime.now() - timedelta(days=7)).strftime("%d-%b-%Y")
+                status, messages = mail.search(None, f'SINCE {date_since}')
                 email_ids = messages[0].split()
                 
                 raw_emails = []
@@ -665,7 +665,7 @@ class EmailToTicketService:
             # Run IMAP fetch in thread pool (non-blocking)
             raw_emails = await asyncio.to_thread(connect_and_fetch)
             
-            print(f"[IMAP] Found {len(raw_emails)} unread messages")
+            print(f"[IMAP] Found {len(raw_emails)} messages from last 7 days")
             
             # Process each email (async operations can use event loop)
             for raw_email in raw_emails:
@@ -676,8 +676,11 @@ class EmailToTicketService:
                     # Get message ID
                     message_id = msg.get('Message-ID', f'no-id-{email_id.decode()}')
                     
-                    # Note: We use UNSEEN search, so all emails here are unread
-                    # No need to check processedmail table - marking as read IS the tracking
+                    # Check if already processed
+                    if await self.is_email_processed(db, message_id):
+                        # Mark as read but don't process again (run in thread)
+                        await asyncio.to_thread(mail.store, email_id, '+FLAGS', '\\Seen')
+                        continue
                     
                     # Extract email info
                     from_header = msg.get('From', '')
@@ -730,7 +733,12 @@ class EmailToTicketService:
                             db, existing_ticket, sender_name, sender_email, body
                         )
                         
-                        # Mark email as read (this is our tracking mechanism)
+                        # Mark as processed
+                        await self.mark_email_processed(
+                            db, message_id, sender_email, subject, existing_ticket.id
+                        )
+                        
+                        # Mark email as read (run in thread - blocking operation)
                         await asyncio.to_thread(mail.store, email_id, '+FLAGS', '\\Seen')
                         
                         print(f"[IMAP] Added comment to ticket {existing_ticket.ticket_number} from {sender_email}")
@@ -740,7 +748,12 @@ class EmailToTicketService:
                             db, sender_name, sender_email, subject, body, to_email, project
                         )
                         
-                        # Mark email as read (this is our tracking mechanism)
+                        # Mark as processed
+                        await self.mark_email_processed(
+                            db, message_id, sender_email, subject, ticket.id
+                        )
+                        
+                        # Mark email as read (run in thread)
                         await asyncio.to_thread(mail.store, email_id, '+FLAGS', '\\Seen')
                         
                         tickets_created.append(ticket)
@@ -1017,12 +1030,6 @@ async def process_email_account(db: AsyncSession, account) -> List[Ticket]:
     Returns:
         List of created tickets (replies to existing tickets are not included)
     """
-    print(f"[Email Account] ========== STARTING process_email_account ==========")
-    print(f"[Email Account] Account: {account.name} (ID: {account.id})")
-    print(f"[Email Account] Email: {account.email_address}")
-    print(f"[Email Account] Host: {account.imap_host}:{account.imap_port}")
-    print(f"[Email Account] SSL: {account.imap_use_ssl}")
-    
     from app.core.database import engine
     from sqlmodel.ext.asyncio.session import AsyncSession as NewAsyncSession
     from app.models.processed_mail import ProcessedMail
@@ -1030,10 +1037,7 @@ async def process_email_account(db: AsyncSession, account) -> List[Ticket]:
     from app.models.user import User
     
     if not account.imap_host or not account.imap_username:
-        print(f"[Email Account] ❌ Missing IMAP host or username - cannot connect")
         return []
-    
-    print(f"[Email Account] ✅ IMAP settings present, proceeding with connection...")
     
     # Store account data we need before any async operations
     account_id = account.id
@@ -1059,12 +1063,8 @@ async def process_email_account(db: AsyncSession, account) -> List[Ticket]:
         import imaplib
         import poplib
         import email as email_lib
-        import socket
         from email.header import decode_header
         from email.utils import parseaddr
-        
-        # Set socket timeout to prevent hanging
-        socket.setdefaulttimeout(30)  # 30 second timeout
         
         # Run blocking mail operations in thread pool
         def connect_and_fetch():
@@ -1104,7 +1104,7 @@ async def process_email_account(db: AsyncSession, account) -> List[Ticket]:
                 return raw_emails
             else:
                 # IMAP connection (default)
-                print(f"[Email Account] Connecting via IMAP to {imap_host}:{imap_port} (SSL: {imap_use_ssl})")
+                print(f"[Email Account] Using IMAP protocol on {imap_host}:{imap_port}")
                 if imap_use_ssl:
                     mail = imaplib.IMAP4_SSL(imap_host, imap_port or 993)
                 else:
@@ -1116,19 +1116,15 @@ async def process_email_account(db: AsyncSession, account) -> List[Ticket]:
                         # Server doesn't support STARTTLS, continue without encryption
                         pass
                 
-                print(f"[Email Account] Logging in as {imap_username}...")
                 mail.login(imap_username, imap_password)
-                print(f"[Email Account] ✅ Login successful!")
-                
                 mail.select('INBOX')
-                print(f"[Email Account] Selected INBOX")
                 
-                # Search for UNSEEN (unread) emails only
-                # Once processed, emails are marked as read so they won't be processed again
-                print(f"[Email Account] Searching for UNSEEN emails...")
-                status, messages = mail.search(None, 'UNSEEN')
+                # Search for emails from the last 7 days (not just unread)
+                # This ensures we catch emails even if they're marked as read by other clients
+                from datetime import datetime, timedelta
+                date_since = (datetime.now() - timedelta(days=7)).strftime("%d-%b-%Y")
+                status, messages = mail.search(None, f'SINCE {date_since}')
                 email_ids = messages[0].split()
-                print(f"[Email Account] Found {len(email_ids)} unread email(s)")
                 
                 raw_emails = []
                 for email_id in email_ids:
@@ -1148,7 +1144,7 @@ async def process_email_account(db: AsyncSession, account) -> List[Ticket]:
         # Fetch emails in thread pool (non-blocking)
         raw_emails = await asyncio.to_thread(connect_and_fetch)
         
-        print(f"[Email Account] {account_name}: Found {len(raw_emails)} unread messages")
+        print(f"[Email Account] {account_name}: Found {len(raw_emails)} messages from last 7 days")
         
         for raw_email in raw_emails:
             email_id = raw_email['email_id']
@@ -1162,8 +1158,14 @@ async def process_email_account(db: AsyncSession, account) -> List[Ticket]:
                 
                 # Use a fresh database session for each email to avoid greenlet issues
                 async with NewAsyncSession(engine) as fresh_db:
-                    # Note: We use UNSEEN search, so all emails here are unread
-                    # No need to check processedmail table - marking as read IS the tracking
+                    # Check if already processed (globally)
+                    existing = await fresh_db.execute(
+                        select(ProcessedMail).where(ProcessedMail.message_id == message_id)
+                    )
+                    if existing.scalar_one_or_none():
+                        print(f"[Email Account] Email already processed, marking as read")
+                        await asyncio.to_thread(mail.store, email_id, '+FLAGS', '\\Seen')
+                        continue
                     
                     # Extract email info
                     from_header = msg.get('From', '')
@@ -1234,7 +1236,18 @@ async def process_email_account(db: AsyncSession, account) -> List[Ticket]:
                             fresh_db, existing_ticket, sender_name, sender_email_addr, body
                         )
                         
-                        # Mark as read (this is our tracking mechanism)
+                        # Mark email as processed (linked to existing ticket)
+                        processed = ProcessedMail(
+                            message_id=message_id,
+                            email_from=sender_email_addr or 'unknown@unknown.com',
+                            subject=subject,
+                            ticket_id=existing_ticket.id,
+                            workspace_id=workspace_id
+                        )
+                        fresh_db.add(processed)
+                        await fresh_db.commit()
+                        
+                        # Mark as read (run in thread)
                         if mail:
                             await asyncio.to_thread(mail.store, email_id, '+FLAGS', '\\Seen')
                         
@@ -1285,7 +1298,18 @@ async def process_email_account(db: AsyncSession, account) -> List[Ticket]:
                     await fresh_db.commit()
                     await fresh_db.refresh(new_ticket)
                     
-                    # Mark as read (this is our tracking mechanism)
+                    # Mark email as processed
+                    processed = ProcessedMail(
+                        message_id=message_id,
+                        email_from=sender_email_addr or 'unknown@unknown.com',
+                        subject=subject,
+                        ticket_id=new_ticket.id,
+                        workspace_id=workspace_id
+                    )
+                    fresh_db.add(processed)
+                    await fresh_db.commit()
+                    
+                    # Mark as read (run in thread)
                     await asyncio.to_thread(mail.store, email_id, '+FLAGS', '\\Seen')
                     
                     # Notify all admins and users with can_see_all_tickets permission

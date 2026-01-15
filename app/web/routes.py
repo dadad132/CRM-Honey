@@ -79,21 +79,20 @@ def utc_to_local(utc_dt):
     local_dt = utc_dt - timedelta(seconds=offset_seconds)
     return local_dt
 
-# Default timezone for the website - now properly uses UTC or workspace timezone
-# Changed from Africa/Johannesburg (UTC+2) to UTC to fix 2-hour time offset issues
-DEFAULT_TIMEZONE = "UTC"
+# Default timezone for the website - UTC+2 (Africa/Johannesburg)
+DEFAULT_TIMEZONE = "Africa/Johannesburg"
 
 def format_datetime_tz(dt, tz_name=None, format_str="%Y-%m-%d %H:%M"):
     """Convert UTC datetime to specified timezone and format it
     
-    If tz_name is provided (from workspace settings), uses that timezone.
-    Otherwise uses UTC for consistency - no arbitrary timezone offset applied.
+    Note: If tz_name is None, empty, or 'UTC', we use the DEFAULT_TIMEZONE (UTC+2)
+    to ensure consistent time display across the website.
     """
     if dt is None:
         return ""
     
-    # Use the provided timezone, or default to UTC (no forced offset)
-    if not tz_name:
+    # Always default to Africa/Johannesburg (UTC+2) if no timezone specified or UTC
+    if not tz_name or tz_name == "UTC":
         tz_name = DEFAULT_TIMEZONE
     
     # Handle UTC specially to avoid tzdata dependency issues on Windows
@@ -127,22 +126,23 @@ def format_datetime_tz(dt, tz_name=None, format_str="%Y-%m-%d %H:%M"):
                 if dt.tzinfo is None:
                     # Use datetime.timezone.utc instead of ZoneInfo("UTC")
                     dt = dt.replace(tzinfo=dt_timezone.utc)
-                if tz_name == "UTC":
-                    local_dt = dt.astimezone(dt_timezone.utc)
-                else:
-                    target_tz = ZoneInfo(tz_name)
-                    local_dt = dt.astimezone(target_tz)
+                target_tz = ZoneInfo(tz_name)
+                local_dt = dt.astimezone(target_tz)
                 return local_dt.strftime(format_str)
         except Exception:
             pass
     
-    # Ultimate fallback - just use UTC (no forced offset)
+    # Ultimate fallback - manually apply UTC+2 offset
     if isinstance(dt, datetime):
         try:
+            from datetime import timedelta
+            # Apply UTC+2 offset manually (Africa/Johannesburg = UTC+2)
             if dt.tzinfo is None:
                 dt = dt.replace(tzinfo=dt_timezone.utc)
-            # Just return UTC time - no forced offset
-            return dt.strftime(format_str)
+            # Create UTC+2 timezone
+            utc_plus_2 = dt_timezone(timedelta(hours=2))
+            local_dt = dt.astimezone(utc_plus_2)
+            return local_dt.strftime(format_str)
         except Exception:
             pass
     
@@ -3684,8 +3684,8 @@ async def web_admin_email_settings_test(request: Request, db: AsyncSession = Dep
 
 
 @router.post('/admin/email-settings/check-emails')
-async def web_admin_check_emails(request: Request, background_tasks: BackgroundTasks, db: AsyncSession = Depends(get_session)):
-    """Manually trigger email check (for testing) - runs in background to not block website"""
+async def web_admin_check_emails(request: Request, db: AsyncSession = Depends(get_session)):
+    """Manually trigger email check (for testing) - processes ALL email sources"""
     user_id = request.session.get('user_id')
     if not user_id:
         return JSONResponse({'success': False, 'error': 'Not authenticated'})
@@ -3694,55 +3694,43 @@ async def web_admin_check_emails(request: Request, background_tasks: BackgroundT
     if not user or not user.is_admin:
         return JSONResponse({'success': False, 'error': 'Admin access required'})
     
-    workspace_id = user.workspace_id
-    
-    # Run email check in background so we don't block the website
-    async def check_emails_background():
-        """Background task to check emails"""
-        from app.core.database import async_session_factory
+    try:
         from app.core.email_to_ticket_v2 import process_workspace_emails, process_email_account
         from app.models.incoming_email_account import IncomingEmailAccount
         
-        async with async_session_factory() as db:
+        all_tickets = []
+        comments_added = 0
+        
+        # 1. Process main workspace emails (legacy support)
+        try:
+            tickets = await process_workspace_emails(db, user.workspace_id)
+            all_tickets.extend(tickets)
+        except Exception as e:
+            logger.warning(f"[Email] Error processing workspace emails: {e}")
+        
+        # 2. Process ALL alternate email accounts
+        accounts_result = await db.execute(
+            select(IncomingEmailAccount).where(
+                IncomingEmailAccount.workspace_id == user.workspace_id,
+                IncomingEmailAccount.is_active == True
+            )
+        )
+        accounts = accounts_result.scalars().all()
+        
+        for account in accounts:
             try:
-                # 1. Process legacy workspace emails
-                try:
-                    logger.info(f"[Email Check BG] Processing legacy workspace emails for workspace {workspace_id}")
-                    await process_workspace_emails(db, workspace_id)
-                except Exception as e:
-                    logger.warning(f"[Email Check BG] Legacy email error: {e}")
-                
-                # 2. Process all alternate email accounts
-                accounts_result = await db.execute(
-                    select(IncomingEmailAccount).where(
-                        IncomingEmailAccount.workspace_id == workspace_id,
-                        IncomingEmailAccount.is_active == True
-                    )
-                )
-                accounts = accounts_result.scalars().all()
-                
-                logger.info(f"[Email Check BG] Found {len(accounts)} active email accounts")
-                
-                for account in accounts:
-                    try:
-                        logger.info(f"[Email Check BG] Processing: {account.name}")
-                        await process_email_account(db, account)
-                    except Exception as e:
-                        logger.warning(f"[Email Check BG] Error processing {account.name}: {e}")
-                
-                logger.info(f"[Email Check BG] ✅ Email check complete")
+                tickets = await process_email_account(db, account)
+                all_tickets.extend(tickets)
             except Exception as e:
-                logger.error(f"[Email Check BG] ❌ Error: {e}")
-    
-    # Start background task
-    import asyncio
-    asyncio.create_task(check_emails_background())
-    
-    return JSONResponse({
-        'success': True, 
-        'message': '📧 Email check started in background. Check tickets page in a few seconds.',
-        'background': True
-    })
+                logger.warning(f"[Email] Error processing account {account.name}: {e}")
+        
+        return JSONResponse({
+            'success': True, 
+            'message': f'Checked emails successfully ({len(accounts)} alternate account(s))',
+            'tickets_created': len(all_tickets),
+            'ticket_numbers': [t.ticket_number for t in all_tickets],
+            'accounts_checked': len(accounts)
+        })
         
     except Exception as e:
         import traceback
