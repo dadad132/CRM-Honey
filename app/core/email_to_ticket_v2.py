@@ -676,11 +676,8 @@ class EmailToTicketService:
                     # Get message ID
                     message_id = msg.get('Message-ID', f'no-id-{email_id.decode()}')
                     
-                    # Check if already processed
-                    if await self.is_email_processed(db, message_id):
-                        # Mark as read but don't process again (run in thread)
-                        await asyncio.to_thread(mail.store, email_id, '+FLAGS', '\\Seen')
-                        continue
+                    # Note: We use UNSEEN search, so all emails here are unread
+                    # No need to check processedmail table - marking as read IS the tracking
                     
                     # Extract email info
                     from_header = msg.get('From', '')
@@ -733,12 +730,7 @@ class EmailToTicketService:
                             db, existing_ticket, sender_name, sender_email, body
                         )
                         
-                        # Mark as processed
-                        await self.mark_email_processed(
-                            db, message_id, sender_email, subject, existing_ticket.id
-                        )
-                        
-                        # Mark email as read (run in thread - blocking operation)
+                        # Mark email as read (this is our tracking mechanism)
                         await asyncio.to_thread(mail.store, email_id, '+FLAGS', '\\Seen')
                         
                         print(f"[IMAP] Added comment to ticket {existing_ticket.ticket_number} from {sender_email}")
@@ -748,12 +740,7 @@ class EmailToTicketService:
                             db, sender_name, sender_email, subject, body, to_email, project
                         )
                         
-                        # Mark as processed
-                        await self.mark_email_processed(
-                            db, message_id, sender_email, subject, ticket.id
-                        )
-                        
-                        # Mark email as read (run in thread)
+                        # Mark email as read (this is our tracking mechanism)
                         await asyncio.to_thread(mail.store, email_id, '+FLAGS', '\\Seen')
                         
                         tickets_created.append(ticket)
@@ -1156,14 +1143,8 @@ async def process_email_account(db: AsyncSession, account) -> List[Ticket]:
                 
                 # Use a fresh database session for each email to avoid greenlet issues
                 async with NewAsyncSession(engine) as fresh_db:
-                    # Check if already processed (globally)
-                    existing = await fresh_db.execute(
-                        select(ProcessedMail).where(ProcessedMail.message_id == message_id)
-                    )
-                    if existing.scalar_one_or_none():
-                        print(f"[Email Account] Email already processed, marking as read")
-                        await asyncio.to_thread(mail.store, email_id, '+FLAGS', '\\Seen')
-                        continue
+                    # Note: We use UNSEEN search, so all emails here are unread
+                    # No need to check processedmail table - marking as read IS the tracking
                     
                     # Extract email info
                     from_header = msg.get('From', '')
@@ -1234,18 +1215,7 @@ async def process_email_account(db: AsyncSession, account) -> List[Ticket]:
                             fresh_db, existing_ticket, sender_name, sender_email_addr, body
                         )
                         
-                        # Mark email as processed (linked to existing ticket)
-                        processed = ProcessedMail(
-                            message_id=message_id,
-                            email_from=sender_email_addr or 'unknown@unknown.com',
-                            subject=subject,
-                            ticket_id=existing_ticket.id,
-                            workspace_id=workspace_id
-                        )
-                        fresh_db.add(processed)
-                        await fresh_db.commit()
-                        
-                        # Mark as read (run in thread)
+                        # Mark as read (this is our tracking mechanism)
                         if mail:
                             await asyncio.to_thread(mail.store, email_id, '+FLAGS', '\\Seen')
                         
@@ -1296,18 +1266,7 @@ async def process_email_account(db: AsyncSession, account) -> List[Ticket]:
                     await fresh_db.commit()
                     await fresh_db.refresh(new_ticket)
                     
-                    # Mark email as processed
-                    processed = ProcessedMail(
-                        message_id=message_id,
-                        email_from=sender_email_addr or 'unknown@unknown.com',
-                        subject=subject,
-                        ticket_id=new_ticket.id,
-                        workspace_id=workspace_id
-                    )
-                    fresh_db.add(processed)
-                    await fresh_db.commit()
-                    
-                    # Mark as read (run in thread)
+                    # Mark as read (this is our tracking mechanism)
                     await asyncio.to_thread(mail.store, email_id, '+FLAGS', '\\Seen')
                     
                     # Notify all admins and users with can_see_all_tickets permission
