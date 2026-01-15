@@ -43,18 +43,24 @@ class EmailScheduler:
                 # Process legacy workspace email settings (single account)
                 workspace_ids = []
                 
-                async with AsyncSession(engine) as db:
-                    # Get all workspaces with legacy email settings
-                    result = await db.execute(
-                        select(EmailSettings.workspace_id).where(EmailSettings.incoming_mail_host.isnot(None))
-                    )
-                    workspace_ids = [row[0] for row in result.all()]
-                
-                print(f"[Email-to-Ticket] Found {len(workspace_ids)} workspaces with legacy email settings")
-                
-                # Process legacy workspaces sequentially
-                for ws_id in workspace_ids:
-                    await self._process_workspace(ws_id)
+                try:
+                    async with AsyncSession(engine) as db:
+                        # Get all workspaces with legacy email settings
+                        result = await db.execute(
+                            select(EmailSettings.workspace_id).where(EmailSettings.incoming_mail_host.isnot(None))
+                        )
+                        workspace_ids = [row[0] for row in result.all()]
+                    
+                    print(f"[Email-to-Ticket] Found {len(workspace_ids)} workspaces with legacy email settings")
+                    
+                    # Process legacy workspaces sequentially
+                    for ws_id in workspace_ids:
+                        await self._process_workspace(ws_id)
+                except Exception as e:
+                    if "no such table" in str(e).lower():
+                        print(f"[Email-to-Ticket] EmailSettings table not found - skipping legacy email check")
+                    else:
+                        print(f"[Email-to-Ticket] Error checking legacy email settings: {e}")
                 
                 # Process new multi-account email settings
                 await self._process_email_accounts()
@@ -98,6 +104,9 @@ class EmailScheduler:
                 )
                 accounts = result.scalars().all()
                 
+                if accounts:
+                    print(f"[Email-to-Ticket] Found {len(accounts)} active incoming email account(s)")
+                
                 for account in accounts:
                     try:
                         tickets = await process_email_account(db, account)
@@ -111,9 +120,14 @@ class EmailScheduler:
                         await db.commit()
                     except Exception as e:
                         print(f"[Email-to-Ticket] Error processing email account '{account.name}': {e}")
+                        print(f"[Email-to-Ticket] Traceback: {traceback.format_exc()}")
         
         except Exception as e:
-            print(f"[Email-to-Ticket] Error processing email accounts: {e}")
+            if "no such table" in str(e).lower():
+                print(f"[Email-to-Ticket] IncomingEmailAccount table not found - skipping multi-account check")
+            else:
+                print(f"[Email-to-Ticket] Error processing email accounts: {e}")
+                print(f"[Email-to-Ticket] Traceback: {traceback.format_exc()}")
     
     async def start(self):
         """Start the scheduler"""
