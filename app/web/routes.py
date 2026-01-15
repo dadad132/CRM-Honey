@@ -7577,14 +7577,15 @@ async def web_tickets_report(
     request: Request,
     start_date: Optional[str] = Query(None),
     end_date: Optional[str] = Query(None),
+    user_id: Optional[int] = Query(None, alias='user_id'),
     db: AsyncSession = Depends(get_session),
 ):
     """Detailed ticket report - admin only"""
-    user_id = request.session.get('user_id')
-    if not user_id:
+    current_user_id = request.session.get('user_id')
+    if not current_user_id:
         return RedirectResponse('/web/login', status_code=303)
     
-    user = (await db.execute(select(User).where(User.id == user_id))).scalar_one_or_none()
+    user = (await db.execute(select(User).where(User.id == current_user_id))).scalar_one_or_none()
     if not user or not user.is_active:
         request.session.clear()
         return RedirectResponse('/web/login', status_code=303)
@@ -7611,40 +7612,53 @@ async def web_tickets_report(
     else:
         end_dt = datetime.now() + timedelta(days=1)
     
-    # Get all tickets in period
-    all_tickets = (await db.execute(
-        select(Ticket)
-        .where(Ticket.workspace_id == user.workspace_id)
-        .where(Ticket.created_at >= start_dt)
-        .where(Ticket.created_at < end_dt)
-        .order_by(Ticket.created_at.desc())
+    # Get all users for dropdown and lookups
+    users_result = (await db.execute(
+        select(User).where(User.workspace_id == user.workspace_id).order_by(User.full_name, User.username)
     )).scalars().all()
+    users_dict = {u.id: u for u in users_result}
+    
+    # Get selected user for filtering
+    selected_user = None
+    selected_user_id = None
+    if user_id:
+        selected_user = users_dict.get(user_id)
+        if selected_user:
+            selected_user_id = user_id
+    
+    # Get all tickets in period - optionally filtered by user
+    ticket_query = select(Ticket).where(
+        Ticket.workspace_id == user.workspace_id,
+        Ticket.created_at >= start_dt,
+        Ticket.created_at < end_dt
+    )
+    
+    if selected_user_id:
+        # Filter tickets where user is assigned OR closed by user
+        ticket_query = ticket_query.where(
+            (Ticket.assigned_to_id == selected_user_id) | (Ticket.closed_by_id == selected_user_id)
+        )
+    
+    all_tickets = (await db.execute(ticket_query.order_by(Ticket.created_at.desc()))).scalars().all()
     
     ticket_ids = [t.id for t in all_tickets]
     
     # Get all comments for these tickets
     all_comments = []
     if ticket_ids:
-        all_comments = (await db.execute(
-            select(TicketComment)
-            .where(TicketComment.ticket_id.in_(ticket_ids))
-            .order_by(TicketComment.created_at.desc())
-        )).scalars().all()
+        comment_query = select(TicketComment).where(TicketComment.ticket_id.in_(ticket_ids))
+        if selected_user_id:
+            # Only show comments by this user
+            comment_query = comment_query.where(TicketComment.user_id == selected_user_id)
+        all_comments = (await db.execute(comment_query.order_by(TicketComment.created_at.desc()))).scalars().all()
     
     # Get ticket history
     all_history = []
     if ticket_ids:
-        all_history = (await db.execute(
-            select(TicketHistory)
-            .where(TicketHistory.ticket_id.in_(ticket_ids))
-            .order_by(TicketHistory.created_at.desc())
-        )).scalars().all()
-    
-    # Get all users for lookups
-    users_result = (await db.execute(
-        select(User).where(User.workspace_id == user.workspace_id)
-    )).scalars().all()
-    users_dict = {u.id: u for u in users_result}
+        history_query = select(TicketHistory).where(TicketHistory.ticket_id.in_(ticket_ids))
+        if selected_user_id:
+            history_query = history_query.where(TicketHistory.user_id == selected_user_id)
+        all_history = (await db.execute(history_query.order_by(TicketHistory.created_at.desc()))).scalars().all()
     
     # Create ticket lookup
     tickets_dict = {t.id: t for t in all_tickets}
@@ -7893,6 +7907,9 @@ async def web_tickets_report(
             'comment_stats': comment_stats,
             'recent_comments': recent_comments,
             'activities': activities,
+            'all_users': users_result,
+            'selected_user': selected_user,
+            'selected_user_id': selected_user_id,
         },
     )
 
