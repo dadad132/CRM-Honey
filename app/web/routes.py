@@ -2821,15 +2821,19 @@ async def web_admin_user_activity_view(
     tasks_with_time = [t for t in task_assignments if t['time_spent_hours']]
     avg_time_per_task = round(sum(t['time_spent_hours'] for t in tasks_with_time) / len(tasks_with_time), 1) if tasks_with_time else 0
     
-    # Count active projects
-    active_projects_result = await db.execute(
-        text("""
-            SELECT COUNT(DISTINCT project_id) FROM projectmember 
-            WHERE user_id = :user_id
-        """),
-        {"user_id": target_user_id}
-    )
-    active_projects = active_projects_result.scalar() or 0
+    # Count active projects (projectmember table may not exist)
+    active_projects = 0
+    try:
+        active_projects_result = await db.execute(
+            text("""
+                SELECT COUNT(DISTINCT project_id) FROM projectmember 
+                WHERE user_id = :user_id
+            """),
+            {"user_id": target_user_id}
+        )
+        active_projects = active_projects_result.scalar() or 0
+    except Exception:
+        pass  # projectmember table doesn't exist
     
     # Build recent activity timeline
     recent_activity = []
