@@ -1229,7 +1229,12 @@ async def process_email_account(db: AsyncSession, account) -> List[Ticket]:
                         )
                     
                     if existing_ticket:
-                        print(f"[Email Account] ✅ MATCH FOUND - Adding comment to ticket #{existing_ticket.ticket_number}")
+                        # Refresh the ticket to ensure all attributes are loaded
+                        await fresh_db.refresh(existing_ticket)
+                        existing_ticket_id = existing_ticket.id
+                        existing_ticket_number = existing_ticket.ticket_number
+                        
+                        print(f"[Email Account] ✅ MATCH FOUND - Adding comment to ticket #{existing_ticket_number}")
                         
                         # Add as comment to existing ticket
                         await add_comment_from_email_for_account(
@@ -1241,7 +1246,7 @@ async def process_email_account(db: AsyncSession, account) -> List[Ticket]:
                             message_id=message_id,
                             email_from=sender_email_addr or 'unknown@unknown.com',
                             subject=subject,
-                            ticket_id=existing_ticket.id,
+                            ticket_id=existing_ticket_id,
                             workspace_id=workspace_id
                         )
                         fresh_db.add(processed)
@@ -1251,7 +1256,7 @@ async def process_email_account(db: AsyncSession, account) -> List[Ticket]:
                         if mail:
                             await asyncio.to_thread(mail.store, email_id, '+FLAGS', '\\Seen')
                         
-                        print(f"[Email Account] Added comment to ticket #{existing_ticket.ticket_number} from {sender_email_addr}")
+                        print(f"[Email Account] Added comment to ticket #{existing_ticket_number} from {sender_email_addr}")
                         continue  # Move to next email, don't create new ticket
                     
                     print(f"[Email Account] ❌ NO MATCH - Creating new ticket")
