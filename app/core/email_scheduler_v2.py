@@ -76,7 +76,7 @@ class EmailScheduler:
             except Exception as e:
                 print(f"[Email-to-Ticket] Error in background task: {e}")
                 print(f"[Email-to-Ticket] Traceback: {traceback.format_exc()}")
-                await asyncio.sleep(self.check_interval)
+                # Wait before retrying after error
                 await asyncio.sleep(self.check_interval)
     
     async def _process_workspace(self, workspace_id: int):

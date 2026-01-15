@@ -25,12 +25,14 @@ from app.models.project import Project
 # Setup logger
 logger = logging.getLogger(__name__)
 
-# Timezone offset (UTC+2 for South Africa)
-LOCAL_TZ_OFFSET = timedelta(hours=2)
 
 def get_local_time() -> datetime:
-    """Get current time in local timezone (UTC+2)"""
-    return datetime.now(timezone(LOCAL_TZ_OFFSET))
+    """Get current time in UTC for consistent database storage.
+    
+    Timestamps are stored in UTC and converted to workspace timezone for display.
+    This ensures consistency across different server locations.
+    """
+    return datetime.now(timezone.utc)
 
 
 async def generate_unique_ticket_number(db: AsyncSession, workspace_id: int) -> str:

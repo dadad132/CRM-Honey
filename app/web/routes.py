@@ -79,20 +79,21 @@ def utc_to_local(utc_dt):
     local_dt = utc_dt - timedelta(seconds=offset_seconds)
     return local_dt
 
-# Default timezone for the website - UTC+2 (Africa/Johannesburg)
-DEFAULT_TIMEZONE = "Africa/Johannesburg"
+# Default timezone for the website - now properly uses UTC or workspace timezone
+# Changed from Africa/Johannesburg (UTC+2) to UTC to fix 2-hour time offset issues
+DEFAULT_TIMEZONE = "UTC"
 
 def format_datetime_tz(dt, tz_name=None, format_str="%Y-%m-%d %H:%M"):
     """Convert UTC datetime to specified timezone and format it
     
-    Note: If tz_name is None, empty, or 'UTC', we use the DEFAULT_TIMEZONE (UTC+2)
-    to ensure consistent time display across the website.
+    If tz_name is provided (from workspace settings), uses that timezone.
+    Otherwise uses UTC for consistency - no arbitrary timezone offset applied.
     """
     if dt is None:
         return ""
     
-    # Always default to Africa/Johannesburg (UTC+2) if no timezone specified or UTC
-    if not tz_name or tz_name == "UTC":
+    # Use the provided timezone, or default to UTC (no forced offset)
+    if not tz_name:
         tz_name = DEFAULT_TIMEZONE
     
     # Handle UTC specially to avoid tzdata dependency issues on Windows
@@ -126,23 +127,22 @@ def format_datetime_tz(dt, tz_name=None, format_str="%Y-%m-%d %H:%M"):
                 if dt.tzinfo is None:
                     # Use datetime.timezone.utc instead of ZoneInfo("UTC")
                     dt = dt.replace(tzinfo=dt_timezone.utc)
-                target_tz = ZoneInfo(tz_name)
-                local_dt = dt.astimezone(target_tz)
+                if tz_name == "UTC":
+                    local_dt = dt.astimezone(dt_timezone.utc)
+                else:
+                    target_tz = ZoneInfo(tz_name)
+                    local_dt = dt.astimezone(target_tz)
                 return local_dt.strftime(format_str)
         except Exception:
             pass
     
-    # Ultimate fallback - manually apply UTC+2 offset
+    # Ultimate fallback - just use UTC (no forced offset)
     if isinstance(dt, datetime):
         try:
-            from datetime import timedelta
-            # Apply UTC+2 offset manually (Africa/Johannesburg = UTC+2)
             if dt.tzinfo is None:
                 dt = dt.replace(tzinfo=dt_timezone.utc)
-            # Create UTC+2 timezone
-            utc_plus_2 = dt_timezone(timedelta(hours=2))
-            local_dt = dt.astimezone(utc_plus_2)
-            return local_dt.strftime(format_str)
+            # Just return UTC time - no forced offset
+            return dt.strftime(format_str)
         except Exception:
             pass
     
