@@ -3699,14 +3699,20 @@ async def web_admin_check_emails(request: Request, db: AsyncSession = Depends(ge
         from app.models.incoming_email_account import IncomingEmailAccount
         
         all_tickets = []
-        comments_added = 0
+        errors = []
+        account_results = []
         
         # 1. Process main workspace emails (legacy support)
         try:
+            logger.info(f"[Email Check] Processing legacy workspace emails for workspace {user.workspace_id}")
             tickets = await process_workspace_emails(db, user.workspace_id)
             all_tickets.extend(tickets)
+            account_results.append({'name': 'Legacy Email Settings', 'tickets': len(tickets), 'status': 'ok'})
         except Exception as e:
-            logger.warning(f"[Email] Error processing workspace emails: {e}")
+            error_msg = f"Legacy email error: {str(e)}"
+            logger.warning(f"[Email] {error_msg}")
+            errors.append(error_msg)
+            account_results.append({'name': 'Legacy Email Settings', 'tickets': 0, 'status': 'error', 'error': str(e)})
         
         # 2. Process ALL alternate email accounts
         accounts_result = await db.execute(
@@ -3717,19 +3723,30 @@ async def web_admin_check_emails(request: Request, db: AsyncSession = Depends(ge
         )
         accounts = accounts_result.scalars().all()
         
+        logger.info(f"[Email Check] Found {len(accounts)} active incoming email account(s)")
+        
         for account in accounts:
             try:
+                logger.info(f"[Email Check] Processing account: {account.name} ({account.email_address})")
                 tickets = await process_email_account(db, account)
                 all_tickets.extend(tickets)
+                account_results.append({'name': account.name, 'email': account.email_address, 'tickets': len(tickets), 'status': 'ok'})
             except Exception as e:
-                logger.warning(f"[Email] Error processing account {account.name}: {e}")
+                error_msg = f"Account {account.name}: {str(e)}"
+                logger.warning(f"[Email] {error_msg}")
+                import traceback
+                logger.warning(f"[Email] Traceback: {traceback.format_exc()}")
+                errors.append(error_msg)
+                account_results.append({'name': account.name, 'email': account.email_address, 'tickets': 0, 'status': 'error', 'error': str(e)})
         
         return JSONResponse({
             'success': True, 
-            'message': f'Checked emails successfully ({len(accounts)} alternate account(s))',
+            'message': f'Checked {len(accounts)} email account(s)',
             'tickets_created': len(all_tickets),
             'ticket_numbers': [t.ticket_number for t in all_tickets],
-            'accounts_checked': len(accounts)
+            'accounts_checked': len(accounts),
+            'account_results': account_results,
+            'errors': errors
         })
         
     except Exception as e:

@@ -1017,6 +1017,12 @@ async def process_email_account(db: AsyncSession, account) -> List[Ticket]:
     Returns:
         List of created tickets (replies to existing tickets are not included)
     """
+    print(f"[Email Account] ========== STARTING process_email_account ==========")
+    print(f"[Email Account] Account: {account.name} (ID: {account.id})")
+    print(f"[Email Account] Email: {account.email_address}")
+    print(f"[Email Account] Host: {account.imap_host}:{account.imap_port}")
+    print(f"[Email Account] SSL: {account.imap_use_ssl}")
+    
     from app.core.database import engine
     from sqlmodel.ext.asyncio.session import AsyncSession as NewAsyncSession
     from app.models.processed_mail import ProcessedMail
@@ -1024,7 +1030,10 @@ async def process_email_account(db: AsyncSession, account) -> List[Ticket]:
     from app.models.user import User
     
     if not account.imap_host or not account.imap_username:
+        print(f"[Email Account] ❌ Missing IMAP host or username - cannot connect")
         return []
+    
+    print(f"[Email Account] ✅ IMAP settings present, proceeding with connection...")
     
     # Store account data we need before any async operations
     account_id = account.id
@@ -1091,7 +1100,7 @@ async def process_email_account(db: AsyncSession, account) -> List[Ticket]:
                 return raw_emails
             else:
                 # IMAP connection (default)
-                print(f"[Email Account] Using IMAP protocol on {imap_host}:{imap_port}")
+                print(f"[Email Account] Connecting via IMAP to {imap_host}:{imap_port} (SSL: {imap_use_ssl})")
                 if imap_use_ssl:
                     mail = imaplib.IMAP4_SSL(imap_host, imap_port or 993)
                 else:
@@ -1103,13 +1112,19 @@ async def process_email_account(db: AsyncSession, account) -> List[Ticket]:
                         # Server doesn't support STARTTLS, continue without encryption
                         pass
                 
+                print(f"[Email Account] Logging in as {imap_username}...")
                 mail.login(imap_username, imap_password)
+                print(f"[Email Account] ✅ Login successful!")
+                
                 mail.select('INBOX')
+                print(f"[Email Account] Selected INBOX")
                 
                 # Search for UNSEEN (unread) emails only
                 # Once processed, emails are marked as read so they won't be processed again
+                print(f"[Email Account] Searching for UNSEEN emails...")
                 status, messages = mail.search(None, 'UNSEEN')
                 email_ids = messages[0].split()
+                print(f"[Email Account] Found {len(email_ids)} unread email(s)")
                 
                 raw_emails = []
                 for email_id in email_ids:
