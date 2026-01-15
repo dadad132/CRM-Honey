@@ -33,6 +33,70 @@ def get_local_time() -> datetime:
     return datetime.now(timezone(LOCAL_TZ_OFFSET))
 
 
+def is_support_query(subject: str, body: str, sender_email: str) -> bool:
+    """
+    Analyze if an email looks like a support query.
+    Used for filtering spam/junk folder emails.
+    
+    Returns True if the email appears to be a legitimate support request.
+    """
+    content = (subject + ' ' + body).lower()
+    sender = sender_email.lower()
+    
+    # Keywords that indicate a support query
+    support_keywords = [
+        'help', 'support', 'issue', 'problem', 'error', 'broken', 'not working',
+        'urgent', 'please', 'assist', 'request', 'ticket', 'query', 'question',
+        'fix', 'repair', 'service', 'maintenance', 'install', 'setup', 'configure',
+        'password', 'login', 'access', 'account', 'printer', 'computer', 'laptop',
+        'network', 'internet', 'email', 'phone', 'call', 'meeting', 'appointment',
+        'invoice', 'quote', 'order', 'delivery', 'payment', 'refund',
+        'complaint', 'feedback', 'suggestion', 'thank you', 'thanks',
+        're:', 'fwd:', 'reply', 'response', 'follow up', 'following up',
+        'tkt-', 'ticket #', 'case #', 'reference'
+    ]
+    
+    # Spam indicators - if too many, skip this email
+    spam_keywords = [
+        'unsubscribe', 'click here', 'act now', 'limited time', 'free gift',
+        'congratulations', 'you won', 'lottery', 'inheritance', 'million dollars',
+        'viagra', 'cialis', 'pharmacy', 'weight loss', 'diet pill',
+        'nigerian prince', 'wire transfer', 'western union', 'bitcoin',
+        'cryptocurrency', 'investment opportunity', 'double your money',
+        'no obligation', 'risk free', 'guaranteed', 'special offer',
+        'dear friend', 'dear customer', 'dear sir/madam'
+    ]
+    
+    # Known spam sender patterns
+    spam_sender_patterns = [
+        'noreply@', 'no-reply@', 'mailer-daemon', 'postmaster',
+        'bounce', 'newsletter', 'marketing', 'promo', 'sales@',
+        'info@', 'admin@', 'support@' # Generic addresses often used by spam
+    ]
+    
+    # Count support indicators
+    support_score = sum(1 for kw in support_keywords if kw in content)
+    
+    # Count spam indicators
+    spam_score = sum(1 for kw in spam_keywords if kw in content)
+    spam_score += sum(1 for pattern in spam_sender_patterns if pattern in sender)
+    
+    # Check for personal greeting (indicates real email)
+    has_personal_greeting = any(greeting in content for greeting in [
+        'hi ', 'hello ', 'dear ', 'good morning', 'good afternoon', 'good day'
+    ])
+    if has_personal_greeting:
+        support_score += 2
+    
+    # If it looks like a reply to a ticket, it's definitely support
+    if 'tkt-' in content or 'ticket #' in content:
+        return True
+    
+    # Decision: needs more support indicators than spam indicators
+    # and at least 2 support keywords to be considered a support query
+    return support_score >= 2 and support_score > spam_score
+
+
 async def generate_unique_ticket_number(db: AsyncSession, workspace_id: int) -> str:
     """Generate a unique ticket number by finding the max existing number GLOBALLY"""
     from sqlalchemy import func
@@ -653,32 +717,60 @@ class EmailToTicketService:
         try:
             # Run blocking IMAP connection in a thread pool
             def connect_and_fetch():
-                """Synchronous function to connect and fetch emails"""
+                """Synchronous function to connect and fetch emails from all folders"""
                 nonlocal mail
                 mail = self.connect_imap()
-                mail.select('INBOX')
                 
-                # Search for emails from the last 7 days (not just unread)
-                # This ensures we catch emails even if they're marked as read by other clients
-                from datetime import datetime, timedelta
-                date_since = (datetime.now() - timedelta(days=7)).strftime("%d-%b-%Y")
-                status, messages = mail.search(None, f'SINCE {date_since}')
-                email_ids = messages[0].split()
+                # Folders to check - INBOX gets all emails, others are filtered for support queries
+                folders_to_check = [
+                    ('INBOX', False),  # (folder_name, requires_analysis)
+                    ('[Gmail]/Spam', True),
+                    ('[Gmail]/Trash', True),
+                    ('Spam', True),
+                    ('Junk', True),
+                    ('Trash', True),
+                    ('INBOX.Spam', True),
+                    ('INBOX.Junk', True),
+                    ('INBOX.Trash', True),
+                ]
                 
-                raw_emails = []
-                for email_id in email_ids:
+                all_raw_emails = []
+                
+                for folder_name, requires_analysis in folders_to_check:
                     try:
-                        status, msg_data = mail.fetch(email_id, '(RFC822)')
-                        if msg_data and msg_data[0]:
-                            raw_emails.append({
-                                'email_id': email_id,
-                                'msg_bytes': msg_data[0][1]
-                            })
+                        status, _ = mail.select(folder_name)
+                        if status != 'OK':
+                            continue
+                        
+                        # Search for emails from the last 7 days
+                        from datetime import datetime, timedelta
+                        date_since = (datetime.now() - timedelta(days=7)).strftime("%d-%b-%Y")
+                        status, messages = mail.search(None, f'SINCE {date_since}')
+                        email_ids = messages[0].split()
+                        
+                        if email_ids:
+                            print(f"[IMAP] Found {len(email_ids)} messages in {folder_name}")
+                        
+                        for email_id in email_ids:
+                            try:
+                                status, msg_data = mail.fetch(email_id, '(RFC822)')
+                                if msg_data and msg_data[0]:
+                                    all_raw_emails.append({
+                                        'email_id': email_id,
+                                        'msg_bytes': msg_data[0][1],
+                                        'folder': folder_name,
+                                        'requires_analysis': requires_analysis
+                                    })
+                            except Exception as e:
+                                print(f"[IMAP] Error fetching email {email_id} from {folder_name}: {e}")
+                                continue
                     except Exception as e:
-                        print(f"[IMAP] Error fetching email {email_id}: {e}")
+                        # Folder doesn't exist or can't be selected - skip silently
                         continue
                 
-                return raw_emails
+                # Re-select INBOX for marking emails as read
+                mail.select('INBOX')
+                return all_raw_emails
             
             # Run IMAP fetch in thread pool (non-blocking)
             raw_emails = await asyncio.to_thread(connect_and_fetch)
@@ -692,6 +784,8 @@ class EmailToTicketService:
             # Process each email with fresh db sessions to avoid greenlet issues
             for raw_email in raw_emails:
                 email_id = raw_email['email_id']
+                folder = raw_email.get('folder', 'INBOX')
+                requires_analysis = raw_email.get('requires_analysis', False)
                 try:
                     msg = email.message_from_bytes(raw_email['msg_bytes'])
                     
@@ -716,7 +810,7 @@ class EmailToTicketService:
                         body = self.extract_email_body(msg)
                         
                         print(f"\n{'='*80}")
-                        print(f"[IMAP] Processing email")
+                        print(f"[IMAP] Processing email from folder: {folder}")
                         print(f"[IMAP] From: {sender_name} <{sender_email}>")
                         print(f"[IMAP] To: {to_email}")
                         print(f"[IMAP] Subject: {subject}")
@@ -772,6 +866,21 @@ class EmailToTicketService:
                             
                             print(f"[IMAP] Added comment to ticket {existing_ticket_number} from {sender_email}")
                         else:
+                            # For spam/junk folders, check if this is a support query first
+                            if requires_analysis:
+                                if not is_support_query(subject, body, sender_email):
+                                    print(f"[IMAP] ⏭️ SKIPPING: Email from {folder} folder doesn't look like a support query")
+                                    print(f"[IMAP]    Subject: {subject[:50]}...")
+                                    # Mark as read but don't create ticket
+                                    await asyncio.to_thread(mail.store, email_id, '+FLAGS', '\\Seen')
+                                    # Mark as processed to avoid checking again
+                                    await self.mark_email_processed(
+                                        fresh_db, message_id, sender_email, subject, None
+                                    )
+                                    continue
+                                else:
+                                    print(f"[IMAP] ✅ Email from {folder} folder looks like a support query - creating ticket")
+                            
                             # Always create tickets (linked to project if matched)
                             ticket = await self.create_ticket_from_email(
                                 fresh_db, sender_name, sender_email, subject, body, to_email, project
@@ -792,9 +901,9 @@ class EmailToTicketService:
                             
                             tickets_created.append(ticket)
                             if project:
-                                print(f"[IMAP] Created ticket {ticket_number} for project '{project.name}' from {sender_email}")
+                                print(f"[IMAP] Created ticket {ticket_number} for project '{project.name}' from {sender_email} (folder: {folder})")
                             else:
-                                print(f"[IMAP] Created ticket {ticket_number} from {sender_email}")
+                                print(f"[IMAP] Created ticket {ticket_number} from {sender_email} (folder: {folder})")
                     
                 except Exception as e:
                     print(f"[IMAP] Error processing email {email_id}: {e}")

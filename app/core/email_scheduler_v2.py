@@ -19,12 +19,12 @@ from app.models.incoming_email_account import IncomingEmailAccount
 class EmailScheduler:
     """Background scheduler for email-to-ticket processing"""
     
-    def __init__(self, check_interval: int = 300):
+    def __init__(self, check_interval: int = 120):
         """
         Initialize scheduler
         
         Args:
-            check_interval: Seconds between checks (default: 5 minutes)
+            check_interval: Seconds between checks (default: 2 minutes)
         """
         self.check_interval = check_interval
         self.running = False
