@@ -15,7 +15,7 @@ logger = logging.getLogger(__name__)
 from fastapi import APIRouter, Depends, Form, HTTPException, Request, File, UploadFile, Query, BackgroundTasks
 from fastapi.responses import HTMLResponse, RedirectResponse, FileResponse, JSONResponse
 from fastapi.templating import Jinja2Templates
-from sqlalchemy import select
+from sqlalchemy import select, or_, and_
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_session
@@ -7755,11 +7755,23 @@ async def web_tickets_report(
     
     # Get ticket history
     all_history = []
+    all_history_for_closures = []  # Unfiltered history to determine who closed tickets
     if ticket_ids:
+        # Get history for display (filtered by user if selected)
         history_query = select(TicketHistory).where(TicketHistory.ticket_id.in_(ticket_ids))
         if selected_user_id:
             history_query = history_query.where(TicketHistory.user_id == selected_user_id)
         all_history = (await db.execute(history_query.order_by(TicketHistory.created_at.desc()))).scalars().all()
+        
+        # Get ALL history to determine who closed each ticket (not filtered by user)
+        closure_query = select(TicketHistory).where(
+            TicketHistory.ticket_id.in_(ticket_ids),
+            or_(
+                TicketHistory.action == 'closed',
+                and_(TicketHistory.action == 'status_changed', TicketHistory.new_value == 'closed')
+            )
+        )
+        all_history_for_closures = (await db.execute(closure_query)).scalars().all()
     
     # Create ticket lookup
     tickets_dict = {t.id: t for t in all_tickets}
@@ -7786,20 +7798,31 @@ async def web_tickets_report(
             'first_response_times': [],
         }
     
+    # Build a map of who closed each ticket from history (as fallback for closed_by_id)
+    ticket_closed_by = {}  # ticket_id -> user_id who closed it
+    for history in all_history_for_closures:
+        if history.user_id:
+            ticket_closed_by[history.ticket_id] = history.user_id
+    
     # Process tickets for agent stats
     for ticket in all_tickets:
         if ticket.assigned_to_id and ticket.assigned_to_id in agent_stats:
             agent_stats[ticket.assigned_to_id]['tickets_assigned'] += 1
         
-        if ticket.closed_by_id and ticket.closed_by_id in agent_stats:
-            agent_stats[ticket.closed_by_id]['tickets_closed'] += 1
+        # Determine who closed the ticket: use closed_by_id if set, otherwise check history
+        closer_id = ticket.closed_by_id
+        if not closer_id and ticket.status == 'closed':
+            closer_id = ticket_closed_by.get(ticket.id)
+        
+        if closer_id and closer_id in agent_stats:
+            agent_stats[closer_id]['tickets_closed'] += 1
             # Calculate resolution time using business hours
             if ticket.closed_at:
                 resolution_hours = calculate_business_hours(
                     ticket.created_at, ticket.closed_at,
                     biz_start, biz_end, biz_exclude_weekends
                 )
-                agent_stats[ticket.closed_by_id]['resolution_times'].append(resolution_hours)
+                agent_stats[closer_id]['resolution_times'].append(resolution_hours)
     
     # Process comments
     comment_by_ticket = {}  # ticket_id -> [comments]
