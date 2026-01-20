@@ -315,7 +315,7 @@
         <div id="notification-popup-container" class="fixed top-20 right-2 lg:right-6 z-50 space-y-3 max-w-[calc(100vw-1rem)] lg:max-w-sm"></div>
 
         <!-- Content - Responsive padding -->
-        <main class="flex-1 overflow-y-auto p-3 lg:p-6">
+        <main id="main-content" class="flex-1 overflow-y-auto p-3 lg:p-6">
           <div class="max-w-7xl mx-auto">
             {% block content %}{% endblock %}
           </div>
@@ -815,6 +815,61 @@
       function globalCallManager() {
         return { init() {} };
       }
+    </script>
+
+    <!-- Scroll Position Persistence -->
+    <script>
+      (function() {
+        const SCROLL_KEY_PREFIX = 'scrollPos_';
+        const NAV_FLAG_KEY = 'navClick';
+        const mainContent = document.getElementById('main-content');
+        
+        if (!mainContent) return;
+        
+        const currentPath = window.location.pathname;
+        const scrollKey = SCROLL_KEY_PREFIX + currentPath;
+        
+        // Check if this is a navigation click (tab change) or a refresh
+        const isNavClick = sessionStorage.getItem(NAV_FLAG_KEY) === 'true';
+        
+        // Clear the navigation flag
+        sessionStorage.removeItem(NAV_FLAG_KEY);
+        
+        // Restore scroll position only on refresh (not on navigation)
+        if (!isNavClick) {
+          const savedPosition = sessionStorage.getItem(scrollKey);
+          if (savedPosition) {
+            // Use requestAnimationFrame to ensure DOM is ready
+            requestAnimationFrame(() => {
+              mainContent.scrollTop = parseInt(savedPosition, 10);
+            });
+          }
+        } else {
+          // Clear the scroll position for this page on navigation
+          sessionStorage.removeItem(scrollKey);
+        }
+        
+        // Save scroll position as user scrolls (debounced)
+        let scrollTimeout;
+        mainContent.addEventListener('scroll', function() {
+          clearTimeout(scrollTimeout);
+          scrollTimeout = setTimeout(() => {
+            sessionStorage.setItem(scrollKey, mainContent.scrollTop.toString());
+          }, 100);
+        });
+        
+        // Mark navigation clicks on sidebar nav links
+        const navLinks = document.querySelectorAll('#mobile-sidebar a, nav a');
+        navLinks.forEach(link => {
+          link.addEventListener('click', function(e) {
+            // Only set flag for internal navigation links
+            const href = this.getAttribute('href');
+            if (href && href.startsWith('/')) {
+              sessionStorage.setItem(NAV_FLAG_KEY, 'true');
+            }
+          });
+        });
+      })();
     </script>
     {% block scripts %}{% endblock %}
   </body>
