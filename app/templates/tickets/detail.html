@@ -67,7 +67,7 @@
 
     <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <!-- Main Content -->
-        <div class="lg:col-span-2 space-y-6">
+        <div class="lg:col-span-2 space-y-6 min-w-0">
             <!-- Guest Information -->
             {% if ticket.is_guest %}
             <div class="bg-indigo-50 border border-indigo-200 rounded-lg p-6">
@@ -110,9 +110,9 @@
 
             <!-- Description -->
             {% if ticket.description %}
-            <div class="bg-white rounded-lg shadow-sm p-6">
+            <div class="bg-white rounded-lg shadow-sm p-6 overflow-hidden">
                 <h2 class="text-lg font-semibold text-gray-900 mb-3">Description</h2>
-                <div class="text-gray-700 whitespace-pre-wrap">{{ ticket.description }}</div>
+                <div class="text-gray-700 whitespace-pre-wrap break-words overflow-wrap-anywhere" style="word-break: break-word; overflow-wrap: anywhere;">{{ ticket.description }}</div>
             </div>
             {% endif %}
 
@@ -208,7 +208,7 @@
                                     {{ comment.created_at | format_datetime_tz(workspace.timezone if workspace and workspace.timezone else 'UTC', '%b %d, %Y %I:%M %p') }}
                                 </span>
                             </div>
-                            <p class="text-gray-700 whitespace-pre-wrap">{{ comment.content }}</p>
+                            <p class="text-gray-700 whitespace-pre-wrap break-words" style="word-break: break-word; overflow-wrap: anywhere;">{{ comment.content }}</p>
                         </div>
                         {% endfor %}
                     {% else %}
