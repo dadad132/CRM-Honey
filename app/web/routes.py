@@ -1108,6 +1108,8 @@ async def web_global_search(
     db: AsyncSession = Depends(get_session)
 ):
     """Global search across tasks, tickets, projects, and comments"""
+    from app.models.ticket import Ticket
+    
     user_id = request.session.get('user_id')
     if not user_id:
         return RedirectResponse('/web/login', status_code=303)
@@ -1230,6 +1232,8 @@ async def api_global_search(
     db: AsyncSession = Depends(get_session)
 ):
     """API endpoint for global search (used by search modal)"""
+    from app.models.ticket import Ticket
+    
     user_id = request.session.get('user_id')
     if not user_id:
         return JSONResponse({'tasks': [], 'tickets': [], 'projects': [], 'comments': []})
