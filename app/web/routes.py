@@ -1157,7 +1157,7 @@ async def web_global_search(
             .where(
                 Ticket.workspace_id == user.workspace_id,
                 Ticket.is_archived == False,
-                (Ticket.title.ilike(search_term) | Ticket.description.ilike(search_term) | Ticket.ticket_number.ilike(search_term))
+                (Ticket.subject.ilike(search_term) | Ticket.description.ilike(search_term) | Ticket.ticket_number.ilike(search_term))
             )
             .limit(10)
         )
@@ -1165,7 +1165,7 @@ async def web_global_search(
             results['tickets'].append({
                 'id': ticket.id,
                 'ticket_number': ticket.ticket_number,
-                'title': ticket.title,
+                'title': ticket.subject,
                 'status': ticket.status,
                 'priority': ticket.priority
             })
@@ -1273,7 +1273,7 @@ async def api_global_search(
             .where(
                 Ticket.workspace_id == user.workspace_id,
                 Ticket.is_archived == False,
-                (Ticket.title.ilike(search_term) | Ticket.description.ilike(search_term) | Ticket.ticket_number.ilike(search_term))
+                (Ticket.subject.ilike(search_term) | Ticket.description.ilike(search_term) | Ticket.ticket_number.ilike(search_term))
             )
             .limit(5)
         )
@@ -1281,7 +1281,7 @@ async def api_global_search(
             results['tickets'].append({
                 'id': ticket.id,
                 'ticket_number': ticket.ticket_number,
-                'title': ticket.title,
+                'title': ticket.subject,
                 'url': f'/web/tickets/{ticket.id}'
             })
         
