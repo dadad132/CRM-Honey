@@ -67,6 +67,15 @@ class TicketComment(SQLModel, table=True):
 
 class TicketAttachment(SQLModel, table=True):
     """File attachments for tickets"""
+    # TODO: FUTURE FEATURE - Attachment Labels/Categories
+    # Add a 'label' or 'category' field to categorize attachments:
+    # Examples: "Purchase Order", "PO", "Invoice", "Quote", "Contract", "Receipt", "Screenshot", "Log File"
+    # Could be:
+    #   - label: Optional[str] = None  # Free-text label
+    #   - category: Optional[str] = None  # Predefined categories from a list
+    #   - tags: Optional[str] = None  # JSON array of multiple tags
+    # UI would need a dropdown or input field when uploading attachments
+    # Also consider: description field for additional context about the attachment
     id: Optional[int] = Field(default=None, primary_key=True)
     ticket_id: int = Field(foreign_key="ticket.id", ondelete="CASCADE", index=True)
     comment_id: Optional[int] = Field(default=None, foreign_key="ticketcomment.id", ondelete="CASCADE", index=True)  # Link to specific comment if attached via comment

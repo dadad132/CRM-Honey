@@ -1088,13 +1088,26 @@ async def api_get_work_insights(
 # --------------------------
 # Global Search
 # --------------------------
+# TODO: FUTURE FEATURE - Add Attachment Search
+# Currently searches: Tasks, Tickets, Projects
+# Need to add search for attachments:
+#   - TaskAttachment (search by filename, and future 'label' field)
+#   - TicketAttachment (search by filename, and future 'label' field)
+#   - CommentAttachment (search by filename, and future 'label' field)
+# Implementation:
+#   1. Add 'attachments' to results dict
+#   2. Query all attachment tables where filename.ilike(search_term) OR label.ilike(search_term)
+#   3. Join with parent entity (Task/Ticket/Comment) to get context
+#   4. Return: filename, label, parent_type (task/ticket/comment), parent_id, parent_title
+#   5. Update search/results.html template to display attachment results
+#   6. Link attachments to their parent entity detail page
 @router.get('/search')
 async def web_global_search(
     request: Request,
     q: str = '',
     db: AsyncSession = Depends(get_session)
 ):
-    """Global search across tasks, tickets, and projects"""
+    """Global search across tasks, tickets, projects, and comments"""
     user_id = request.session.get('user_id')
     if not user_id:
         return RedirectResponse('/web/login', status_code=303)
@@ -1108,6 +1121,7 @@ async def web_global_search(
         'tasks': [],
         'tickets': [],
         'projects': [],
+        'comments': [],
         'query': q
     }
     
@@ -1170,6 +1184,32 @@ async def web_global_search(
                 'name': project.name,
                 'description': project.description[:100] if project.description else None
             })
+        
+        # Search comments
+        comment_results = await db.execute(
+            select(Comment, Task.id.label('task_id'), Task.title.label('task_title'), 
+                   Project.name.label('project_name'), User.full_name.label('author_name'))
+            .join(Task, Comment.task_id == Task.id)
+            .join(Project, Task.project_id == Project.id)
+            .join(User, Comment.author_id == User.id)
+            .where(
+                Project.workspace_id == user.workspace_id,
+                Comment.content.ilike(search_term)
+            )
+            .order_by(Comment.created_at.desc())
+            .limit(10)
+        )
+        for row in comment_results.fetchall():
+            comment = row[0]
+            results['comments'].append({
+                'id': comment.id,
+                'content': comment.content[:200] + '...' if len(comment.content) > 200 else comment.content,
+                'task_id': row[1],
+                'task_title': row[2],
+                'project_name': row[3],
+                'author_name': row[4],
+                'created_at': comment.created_at
+            })
     
     # Check if AJAX request
     if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
@@ -1192,13 +1232,13 @@ async def api_global_search(
     """API endpoint for global search (used by search modal)"""
     user_id = request.session.get('user_id')
     if not user_id:
-        return JSONResponse({'tasks': [], 'tickets': [], 'projects': []})
+        return JSONResponse({'tasks': [], 'tickets': [], 'projects': [], 'comments': []})
     
     user = (await db.execute(select(User).where(User.id == user_id))).scalar_one_or_none()
     if not user:
-        return JSONResponse({'tasks': [], 'tickets': [], 'projects': []})
+        return JSONResponse({'tasks': [], 'tickets': [], 'projects': [], 'comments': []})
     
-    results = {'tasks': [], 'tickets': [], 'projects': []}
+    results = {'tasks': [], 'tickets': [], 'projects': [], 'comments': []}
     
     if q and len(q) >= 2:
         search_term = f'%{q}%'
@@ -1256,6 +1296,28 @@ async def api_global_search(
                 'id': project.id,
                 'name': project.name,
                 'url': f'/web/projects/{project.id}'
+            })
+        
+        # Search comments
+        comment_results = await db.execute(
+            select(Comment, Task.id.label('task_id'), Task.title.label('task_title'))
+            .join(Task, Comment.task_id == Task.id)
+            .join(Project, Task.project_id == Project.id)
+            .where(
+                Project.workspace_id == user.workspace_id,
+                Comment.content.ilike(search_term)
+            )
+            .order_by(Comment.created_at.desc())
+            .limit(5)
+        )
+        for row in comment_results.fetchall():
+            comment = row[0]
+            results['comments'].append({
+                'id': comment.id,
+                'content': comment.content[:100] + '...' if len(comment.content) > 100 else comment.content,
+                'task_id': row[1],
+                'task_title': row[2],
+                'url': f'/web/tasks/{row[1]}'
             })
     
     return JSONResponse(results)

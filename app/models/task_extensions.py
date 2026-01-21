@@ -63,6 +63,15 @@ class RecurringTaskInstance(SQLModel, table=True):
 
 class TaskAttachment(SQLModel, table=True):
     """File attachments on tasks"""
+    # TODO: FUTURE FEATURE - Attachment Labels/Categories
+    # Add a 'label' or 'category' field to categorize attachments:
+    # Examples: "Purchase Order", "PO", "Invoice", "Quote", "Contract", "Receipt", "Specification", "Drawing", "Report"
+    # Could be:
+    #   - label: Optional[str] = None  # Free-text label
+    #   - category: Optional[str] = None  # Predefined categories from a list
+    #   - tags: Optional[str] = None  # JSON array of multiple tags
+    # UI would need a dropdown or input field when uploading attachments
+    # Also consider: description field for additional context about the attachment
     id: Optional[int] = Field(default=None, primary_key=True)
     task_id: int = Field(foreign_key="task.id")
     filename: str
