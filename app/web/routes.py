@@ -9842,8 +9842,8 @@ async def web_ticket_attachment_preview(
 
 
 @router.post('/tickets/process-emails')
-async def web_tickets_process_emails(request: Request, background_tasks: BackgroundTasks, db: AsyncSession = Depends(get_session)):
-    """Manually trigger email-to-ticket processing (admin only) - V2 - Runs in background"""
+async def web_tickets_process_emails(request: Request, db: AsyncSession = Depends(get_session)):
+    """Manually trigger email-to-ticket processing (admin only) - Processes emails immediately"""
     user_id = request.session.get('user_id')
     if not user_id:
         return RedirectResponse('/web/login', status_code=303)
@@ -9854,8 +9854,19 @@ async def web_tickets_process_emails(request: Request, background_tasks: Backgro
     
     try:
         from app.models.incoming_email_account import IncomingEmailAccount
+        from app.core.email_to_ticket_v2 import process_email_account, process_workspace_emails
         
-        # Get all active email accounts for this workspace
+        all_tickets = []
+        errors = []
+        
+        # 1. Process legacy workspace emails (if configured)
+        try:
+            tickets = await process_workspace_emails(db, user.workspace_id)
+            all_tickets.extend(tickets)
+        except Exception as e:
+            logger.warning(f"[Email] Error processing workspace emails: {e}")
+        
+        # 2. Get all active email accounts for this workspace
         accounts_result = await db.execute(
             select(IncomingEmailAccount).where(
                 IncomingEmailAccount.workspace_id == user.workspace_id,
@@ -9865,43 +9876,41 @@ async def web_tickets_process_emails(request: Request, background_tasks: Backgro
         accounts = accounts_result.scalars().all()
         
         if not accounts:
-            request.session['flash_message'] = "✗ No email accounts configured. Add one in Admin → Email Accounts"
-            request.session['flash_type'] = 'error'
-            return RedirectResponse('/web/tickets', status_code=303)
-        
-        # Process emails in background so page responds immediately
-        async def process_emails_background(workspace_id: int, account_ids: list):
-            """Background task to process emails"""
-            from app.core.database import async_session_factory
-            from app.core.email_to_ticket_v2 import process_email_account
-            from app.models.incoming_email_account import IncomingEmailAccount
+            # Check if legacy settings exist
+            from app.models.email_settings import EmailSettings
+            legacy_settings = (await db.execute(
+                select(EmailSettings).where(EmailSettings.workspace_id == user.workspace_id)
+            )).scalar_one_or_none()
             
+            if not legacy_settings or not legacy_settings.incoming_mail_host:
+                request.session['flash_message'] = "✗ No email accounts configured. Add one in Admin → Email Accounts"
+                request.session['flash_type'] = 'error'
+                return RedirectResponse('/web/tickets', status_code=303)
+        
+        # 3. Process each email account immediately
+        for account in accounts:
             try:
-                async with async_session_factory() as bg_db:
-                    for account_id in account_ids:
-                        try:
-                            account = (await bg_db.execute(
-                                select(IncomingEmailAccount).where(IncomingEmailAccount.id == account_id)
-                            )).scalar_one_or_none()
-                            if account:
-                                await process_email_account(bg_db, account)
-                        except Exception as e:
-                            print(f"[Email Background] Error processing account {account_id}: {e}")
+                tickets = await process_email_account(db, account)
+                all_tickets.extend(tickets)
             except Exception as e:
-                print(f"[Email Background] Error: {e}")
+                errors.append(f"{account.name}: {str(e)}")
+                logger.error(f"[Email] Error processing account {account.name}: {e}")
         
-        # Get account IDs to process
-        account_ids = [acc.id for acc in accounts]
-        
-        # Schedule background task
-        import asyncio
-        asyncio.create_task(process_emails_background(user.workspace_id, account_ids))
-        
-        # Respond immediately
-        request.session['flash_message'] = f"✓ Checking {len(accounts)} email account(s) in background..."
-        request.session['flash_type'] = 'success'
+        # Build result message
+        if all_tickets:
+            ticket_nums = [t.ticket_number for t in all_tickets]
+            request.session['flash_message'] = f"✓ Created {len(all_tickets)} ticket(s): {', '.join(ticket_nums)}"
+            request.session['flash_type'] = 'success'
+        elif errors:
+            request.session['flash_message'] = f"✗ Errors: {'; '.join(errors)}"
+            request.session['flash_type'] = 'error'
+        else:
+            request.session['flash_message'] = f"✓ Checked {len(accounts)} email account(s) - no new unprocessed emails found"
+            request.session['flash_type'] = 'info'
         
     except Exception as e:
+        import traceback
+        traceback.print_exc()
         request.session['flash_message'] = f"✗ Error: {str(e)}"
         request.session['flash_type'] = 'error'
     
