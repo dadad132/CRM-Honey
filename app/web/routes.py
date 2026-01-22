@@ -6198,6 +6198,12 @@ async def web_task_detail(request: Request, task_id: int, db: AsyncSession = Dep
         .order_by(Task.title)
     )).scalars().all()
     
+    # Get task-level attachments (not comment attachments)
+    from app.models.task_extensions import TaskAttachment
+    task_attachments = (await db.execute(
+        select(TaskAttachment).where(TaskAttachment.task_id == task_id).order_by(TaskAttachment.created_at.desc())
+    )).scalars().all()
+    
     return templates.TemplateResponse('tasks/detail.html', {
         'request': request,
         'task': task,
@@ -6205,6 +6211,7 @@ async def web_task_detail(request: Request, task_id: int, db: AsyncSession = Dep
         'assignments': assignments,
         'comments': comments,
         'attachments_by_comment': attachments_by_comment,
+        'task_attachments': task_attachments,
         'can_comment': can_comment,
         'history': history,
         'users': users,
