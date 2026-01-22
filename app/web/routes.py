@@ -5814,6 +5814,20 @@ async def web_project_detail(request: Request, project_id: int, db: AsyncSession
             if subtask.is_completed:
                 subtask_stats[subtask.task_id]['completed'] += 1
     
+    # Fetch attachment counts for all tasks
+    from app.models.task_extensions import TaskAttachment
+    attachment_counts = {}  # {task_id: count}
+    if tasks:
+        task_ids = [t.id for t in tasks]
+        from sqlalchemy import func
+        attachment_result = await db.execute(
+            select(TaskAttachment.task_id, func.count(TaskAttachment.id).label('count'))
+            .where(TaskAttachment.task_id.in_(task_ids))
+            .group_by(TaskAttachment.task_id)
+        )
+        for task_id, count in attachment_result.all():
+            attachment_counts[task_id] = count
+    
     # Fetch all active users in workspace for assignment dropdown
     users = (await db.execute(select(User).where(User.workspace_id == user.workspace_id, User.is_active == True).order_by(User.full_name, User.email))).scalars().all()
     return templates.TemplateResponse('projects/detail.html', {
@@ -5825,6 +5839,7 @@ async def web_project_detail(request: Request, project_id: int, db: AsyncSession
         'assignees_map': assignees_map,
         'subtasks_map': subtasks_map,
         'subtask_stats': subtask_stats,
+        'attachment_counts': attachment_counts,
         'users': users,
         'user': user
     })
