@@ -111,6 +111,11 @@ uploads_path = os.path.join(BASE_DIR, "uploads")
 os.makedirs(uploads_path, exist_ok=True)
 app.mount("/uploads", StaticFiles(directory=uploads_path), name="uploads")
 
+# Mount static directory for PWA assets (icons, manifest, service worker)
+static_path = os.path.join(BASE_DIR, "static")
+os.makedirs(static_path, exist_ok=True)
+app.mount("/static", StaticFiles(directory=static_path), name="static")
+
 
 @app.get("/health")
 async def health():

@@ -2,8 +2,15 @@
 <html lang="en">
   <head>
     <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
     <title>{% block title %}{{ workspace.site_title if workspace and workspace.site_title else (workspace.name if workspace else 'CRM System') }}{% endblock %}</title>
+    {# PWA Meta Tags #}
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="theme-color" content="{{ workspace.primary_color if workspace and workspace.primary_color else '#dc2626' }}">
+    <meta name="mobile-web-app-capable" content="yes">
+    <link rel="manifest" href="/static/manifest.json">
+    <link rel="apple-touch-icon" href="/static/icons/icon-192x192.png">
     {# Set current path for active nav highlighting #}
     {% set current_path = request.url.path %}
     <script src="https://cdn.tailwindcss.com"></script>

@@ -196,6 +196,15 @@ async def get_current_admin(request: Request, db: AsyncSession = Depends(get_ses
 
 
 # --------------------------
+# App Download Page
+# --------------------------
+@router.get('/download', response_class=HTMLResponse)
+async def download_app(request: Request):
+    """Download page for mobile app - shows Android APK download or iOS PWA instructions"""
+    return templates.TemplateResponse('download.html', {'request': request})
+
+
+# --------------------------
 # Auth (session-based for web)
 # --------------------------
 @router.get('/login', response_class=HTMLResponse)
