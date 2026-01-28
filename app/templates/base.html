@@ -22,6 +22,15 @@
       .scrollbar-thin::-webkit-scrollbar-thumb { background-color: #cbd5e1; border-radius: 8px; }
       @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
       body { font-family: 'Inter', sans-serif; }
+      
+      /* Safe area insets for notches and dynamic islands */
+      :root {
+        --sat: env(safe-area-inset-top, 0px);
+        --sar: env(safe-area-inset-right, 0px);
+        --sab: env(safe-area-inset-bottom, 0px);
+        --sal: env(safe-area-inset-left, 0px);
+      }
+      
       .nav-item {
         transition: all 0.2s ease;
       }
@@ -38,6 +47,32 @@
       }
       .gradient-accent {
         background: linear-gradient(135deg, {{ workspace.primary_color if workspace and workspace.primary_color else '#ef4444' }} 0%, {{ workspace.primary_color if workspace and workspace.primary_color else '#b91c1c' }} 100%);
+      }
+      
+      /* Mobile menu button with safe area */
+      #mobile-menu-button {
+        top: max(1rem, calc(var(--sat) + 0.5rem));
+        left: max(1rem, calc(var(--sal) + 0.5rem));
+      }
+      
+      /* Mobile sidebar with safe area */
+      @media (max-width: 1023px) {
+        #mobile-sidebar {
+          padding-top: max(1.5rem, calc(var(--sat) + 0.75rem));
+          padding-left: max(1.5rem, calc(var(--sal) + 0.5rem));
+          padding-bottom: max(1.5rem, calc(var(--sab) + 0.5rem));
+        }
+        
+        /* Main header respects safe area */
+        .mobile-header {
+          padding-top: var(--sat);
+          height: calc(4rem + var(--sat));
+        }
+        
+        /* Main content area with bottom safe area */
+        .main-content {
+          padding-bottom: var(--sab);
+        }
       }
       
       /* Mobile sidebar overlay */
@@ -58,7 +93,7 @@
   <body class="h-screen bg-gradient-to-br from-slate-50 via-gray-50 to-slate-100 text-gray-800 antialiased">
     <!-- Mobile Menu Button - Only visible on mobile, hides when sidebar is open -->
     <button id="mobile-menu-button" 
-            class="lg:hidden fixed top-4 left-4 z-[60] p-2 bg-gray-900 text-white rounded-lg shadow-lg transition-opacity duration-300"
+            class="lg:hidden fixed z-[60] p-2.5 bg-gray-900 text-white rounded-xl shadow-lg transition-opacity duration-300"
             onclick="toggleMobileSidebar()">
       <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"/>
@@ -216,8 +251,8 @@
 
       <!-- Main area - Responsive: no margin on mobile, margin on desktop -->
       <div class="flex flex-col h-full w-full lg:ml-[280px]">
-        <!-- Top bar - Responsive -->
-        <header class="h-16 border-b border-gray-200 bg-white shadow-sm flex items-center justify-between px-4 lg:px-6">
+        <!-- Top bar - Responsive with safe area support -->
+        <header class="mobile-header h-16 border-b border-gray-200 bg-white shadow-sm flex items-center justify-between px-4 lg:px-6">
           <div class="flex items-center gap-3">
             <!-- Mobile: Add padding for hamburger button -->
             <div class="text-base lg:text-lg font-semibold text-gray-800 lg:ml-0 ml-12">{{ header_title or 'Workspace' }}</div>
