@@ -1,26 +1,62 @@
 {% extends 'base.html' %}
 {% block content %}
-<div class="mb-5 flex items-start justify-between">
+<style>
+  /* Mobile form improvements */
+  @media (max-width: 768px) {
+    .task-form-grid {
+      display: flex !important;
+      flex-direction: column !important;
+      gap: 0.75rem !important;
+    }
+    .task-form-grid > div {
+      width: 100% !important;
+    }
+    .task-form-grid input,
+    .task-form-grid select,
+    .task-form-grid textarea {
+      font-size: 16px !important; /* Prevents iOS zoom */
+    }
+    .project-header {
+      flex-direction: column !important;
+      align-items: flex-start !important;
+      gap: 1rem !important;
+    }
+    .project-header-buttons {
+      width: 100%;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.5rem;
+    }
+    .project-header-buttons a {
+      flex: 1;
+      min-width: 120px;
+      text-align: center;
+      justify-content: center;
+    }
+  }
+</style>
+
+<div class="mb-5 flex items-start justify-between project-header">
   <div>
-    <h1 class="text-2xl font-semibold">{{ project.name }}</h1>
-    {% if project.description %}<p class="text-slate-500">{{ project.description }}</p>{% endif %}
+    <h1 class="text-xl sm:text-2xl font-semibold">{{ project.name }}</h1>
+    {% if project.description %}<p class="text-slate-500 text-sm sm:text-base">{{ project.description }}</p>{% endif %}
   </div>
-  <div class="flex items-center gap-3">
+  <div class="flex items-center gap-2 sm:gap-3 project-header-buttons">
     {% if user is defined and user.is_admin %}
     <!-- Project Report Button (Admin Only) -->
     <a href="/web/projects/{{ project.id }}/report" 
-       class="px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 text-sm font-medium flex items-center gap-2">
+       class="px-3 sm:px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 text-xs sm:text-sm font-medium flex items-center gap-2">
       <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
       </svg>
-      Report
+      <span class="hidden sm:inline">Report</span>
     </a>
     <a href="/web/projects/{{ project.id }}/members" 
-       class="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 text-sm font-medium flex items-center gap-2">
+       class="px-3 sm:px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 text-xs sm:text-sm font-medium flex items-center gap-2">
       <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z"/>
       </svg>
-      Manage Members
+      <span class="hidden sm:inline">Members</span>
     </a>
     {% endif %}
   </div>
@@ -179,80 +215,142 @@ function taskSuggestions() {
 }
 </script>
 
-<div class="grid grid-cols-4 gap-4">
+<!-- Mobile-friendly Kanban Board -->
+<style>
+  /* Mobile board styles */
+  @media (max-width: 768px) {
+    .kanban-board {
+      display: flex;
+      flex-direction: column;
+      gap: 1rem;
+    }
+    .kanban-column {
+      min-height: auto !important;
+    }
+    .kanban-column-content {
+      max-height: 300px;
+      min-height: 100px !important;
+    }
+  }
+  
+  /* Tablet - 2 columns */
+  @media (min-width: 769px) and (max-width: 1024px) {
+    .kanban-board {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 1rem;
+    }
+  }
+  
+  /* Desktop - 4 columns */
+  @media (min-width: 1025px) {
+    .kanban-board {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 1rem;
+    }
+  }
+  
+  /* Mobile task card improvements */
+  @media (max-width: 768px) {
+    .task-card {
+      padding: 0.75rem !important;
+    }
+    .task-card .task-title {
+      font-size: 0.875rem;
+      line-height: 1.3;
+    }
+    .task-card .task-meta {
+      flex-wrap: wrap;
+      gap: 0.25rem;
+    }
+    .task-card .task-actions {
+      flex-direction: column;
+    }
+    .task-card .task-actions form {
+      width: 100%;
+    }
+    .task-card .task-actions select {
+      flex: 1;
+    }
+  }
+</style>
+
+<div class="kanban-board">
   {% set cols = [
-    ("todo", "To Do", columns[TaskStatus.todo], "bg-slate-100"),
-    ("in_progress", "In Progress", columns[TaskStatus.in_progress], "bg-amber-100"),
-    ("done", "Done", columns[TaskStatus.done], "bg-emerald-100"),
-    ("blocked", "Blocked", columns[TaskStatus.blocked], "bg-rose-100"),
+    ("todo", "To Do", columns[TaskStatus.todo], "bg-slate-100", "border-slate-300"),
+    ("in_progress", "In Progress", columns[TaskStatus.in_progress], "bg-amber-100", "border-amber-300"),
+    ("done", "Done", columns[TaskStatus.done], "bg-emerald-100", "border-emerald-300"),
+    ("blocked", "Blocked", columns[TaskStatus.blocked], "bg-rose-100", "border-rose-300"),
   ] %}
 
-  {% for key, label, items, color in cols %}
-    <section class="rounded-xl border border-slate-200 bg-white p-3 flex flex-col">
-      <div class="flex items-center justify-between mb-2">
-        <h3 class="text-sm font-medium">{{ label }}</h3>
-        <span class="text-xs text-slate-500">{{ items|length }}</span>
+  {% for key, label, items, color, border in cols %}
+    <section class="kanban-column rounded-xl border {{ border }} bg-white p-3 flex flex-col">
+      <div class="flex items-center justify-between mb-2 pb-2 border-b {{ border }}">
+        <h3 class="text-sm font-semibold flex items-center gap-2">
+          {% if key == 'todo' %}📋{% elif key == 'in_progress' %}🔄{% elif key == 'done' %}✅{% else %}🚫{% endif %}
+          {{ label }}
+        </h3>
+        <span class="text-xs font-medium px-2 py-0.5 rounded-full {{ color }}">{{ items|length }}</span>
       </div>
-      <div id="col-{{ key }}" class="flex-1 min-h-[200px] rounded {{ color }}/50 p-2 space-y-2 overflow-y-auto scrollbar-thin">
+      <div id="col-{{ key }}" class="kanban-column-content flex-1 min-h-[200px] rounded-lg {{ color }}/50 p-2 space-y-2 overflow-y-auto scrollbar-thin">
         {% for t in items %}
-          <article class="task-card rounded-lg border border-slate-200 bg-white p-3 shadow-sm" data-task-id="{{ t.id }}">
+          <article class="task-card rounded-lg border border-slate-200 bg-white p-3 shadow-sm hover:shadow-md transition-shadow" data-task-id="{{ t.id }}">
             <!-- Attachment indicator at top -->
             {% if attachment_counts.get(t.id, 0) > 0 %}
             <div class="mb-1.5 flex items-center gap-1 text-[10px] text-blue-600">
               <i class="fas fa-paperclip"></i>
-              <span>{{ attachment_counts[t.id] }} attachment{{ 's' if attachment_counts[t.id] > 1 else '' }}</span>
+              <span>{{ attachment_counts[t.id] }} file{{ 's' if attachment_counts[t.id] > 1 else '' }}</span>
             </div>
             {% endif %}
-            <div class="flex items-start justify-between gap-2">
-              <a href="/web/tasks/{{ t.id }}" class="text-sm font-medium hover:underline">{{ t.title }}</a>
-              <div class="flex items-center gap-2">
+            <div class="flex flex-col gap-2">
+              <a href="/web/tasks/{{ t.id }}" class="task-title text-sm font-medium hover:text-blue-600 hover:underline line-clamp-2">{{ t.title }}</a>
+              <div class="task-meta flex flex-wrap items-center gap-1.5">
                 {% if t.priority %}
                   {% set chip = {'low':'bg-emerald-100 text-emerald-800','medium':'bg-sky-100 text-sky-800','high':'bg-amber-100 text-amber-800','critical':'bg-rose-100 text-rose-800'}[t.priority.value] %}
-                  <span class="text-[10px] px-2 py-0.5 rounded {{ chip }}">{{ t.priority.value.title() }}</span>
+                  <span class="text-[10px] px-2 py-0.5 rounded-full {{ chip }} font-medium">{{ t.priority.value.title() }}</span>
                 {% endif %}
                 {% if t.due_date %}
-                  <span class="text-[10px] px-2 py-0.5 rounded border border-slate-200">
-                    {% if t.due_date is string %}
-                      {{ t.due_date }}
-                    {% else %}
-                      {{ t.due_date.strftime('%d/%m/%Y') }}
-                    {% endif %}
-                    {% if t.due_time %} {{ t.due_time.strftime('%H:%M') if t.due_time.strftime else t.due_time }}{% endif %}
+                  <span class="text-[10px] px-2 py-0.5 rounded-full bg-gray-100 text-gray-700">
+                    📅 {% if t.due_date is string %}{{ t.due_date }}{% else %}{{ t.due_date.strftime('%d/%m') }}{% endif %}
                   </span>
                 {% endif %}
               </div>
             </div>
-            {% if t.description %}<div class="text-xs text-slate-500 mt-1">{{ t.description }}</div>{% endif %}
+            {% if t.description %}<div class="text-xs text-slate-500 mt-1.5 line-clamp-2">{{ t.description }}</div>{% endif %}
             {% set asgs = assignees_map.get(t.id, []) %}
-            <div class="mt-2 flex items-center justify-between gap-2">
-              <div class="flex items-center gap-1">
+            <div class="mt-2 pt-2 border-t border-slate-100 flex items-center justify-between gap-2">
+              <div class="flex items-center gap-1 flex-wrap">
                 {% if asgs %}
-                  {% for name, email in asgs %}
+                  {% for name, email in asgs[:3] %}
                     {% set initials = (name.split()[0][:1] ~ (name.split()[1][:1] if name.split()|length > 1 else '')).upper() %}
-                    <div class="w-6 h-6 rounded-full bg-slate-200 text-[10px] font-medium text-slate-700 flex items-center justify-center" title="{{ name }}">{{ initials }}</div>
+                    <div class="w-6 h-6 rounded-full bg-gradient-to-br from-slate-200 to-slate-300 text-[10px] font-bold text-slate-700 flex items-center justify-center shadow-sm" title="{{ name }}">{{ initials }}</div>
                   {% endfor %}
+                  {% if asgs|length > 3 %}
+                    <span class="text-[10px] text-slate-500">+{{ asgs|length - 3 }}</span>
+                  {% endif %}
                 {% else %}
-                  <span class="text-[11px] text-slate-400">Unassigned</span>
+                  <span class="text-[10px] text-slate-400 italic">Unassigned</span>
                 {% endif %}
               </div>
             </div>
             {% if user is defined and user.is_admin %}
-            <div class="mt-2">
-              <form method="post" action="/web/tasks/{{ t.id }}/assign" class="flex items-center gap-2">
-                <select name="assignee_id" class="text-[11px] rounded border border-slate-300 px-2 py-1">
+            <div class="task-actions mt-2 pt-2 border-t border-slate-100 flex flex-col sm:flex-row gap-2">
+              <form method="post" action="/web/tasks/{{ t.id }}/assign" class="flex items-center gap-1 flex-1">
+                <select name="assignee_id" class="text-[11px] rounded border border-slate-300 px-2 py-1.5 flex-1 min-w-0">
                   {% for u in users %}
                     <option value="{{ u.id }}">{{ u.full_name or u.email }}</option>
                   {% endfor %}
                 </select>
-                <button class="text-[11px] px-2 py-1 rounded border border-slate-300 hover:bg-slate-50">Assign</button>
+                <button class="text-[11px] px-2 py-1.5 rounded bg-blue-50 text-blue-700 border border-blue-200 hover:bg-blue-100 whitespace-nowrap">+</button>
               </form>
-              <form method="post" action="/web/tasks/{{ t.id }}/unassign" class="mt-1 flex items-center gap-2">
-                <select name="assignee_id" class="text-[11px] rounded border border-slate-300 px-2 py-1">
+              <form method="post" action="/web/tasks/{{ t.id }}/unassign" class="flex items-center gap-1 flex-1">
+                <select name="assignee_id" class="text-[11px] rounded border border-slate-300 px-2 py-1.5 flex-1 min-w-0">
                   {% for u in users %}
                     <option value="{{ u.id }}">{{ u.full_name or u.email }}</option>
                   {% endfor %}
                 </select>
-                <button class="text-[11px] px-2 py-1 rounded border border-slate-300 hover:bg-slate-50">Unassign</button>
+                <button class="text-[11px] px-2 py-1.5 rounded bg-red-50 text-red-700 border border-red-200 hover:bg-red-100 whitespace-nowrap">−</button>
               </form>
             </div>
             {% endif %}

@@ -1,5 +1,111 @@
 {% extends "base.html" %}
 {% block content %}
+<style>
+  /* Mobile Calendar Styles */
+  @media (max-width: 768px) {
+    /* Hide weekday headers and show day names inline */
+    .calendar-weekday-header {
+      display: none !important;
+    }
+    
+    /* Mobile month grid - 1 column for small screens, 2 for medium */
+    .calendar-month-grid {
+      display: flex !important;
+      flex-direction: column !important;
+      gap: 0.5rem !important;
+    }
+    
+    .calendar-day-cell {
+      min-height: 80px !important;
+      padding: 0.75rem !important;
+    }
+    
+    .calendar-day-cell .day-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 0.5rem;
+    }
+    
+    .calendar-day-cell .day-name {
+      display: inline !important;
+      font-weight: 600;
+      color: #64748b;
+    }
+    
+    /* Better touch targets for mobile */
+    .calendar-item {
+      padding: 0.5rem !important;
+      margin-bottom: 0.375rem !important;
+      min-height: 44px;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+    }
+    
+    /* Week view mobile */
+    .calendar-week-grid {
+      display: flex !important;
+      flex-direction: column !important;
+      gap: 0.75rem !important;
+    }
+    
+    .calendar-week-column {
+      border-radius: 0.75rem !important;
+      padding: 1rem !important;
+    }
+    
+    /* Compact legend on mobile */
+    .calendar-legend {
+      display: flex !important;
+      flex-wrap: wrap !important;
+      gap: 0.5rem !important;
+      font-size: 0.7rem !important;
+    }
+    
+    .calendar-legend > div {
+      white-space: nowrap;
+    }
+    
+    /* User color legend mobile */
+    .user-legend-grid {
+      grid-template-columns: repeat(2, 1fr) !important;
+    }
+    
+    /* Summary cards on mobile */
+    .summary-cards {
+      grid-template-columns: 1fr !important;
+    }
+  }
+  
+  /* Tablet adjustments */
+  @media (min-width: 769px) and (max-width: 1024px) {
+    .calendar-month-grid {
+      gap: 0.375rem !important;
+    }
+    
+    .calendar-day-cell {
+      min-height: 100px !important;
+      padding: 0.5rem !important;
+    }
+    
+    .user-legend-grid {
+      grid-template-columns: repeat(3, 1fr) !important;
+    }
+  }
+  
+  /* Day name for mobile view */
+  .mobile-day-name {
+    display: none;
+  }
+  
+  @media (max-width: 768px) {
+    .mobile-day-name {
+      display: inline;
+    }
+  }
+</style>
+
 <div>
   <!-- Success/Error Messages -->
   {% if request.session.get('success_message') %}
@@ -49,35 +155,35 @@
     </div>
   </div>
   
-  <div class="mb-4 flex flex-wrap items-center gap-2 sm:gap-4 text-xs justify-center sm:justify-start">
-    <div class="flex items-center gap-1 sm:gap-2"><div class="w-3 h-3 bg-red-100 border border-red-300 rounded"></div><span>🔥 Critical</span></div>
-    <div class="flex items-center gap-1 sm:gap-2"><div class="w-3 h-3 bg-orange-100 border border-orange-300 rounded"></div><span>⬆️ High</span></div>
-    <div class="flex items-center gap-1 sm:gap-2"><div class="w-3 h-3 bg-yellow-100 border border-yellow-300 rounded"></div><span>➡️ Medium</span></div>
-    <div class="flex items-center gap-1 sm:gap-2"><div class="w-3 h-3 bg-blue-100 border border-blue-300 rounded"></div><span>⬇️ Low</span></div>
-    <div class="flex items-center gap-1 sm:gap-2"><div class="w-3 h-3 bg-purple-100 border border-purple-300 rounded"></div><span>🎥 Meeting</span></div>
-    <div class="flex items-center gap-1 sm:gap-2"><div class="w-3 h-3 bg-green-100 border border-green-300 rounded"></div><span>📁 Project</span></div>
-    <div class="flex items-center gap-1 sm:gap-2"><div class="w-3 h-3 bg-gray-300 border border-gray-400 rounded"></div><span>❌ Overdue</span></div>
+  <div class="calendar-legend mb-3 sm:mb-4 flex flex-wrap items-center gap-2 sm:gap-4 text-[10px] sm:text-xs justify-center sm:justify-start">
+    <div class="flex items-center gap-1"><div class="w-2.5 h-2.5 sm:w-3 sm:h-3 bg-red-100 border border-red-300 rounded"></div><span>🔥 Critical</span></div>
+    <div class="flex items-center gap-1"><div class="w-2.5 h-2.5 sm:w-3 sm:h-3 bg-orange-100 border border-orange-300 rounded"></div><span>⬆️ High</span></div>
+    <div class="flex items-center gap-1"><div class="w-2.5 h-2.5 sm:w-3 sm:h-3 bg-yellow-100 border border-yellow-300 rounded"></div><span>➡️ Med</span></div>
+    <div class="flex items-center gap-1"><div class="w-2.5 h-2.5 sm:w-3 sm:h-3 bg-blue-100 border border-blue-300 rounded"></div><span>⬇️ Low</span></div>
+    <div class="flex items-center gap-1"><div class="w-2.5 h-2.5 sm:w-3 sm:h-3 bg-purple-100 border border-purple-300 rounded"></div><span>🎥 Meet</span></div>
+    <div class="flex items-center gap-1"><div class="w-2.5 h-2.5 sm:w-3 sm:h-3 bg-green-100 border border-green-300 rounded"></div><span>📁 Proj</span></div>
+    <div class="hidden sm:flex items-center gap-1"><div class="w-2.5 h-2.5 sm:w-3 sm:h-3 bg-gray-300 border border-gray-400 rounded"></div><span>❌ Overdue</span></div>
     {% if not user.is_admin %}
-      <div class="w-full sm:w-auto sm:ml-auto text-slate-500 text-center sm:text-left">Viewing your assigned items only</div>
+      <div class="w-full sm:w-auto sm:ml-auto text-slate-500 text-center sm:text-left text-[10px] sm:text-xs">Your items only</div>
     {% else %}
-      <div class="w-full sm:w-auto sm:ml-auto text-slate-500 text-center sm:text-left">Admin: Viewing all workspace items</div>
+      <div class="w-full sm:w-auto sm:ml-auto text-slate-500 text-center sm:text-left text-[10px] sm:text-xs hidden sm:block">Admin: All items</div>
     {% endif %}
   </div>
   
   {% if user.is_admin and workspace_users %}
   <!-- User Color Legend for Admins -->
-  <div class="mb-4 p-4 bg-gradient-to-br from-white to-slate-50 border-2 border-slate-300 rounded-lg shadow-md">
-    <h3 class="text-sm font-bold text-slate-800 mb-3 flex items-center gap-2">
+  <div class="mb-4 p-3 sm:p-4 bg-gradient-to-br from-white to-slate-50 border-2 border-slate-300 rounded-lg shadow-md">
+    <h3 class="text-xs sm:text-sm font-bold text-slate-800 mb-2 sm:mb-3 flex items-center gap-2">
       <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
         <path d="M9 6a3 3 0 11-6 0 3 3 0 016 0zM17 6a3 3 0 11-6 0 3 3 0 016 0zM12.93 17c.046-.327.07-.66.07-1a6.97 6.97 0 00-1.5-4.33A5 5 0 0119 16v1h-6.07zM6 11a5 5 0 015 5v1H1v-1a5 5 0 015-5z"/>
       </svg>
-      Team Members Color Legend
+      Team Members
     </h3>
-    <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
+    <div class="user-legend-grid grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-2 sm:gap-3">
       {% for ws_user in workspace_users %}
-        <div class="flex items-center gap-2 px-3 py-2 rounded-lg border-2 shadow-sm hover:shadow-md transition" style="border-color: {{ ws_user.calendar_color }}; background: linear-gradient(135deg, {{ ws_user.calendar_color }}15, {{ ws_user.calendar_color }}05);">
-          <div class="w-3 h-3 rounded-full border-2 flex-shrink-0" style="background-color: {{ ws_user.calendar_color }}; border-color: {{ ws_user.calendar_color }};"></div>
-          <span class="text-xs font-medium text-gray-800 truncate">{{ ws_user.full_name or ws_user.username }}</span>
+        <div class="flex items-center gap-1.5 sm:gap-2 px-2 sm:px-3 py-1.5 sm:py-2 rounded-lg border-2 shadow-sm hover:shadow-md transition" style="border-color: {{ ws_user.calendar_color }}; background: linear-gradient(135deg, {{ ws_user.calendar_color }}15, {{ ws_user.calendar_color }}05);">
+          <div class="w-2.5 h-2.5 sm:w-3 sm:h-3 rounded-full border-2 flex-shrink-0" style="background-color: {{ ws_user.calendar_color }}; border-color: {{ ws_user.calendar_color }};"></div>
+          <span class="text-[10px] sm:text-xs font-medium text-gray-800 truncate">{{ ws_user.full_name or ws_user.username }}</span>
         </div>
       {% endfor %}
     </div>
@@ -360,26 +466,36 @@
   
   {% else %}
   <!-- Month View -->
-  <div class="grid grid-cols-7 gap-2">
+  <div class="calendar-month-grid grid grid-cols-7 gap-1 sm:gap-2">
     {% for weekday in ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'] %}
-      <div class="text-center text-xs font-semibold text-slate-600 py-2">{{ weekday }}</div>
+      <div class="calendar-weekday-header text-center text-xs font-semibold text-slate-600 py-2 hidden sm:block">{{ weekday }}</div>
     {% endfor %}
     
+    {% set day_names = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'] %}
     {% for week in weeks %}
       {% for day in week %}
-        <div class="min-h-[140px] bg-white border border-slate-200 rounded p-2 flex flex-col gap-1 {% if day.month != month %}opacity-50 bg-slate-50{% endif %} {% if day == today %}ring-2 ring-blue-400{% endif %}">
-          <div class="text-xs {% if day == today %}font-bold text-blue-600{% else %}text-slate-500{% endif %}">{{ day.day }}</div>
-          <div class="flex-1 space-y-1 overflow-y-auto max-h-32">
+        <div class="calendar-day-cell min-h-[100px] sm:min-h-[140px] bg-white border border-slate-200 rounded-lg p-1.5 sm:p-2 flex flex-col gap-1 {% if day.month != month %}opacity-50 bg-slate-50{% endif %} {% if day == today %}ring-2 ring-blue-400{% endif %}">
+          <div class="day-header flex items-center justify-between">
+            <span class="text-xs {% if day == today %}font-bold text-blue-600{% else %}text-slate-500{% endif %}">
+              <span class="mobile-day-name">{{ day_names[day.weekday()] }} </span>{{ day.day }}
+            </span>
+            {% if tasks_by_day.get(day, [])|length > 0 or meetings_by_day.get(day, [])|length > 0 %}
+            <span class="sm:hidden text-[10px] bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded-full font-medium">
+              {{ (tasks_by_day.get(day, [])|length) + (meetings_by_day.get(day, [])|length) }}
+            </span>
+            {% endif %}
+          </div>
+          <div class="flex-1 space-y-1 overflow-y-auto max-h-24 sm:max-h-32">
             {% for m in meetings_by_day.get(day, []) %}
               {% if m.is_cancelled %}
-              <div onclick="openMeetingModal({{ m.id }})" class="block text-xs rounded px-2 py-1 border border-gray-300 bg-gray-100 text-gray-600 opacity-60 cursor-pointer hover:opacity-80" title="{{ m.title }} - CANCELLED">
-                <div class="font-semibold line-through">❌ {{ m.start_time.strftime('%H:%M') }}</div>
-                <div class="truncate line-through">{{ m.title }}</div>
+              <div onclick="openMeetingModal({{ m.id }})" class="calendar-item block text-[10px] sm:text-xs rounded px-1.5 sm:px-2 py-1 border border-gray-300 bg-gray-100 text-gray-600 opacity-60 cursor-pointer hover:opacity-80" title="{{ m.title }} - CANCELLED">
+                <div class="font-semibold line-through truncate">❌ <span class="hidden sm:inline">{{ m.start_time.strftime('%H:%M') }}</span></div>
+                <div class="truncate line-through hidden sm:block">{{ m.title }}</div>
               </div>
               {% else %}
-              <div onclick="openMeetingModal({{ m.id }})" class="block text-xs rounded px-2 py-1 border border-purple-300 bg-purple-100 text-purple-800 cursor-pointer hover:bg-purple-200" title="{{ m.title }} - {{ m.start_time.strftime('%I:%M %p') }}">
-                <div class="font-semibold">🎥 {{ m.start_time.strftime('%H:%M') }}</div>
-                <div class="truncate">{{ m.title }}</div>
+              <div onclick="openMeetingModal({{ m.id }})" class="calendar-item block text-[10px] sm:text-xs rounded px-1.5 sm:px-2 py-1 border border-purple-300 bg-purple-100 text-purple-800 cursor-pointer hover:bg-purple-200" title="{{ m.title }} - {{ m.start_time.strftime('%I:%M %p') }}">
+                <div class="font-semibold truncate">🎥 <span class="hidden sm:inline">{{ m.start_time.strftime('%H:%M') }}</span></div>
+                <div class="truncate hidden sm:block">{{ m.title }}</div>
               </div>
               {% endif %}
             {% endfor %}
@@ -447,23 +563,23 @@
   </div>
   {% endif %}
   
-  <div class="mt-4 grid grid-cols-1 md:grid-cols-3 gap-4">
-    <div class="bg-white rounded border border-slate-200 p-3">
-      <h3 class="text-sm font-semibold mb-2">
+  <div class="summary-cards mt-4 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 sm:gap-4">
+    <div class="bg-white rounded-lg border border-slate-200 p-3">
+      <h3 class="text-xs sm:text-sm font-semibold mb-2">
         {% if view == 'day' %}Today
         {% elif view == 'week' %}This Week
         {% else %}This Month{% endif %} Summary
       </h3>
-      <div class="space-y-1 text-sm text-slate-600">
+      <div class="space-y-1 text-xs sm:text-sm text-slate-600">
         <div class="flex justify-between"><span>Tasks:</span><span class="font-medium">{{ tasks|length }}</span></div>
         <div class="flex justify-between"><span>Meetings:</span><span class="font-medium">{{ meetings|length }}</span></div>
         <div class="flex justify-between"><span>Projects:</span><span class="font-medium">{{ projects|length }}</span></div>
       </div>
     </div>
     
-    <div class="bg-white rounded border border-slate-200 p-3">
-      <h3 class="text-sm font-semibold mb-2">Priority Breakdown</h3>
-      <div class="space-y-1 text-sm text-slate-600">
+    <div class="bg-white rounded-lg border border-slate-200 p-3">
+      <h3 class="text-xs sm:text-sm font-semibold mb-2">Priority Breakdown</h3>
+      <div class="space-y-1 text-xs sm:text-sm text-slate-600">
         <div class="flex justify-between"><span>🔥 Critical:</span><span class="font-medium text-red-600">{{ tasks|selectattr('priority.value', 'equalto', 'critical')|list|length }}</span></div>
         <div class="flex justify-between"><span>⬆️ High:</span><span class="font-medium text-orange-600">{{ tasks|selectattr('priority.value', 'equalto', 'high')|list|length }}</span></div>
         <div class="flex justify-between"><span>➡️ Medium:</span><span class="font-medium text-yellow-600">{{ tasks|selectattr('priority.value', 'equalto', 'medium')|list|length }}</span></div>
@@ -471,9 +587,9 @@
       </div>
     </div>
     
-    <div class="bg-white rounded border border-slate-200 p-3">
-      <h3 class="text-sm font-semibold mb-2">Task Status</h3>
-      <div class="space-y-1 text-sm text-slate-600">
+    <div class="bg-white rounded-lg border border-slate-200 p-3 sm:col-span-2 md:col-span-1">
+      <h3 class="text-xs sm:text-sm font-semibold mb-2">Task Status</h3>
+      <div class="grid grid-cols-2 sm:grid-cols-1 gap-1 text-xs sm:text-sm text-slate-600">
         <div class="flex justify-between"><span>To Do:</span><span class="font-medium">{{ tasks|selectattr('status.value', 'equalto', 'todo')|list|length }}</span></div>
         <div class="flex justify-between"><span>In Progress:</span><span class="font-medium text-blue-600">{{ tasks|selectattr('status.value', 'equalto', 'in_progress')|list|length }}</span></div>
         <div class="flex justify-between"><span>Blocked:</span><span class="font-medium text-red-600">{{ tasks|selectattr('status.value', 'equalto', 'blocked')|list|length }}</span></div>
