@@ -742,7 +742,7 @@ async def web_dashboard(request: Request, view: str = None, user_id: int = None,
         .join(Task, TaskHistory.task_id == Task.id)
         .join(Project, Task.project_id == Project.id)
         .where(
-            TaskHistory.user_id == current_user_id,
+            TaskHistory.editor_id == current_user_id,
             Task.project_id.in_(project_ids) if project_ids else True
         )
         .order_by(TaskHistory.created_at.desc())
@@ -752,19 +752,19 @@ async def web_dashboard(request: Request, view: str = None, user_id: int = None,
     
     recent_activities = []
     for activity, task_title, project_name in my_activities_raw:
-        activity_type = 'task_created' if activity.action == 'created' else 'task_updated'
-        if activity.action == 'status' and activity.new_value == 'done':
+        activity_type = 'task_created' if activity.field == 'created' else 'task_updated'
+        if activity.field == 'status' and activity.new_value == 'done':
             activity_type = 'task_completed'
         
         # Create a readable description
-        if activity.action == 'created':
+        if activity.field == 'created':
             desc = f"You created task: {task_title}"
-        elif activity.action == 'status':
+        elif activity.field == 'status':
             desc = f"You changed status to {activity.new_value} on: {task_title}"
-        elif activity.action == 'assigned':
+        elif activity.field == 'assigned':
             desc = f"You assigned task: {task_title}"
         else:
-            desc = f"You updated {activity.action.replace('_', ' ')} on: {task_title}"
+            desc = f"You updated {activity.field.replace('_', ' ')} on: {task_title}"
         
         recent_activities.append({
             'type': activity_type,
@@ -876,10 +876,10 @@ async def web_dashboard(request: Request, view: str = None, user_id: int = None,
         progress_result = await db.execute(
             select(TaskHistory, Task.title.label('task_title'), User.full_name.label('user_name'), User.username.label('user_username'))
             .join(Task, TaskHistory.task_id == Task.id)
-            .join(User, TaskHistory.user_id == User.id)
+            .join(User, TaskHistory.editor_id == User.id)
             .where(
                 TaskHistory.task_id.in_(my_task_ids),
-                TaskHistory.user_id != current_user_id,  # Done by others
+                TaskHistory.editor_id != current_user_id,  # Done by others
                 TaskHistory.created_at >= datetime.combine(week_ago, time.min)
             )
             .order_by(TaskHistory.created_at.desc())
@@ -888,19 +888,19 @@ async def web_dashboard(request: Request, view: str = None, user_id: int = None,
         
         for history, task_title, user_name, user_username in progress_result.fetchall():
             user_display = user_name or user_username
-            if history.action == 'status':
+            if history.field == 'status':
                 desc = f"{user_display} changed status to {history.new_value}"
-            elif history.action == 'comment':
+            elif history.field == 'comment':
                 desc = f"{user_display} added a comment"
             else:
-                desc = f"{user_display} updated {history.action.replace('_', ' ')}"
+                desc = f"{user_display} updated {history.field.replace('_', ' ')}"
             
             task_progress_updates.append({
                 'task_id': history.task_id,
                 'task_title': task_title,
                 'description': desc,
                 'user_name': user_display,
-                'action': history.action,
+                'action': history.field,
                 'new_value': history.new_value,
                 'created_at': history.created_at
             })
