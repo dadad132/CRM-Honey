@@ -11699,14 +11699,13 @@ async def activity_page(
     activities = activities[:per_page]
     
     # Load user info for each activity
-    user_ids = list(set(a.user_id for a in activities))
-    if user_ids:
+    users_map = {}
+    if activities:
+        user_ids = list(set(a.user_id for a in activities))
         users_result = (await db.execute(
             select(User).where(User.id.in_(user_ids))
         )).scalars().all()
         users_map = {u.id: u for u in users_result}
-        for a in activities:
-            a.user = users_map.get(a.user_id)
     
     def get_entity_url(entity_type, entity_id):
         urls = {
@@ -11728,6 +11727,7 @@ async def activity_page(
         "request": request,
         "user": user,
         "activities": activities,
+        "users_map": users_map,
         "has_more": has_more,
         "get_entity_url": get_entity_url,
         **await get_template_context(request, user, db)
