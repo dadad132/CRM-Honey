@@ -1,5 +1,5 @@
 from datetime import datetime, timedelta, timezone
-from typing import Any, Optional
+from typing import Any, Optional, Union
 
 from jose import JWTError, jwt
 from passlib.context import CryptContext
@@ -36,7 +36,7 @@ def validate_password(password: str) -> tuple[bool, str]:
     return True, ""
 
 
-def create_token(subject: str | int, expires_delta: timedelta, token_type: str = "access") -> str:
+def create_token(subject: Union[str, int], expires_delta: timedelta, token_type: str = "access") -> str:
     settings = get_settings()
     now = datetime.now(timezone.utc)
     to_encode = {
@@ -48,12 +48,12 @@ def create_token(subject: str | int, expires_delta: timedelta, token_type: str =
     return jwt.encode(to_encode, settings.secret_key, algorithm=settings.algorithm)
 
 
-def create_access_token(subject: str | int) -> str:
+def create_access_token(subject: Union[str, int]) -> str:
     settings = get_settings()
     return create_token(subject, timedelta(minutes=settings.access_token_expire_minutes), "access")
 
 
-def create_refresh_token(subject: str | int) -> str:
+def create_refresh_token(subject: Union[str, int]) -> str:
     settings = get_settings()
     return create_token(subject, timedelta(minutes=settings.refresh_token_expire_minutes), "refresh")
 

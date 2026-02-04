@@ -4,19 +4,52 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
     <title>{% block title %}{{ workspace.site_title if workspace and workspace.site_title else (workspace.name if workspace else 'CRM System') }}{% endblock %}</title>
+    
     {# PWA Meta Tags #}
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="CEM">
+    <meta name="application-name" content="CEM">
     <meta name="theme-color" content="{{ workspace.primary_color if workspace and workspace.primary_color else '#dc2626' }}">
     <meta name="mobile-web-app-capable" content="yes">
-    <link rel="manifest" href="/static/manifest.json">
+    
+    {# iOS Splash Screens #}
+    <link rel="apple-touch-startup-image" href="/static/icons/icon-512x512.png">
+    
+    {# App Icons - Multiple sizes for iOS #}
     <link rel="apple-touch-icon" href="/static/icons/icon-192x192.png">
+    <link rel="apple-touch-icon" sizes="152x152" href="/static/icons/icon-152x152.png">
+    <link rel="apple-touch-icon" sizes="180x180" href="/static/icons/icon-192x192.png">
+    <link rel="apple-touch-icon" sizes="167x167" href="/static/icons/icon-192x192.png">
+    
+    {# PWA Manifest #}
+    <link rel="manifest" href="/static/manifest.json">
+    <link rel="icon" type="image/png" sizes="192x192" href="/static/icons/icon-192x192.png">
+    
     {# Set current path for active nav highlighting #}
     {% set current_path = request.url.path %}
     <script src="https://cdn.tailwindcss.com"></script>
     <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
     <script src="https://unpkg.com/htmx.org@1.9.12"></script>
     <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.2/Sortable.min.js"></script>
+    <script src="/static/install.js"></script>
+    <script src="/static/push-notifications.js"></script>
+    
+    {# PWA Service Worker Registration #}
+    <script>
+      if ('serviceWorker' in navigator) {
+        window.addEventListener('load', function() {
+          navigator.serviceWorker.register('/static/sw.js')
+            .then(function(registration) {
+              console.log('ServiceWorker registered:', registration.scope);
+            })
+            .catch(function(error) {
+              console.log('ServiceWorker registration failed:', error);
+            });
+        });
+      }
+    </script>
+    
     <style>
       .scrollbar-thin::-webkit-scrollbar { height: 8px; width: 8px; }
       .scrollbar-thin::-webkit-scrollbar-thumb { background-color: #cbd5e1; border-radius: 8px; }

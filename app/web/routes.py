@@ -357,6 +357,7 @@ async def web_profile_post(
     email: str = Form(...),
     preferred_meeting_platform: Optional[str] = Form(None),
     calendar_color: Optional[str] = Form(None),
+    mute_ticket_notifications: Optional[str] = Form(None),
     db: AsyncSession = Depends(get_session),
 ):
     user_id = request.session.get('user_id')
@@ -388,6 +389,10 @@ async def web_profile_post(
         user.preferred_meeting_platform = None
     if calendar_color:
         user.calendar_color = calendar_color
+    
+    # Update mute_ticket_notifications (only for admins)
+    if user.is_admin:
+        user.mute_ticket_notifications = mute_ticket_notifications == 'true'
     
     await db.commit()
     return templates.TemplateResponse('auth/profile.html', {
@@ -728,28 +733,177 @@ async def web_dashboard(request: Request, view: str = None, user_id: int = None,
     )
     total_team_members = len(team_result.scalars().all())
     
-    # Recent activities (simplified)
+    # ========== ENHANCED RECENT ACTIVITY ==========
     from app.models.task_history import TaskHistory
-    recent_result = await db.execute(
-        select(TaskHistory)
+    
+    # 1. User's recent activities (what the user did)
+    my_activities_result = await db.execute(
+        select(TaskHistory, Task.title.label('task_title'), Project.name.label('project_name'))
         .join(Task, TaskHistory.task_id == Task.id)
-        .where(Task.project_id.in_(project_ids) if project_ids else True)
+        .join(Project, Task.project_id == Project.id)
+        .where(
+            TaskHistory.user_id == current_user_id,
+            Task.project_id.in_(project_ids) if project_ids else True
+        )
         .order_by(TaskHistory.created_at.desc())
         .limit(10)
     )
-    recent_activities_raw = recent_result.scalars().all()
+    my_activities_raw = my_activities_result.fetchall()
     
-    # Format activities
     recent_activities = []
-    for activity in recent_activities_raw:
-        activity_type = 'task_created' if activity.field == 'created' else 'task_updated'
-        if activity.field == 'status' and activity.new_value == 'done':
+    for activity, task_title, project_name in my_activities_raw:
+        activity_type = 'task_created' if activity.action == 'created' else 'task_updated'
+        if activity.action == 'status' and activity.new_value == 'done':
             activity_type = 'task_completed'
+        
+        # Create a readable description
+        if activity.action == 'created':
+            desc = f"You created task: {task_title}"
+        elif activity.action == 'status':
+            desc = f"You changed status to {activity.new_value} on: {task_title}"
+        elif activity.action == 'assigned':
+            desc = f"You assigned task: {task_title}"
+        else:
+            desc = f"You updated {activity.action.replace('_', ' ')} on: {task_title}"
+        
         recent_activities.append({
             'type': activity_type,
-            'description': f"Task: {activity.field.replace('_', ' ').title()} changed",
+            'description': desc,
+            'task_id': activity.task_id,
+            'task_title': task_title,
+            'project_name': project_name,
             'created_at': activity.created_at
         })
+    
+    # 2. Tasks allocated TO the user (by others)
+    tasks_allocated_to_me_result = await db.execute(
+        select(Task, Project.name.label('project_name'), User.full_name.label('creator_name'), User.username.label('creator_username'))
+        .join(Project, Task.project_id == Project.id)
+        .join(Assignment, Task.id == Assignment.task_id)
+        .join(User, Task.creator_id == User.id)
+        .where(
+            Assignment.assignee_id == current_user_id,
+            Task.creator_id != current_user_id,  # Not created by me
+            Task.status != TaskStatus.done,
+            Project.workspace_id == user.workspace_id
+        )
+        .order_by(Task.created_at.desc())
+        .limit(5)
+    )
+    tasks_allocated_to_me = []
+    for task, project_name, creator_name, creator_username in tasks_allocated_to_me_result.fetchall():
+        tasks_allocated_to_me.append({
+            'id': task.id,
+            'title': task.title,
+            'project_name': project_name,
+            'creator': creator_name or creator_username,
+            'due_date': task.due_date,
+            'priority': task.priority.value if hasattr(task.priority, 'value') else task.priority,
+            'status': task.status.value if hasattr(task.status, 'value') else task.status,
+            'created_at': task.created_at
+        })
+    
+    # 3. Tasks the user allocated to OTHERS
+    tasks_allocated_by_me_result = await db.execute(
+        select(Task, Project.name.label('project_name'), User.full_name.label('assignee_name'), User.username.label('assignee_username'))
+        .join(Project, Task.project_id == Project.id)
+        .join(Assignment, Task.id == Assignment.task_id)
+        .join(User, Assignment.assignee_id == User.id)
+        .where(
+            Task.creator_id == current_user_id,
+            Assignment.assignee_id != current_user_id,  # Assigned to someone else
+            Task.status != TaskStatus.done,
+            Project.workspace_id == user.workspace_id
+        )
+        .order_by(Task.created_at.desc())
+        .limit(5)
+    )
+    tasks_allocated_by_me = []
+    for task, project_name, assignee_name, assignee_username in tasks_allocated_by_me_result.fetchall():
+        tasks_allocated_by_me.append({
+            'id': task.id,
+            'title': task.title,
+            'project_name': project_name,
+            'assignee': assignee_name or assignee_username,
+            'due_date': task.due_date,
+            'priority': task.priority.value if hasattr(task.priority, 'value') else task.priority,
+            'status': task.status.value if hasattr(task.status, 'value') else task.status,
+            'created_at': task.created_at
+        })
+    
+    # 4. Overdue tasks assigned to this user
+    overdue_tasks_result = await db.execute(
+        select(Task, Project.name.label('project_name'))
+        .join(Project, Task.project_id == Project.id)
+        .join(Assignment, Task.id == Assignment.task_id)
+        .where(
+            Assignment.assignee_id == current_user_id,
+            Task.status != TaskStatus.done,
+            Task.due_date < today,
+            Project.workspace_id == user.workspace_id
+        )
+        .order_by(Task.due_date.asc())
+    )
+    overdue_tasks = []
+    for task, project_name in overdue_tasks_result.fetchall():
+        days_overdue = (today - task.due_date).days
+        overdue_tasks.append({
+            'id': task.id,
+            'title': task.title,
+            'project_name': project_name,
+            'due_date': task.due_date,
+            'days_overdue': days_overdue,
+            'priority': task.priority.value if hasattr(task.priority, 'value') else task.priority,
+            'status': task.status.value if hasattr(task.status, 'value') else task.status
+        })
+    
+    # 5. Task progress updates (what others did on tasks related to user)
+    # Get tasks assigned to user or created by user
+    my_related_tasks = await db.execute(
+        select(Task.id)
+        .join(Assignment, Task.id == Assignment.task_id, isouter=True)
+        .where(
+            or_(
+                Assignment.assignee_id == current_user_id,
+                Task.creator_id == current_user_id
+            )
+        )
+    )
+    my_task_ids = [r[0] for r in my_related_tasks.fetchall()]
+    
+    task_progress_updates = []
+    if my_task_ids:
+        progress_result = await db.execute(
+            select(TaskHistory, Task.title.label('task_title'), User.full_name.label('user_name'), User.username.label('user_username'))
+            .join(Task, TaskHistory.task_id == Task.id)
+            .join(User, TaskHistory.user_id == User.id)
+            .where(
+                TaskHistory.task_id.in_(my_task_ids),
+                TaskHistory.user_id != current_user_id,  # Done by others
+                TaskHistory.created_at >= datetime.combine(week_ago, time.min)
+            )
+            .order_by(TaskHistory.created_at.desc())
+            .limit(10)
+        )
+        
+        for history, task_title, user_name, user_username in progress_result.fetchall():
+            user_display = user_name or user_username
+            if history.action == 'status':
+                desc = f"{user_display} changed status to {history.new_value}"
+            elif history.action == 'comment':
+                desc = f"{user_display} added a comment"
+            else:
+                desc = f"{user_display} updated {history.action.replace('_', ' ')}"
+            
+            task_progress_updates.append({
+                'task_id': history.task_id,
+                'task_title': task_title,
+                'description': desc,
+                'user_name': user_display,
+                'action': history.action,
+                'new_value': history.new_value,
+                'created_at': history.created_at
+            })
     
     # Admin stats - team performance
     team_tasks_completed = 0
@@ -908,6 +1062,10 @@ async def web_dashboard(request: Request, view: str = None, user_id: int = None,
         'tasks_due_soon': tasks_due_soon,
         'upcoming_meetings': upcoming_meetings,
         'recent_activities': recent_activities,
+        'tasks_allocated_to_me': tasks_allocated_to_me,
+        'tasks_allocated_by_me': tasks_allocated_by_me,
+        'overdue_tasks': overdue_tasks,
+        'task_progress_updates': task_progress_updates,
         'projects': projects,
         'today': today,
         'workspace': workspace,
@@ -5996,7 +6154,7 @@ async def web_tasks_list(
     
     # Build query with filters
     # Admin: see all tasks in workspace
-    # Regular user: only tasks from projects they're assigned to
+    # Regular user: only tasks from projects they're assigned to OR tasks they created
     if user.is_admin:
         query = (
             select(Task, Project.name.label('project_name'))
@@ -6005,13 +6163,21 @@ async def web_tasks_list(
         )
     else:
         from app.models.project_member import ProjectMember
+        # Get tasks where user is either assigned OR is the creator
         query = (
             select(Task, Project.name.label('project_name'))
             .join(Project, Task.project_id == Project.id)
             .join(ProjectMember, Project.id == ProjectMember.project_id)
             .where(
                 ProjectMember.user_id == user_id,
-                Project.workspace_id == user.workspace_id
+                Project.workspace_id == user.workspace_id,
+                or_(
+                    Task.creator_id == user_id,  # Tasks created by the user
+                    Task.id.in_(  # Tasks assigned to the user
+                        select(Assignment.task_id)
+                        .where(Assignment.assignee_id == user_id)
+                    )
+                )
             )
         )
     
@@ -8638,26 +8804,33 @@ async def web_tickets_create(
     
     # Create notification if assigned
     if assigned_to_user_id and assigned_to_user_id != user_id:
-        calendar_info = ""
-        if scheduled_datetime:
-            calendar_info = f" scheduled for {scheduled_datetime.strftime('%Y-%m-%d %H:%M')}"
-        
-        notification = Notification(
-            user_id=assigned_to_user_id,
-            type='ticket',
-            message=f'{user.full_name or user.username} assigned you ticket #{ticket_number}: {subject}{calendar_info}',
-            url=f'/web/tickets/{ticket.id}',
-            related_id=ticket.id
-        )
-        db.add(notification)
+        # Check if assignee has muted ticket notifications
+        assignee_user = (await db.execute(select(User).where(User.id == assigned_to_user_id))).scalar_one_or_none()
+        if assignee_user and not getattr(assignee_user, 'mute_ticket_notifications', False):
+            calendar_info = ""
+            if scheduled_datetime:
+                calendar_info = f" scheduled for {scheduled_datetime.strftime('%Y-%m-%d %H:%M')}"
+            
+            notification = Notification(
+                user_id=assigned_to_user_id,
+                type='ticket',
+                message=f'{user.full_name or user.username} assigned you ticket #{ticket_number}: {subject}{calendar_info}',
+                url=f'/web/tickets/{ticket.id}',
+                related_id=ticket.id
+            )
+            db.add(notification)
     
-    # Notify admins about the ticket creation
+    # Notify admins about the ticket creation (only those who haven't muted ticket notifications)
     admin_users = (await db.execute(
         select(User).where(User.workspace_id == user.workspace_id).where(User.is_admin == True)
     )).scalars().all()
     
     for admin in admin_users:
         if admin.id != user_id:  # Don't notify the creator if they're admin
+            # Check if this admin has muted ticket notifications
+            if getattr(admin, 'mute_ticket_notifications', False):
+                continue  # Skip this admin
+            
             calendar_info = ""
             if scheduled_datetime and assigned_to_user_id:
                 assigned_user = (await db.execute(select(User).where(User.id == assigned_to_user_id))).scalar_one_or_none()
@@ -8826,13 +8999,17 @@ async def web_tickets_guest_submit(
         )
         db.add(history)
         
-        # Notify all admins about new ticket
+        # Notify all admins about new ticket (only those who haven't muted ticket notifications)
         from app.models.notification import Notification
         admin_users = (await db.execute(
             select(User).where(User.workspace_id == workspace_id).where(User.is_admin == True)
         )).scalars().all()
         
         for admin in admin_users:
+            # Check if this admin has muted ticket notifications
+            if getattr(admin, 'mute_ticket_notifications', False):
+                continue  # Skip this admin
+            
             notification = Notification(
                 user_id=admin.id,
                 type='ticket',
@@ -9613,16 +9790,18 @@ async def web_tickets_update_status(
     )
     db.add(history)
     
-    # Notify assigned user
+    # Notify assigned user (only if they haven't muted ticket notifications)
     if ticket.assigned_to_id and ticket.assigned_to_id != user_id:
-        notification = Notification(
-            user_id=ticket.assigned_to_id,
-            type='ticket',
-            message=f'{user.full_name or user.username} changed ticket #{ticket.ticket_number} status to {status}',
-            url=f'/web/tickets/{ticket_id}',
-            related_id=ticket_id
-        )
-        db.add(notification)
+        assigned_user = (await db.execute(select(User).where(User.id == ticket.assigned_to_id))).scalar_one_or_none()
+        if assigned_user and not getattr(assigned_user, 'mute_ticket_notifications', False):
+            notification = Notification(
+                user_id=ticket.assigned_to_id,
+                type='ticket',
+                message=f'{user.full_name or user.username} changed ticket #{ticket.ticket_number} status to {status}',
+                url=f'/web/tickets/{ticket_id}',
+                related_id=ticket_id
+            )
+            db.add(notification)
     
     await db.commit()
     
@@ -9754,16 +9933,18 @@ async def web_tickets_assign(
     )
     db.add(history)
     
-    # Notify assigned user
+    # Notify assigned user (only if they haven't muted ticket notifications)
     if assigned_to_id and assigned_to_id != user_id:
-        notification = Notification(
-            user_id=assigned_to_id,
-            type='ticket',
-            message=f'{user.full_name or user.username} assigned you ticket #{ticket.ticket_number}: {ticket.subject}',
-            url=f'/web/tickets/{ticket_id}',
-            related_id=ticket_id
-        )
-        db.add(notification)
+        assigned_user = (await db.execute(select(User).where(User.id == assigned_to_id))).scalar_one_or_none()
+        if assigned_user and not getattr(assigned_user, 'mute_ticket_notifications', False):
+            notification = Notification(
+                user_id=assigned_to_id,
+                type='ticket',
+                message=f'{user.full_name or user.username} assigned you ticket #{ticket.ticket_number}: {ticket.subject}',
+                url=f'/web/tickets/{ticket_id}',
+                related_id=ticket_id
+            )
+            db.add(notification)
     
     await db.commit()
     return RedirectResponse(f'/web/tickets/{ticket_id}', status_code=303)
@@ -9869,6 +10050,79 @@ async def web_ticket_attachment_preview(
     return FileResponse(
         path=str(file_path),
         media_type=attachment.mime_type
+    )
+
+
+@router.post('/tickets/attachments/{attachment_id}/delete')
+async def web_ticket_attachment_delete(
+    request: Request,
+    attachment_id: int,
+    db: AsyncSession = Depends(get_session)
+):
+    """Delete a ticket attachment"""
+    user_id = request.session.get('user_id')
+    if not user_id:
+        return JSONResponse(
+            status_code=401,
+            content={"detail": "Not authenticated"}
+        )
+    
+    user = (await db.execute(select(User).where(User.id == user_id))).scalar_one_or_none()
+    if not user:
+        return JSONResponse(
+            status_code=401,
+            content={"detail": "User not found"}
+        )
+    
+    from app.models.ticket import TicketAttachment, Ticket
+    
+    # Get attachment
+    attachment = (await db.execute(
+        select(TicketAttachment).where(TicketAttachment.id == attachment_id)
+    )).scalar_one_or_none()
+    
+    if not attachment:
+        return JSONResponse(
+            status_code=404,
+            content={"detail": "Attachment not found"}
+        )
+    
+    # Verify user has access to this ticket's workspace
+    ticket = (await db.execute(
+        select(Ticket).where(
+            Ticket.id == attachment.ticket_id,
+            Ticket.workspace_id == user.workspace_id
+        )
+    )).scalar_one_or_none()
+    
+    if not ticket:
+        return JSONResponse(
+            status_code=403,
+            content={"detail": "Access denied"}
+        )
+    
+    # Check permissions: admin or the uploader
+    if not user.is_admin and attachment.uploaded_by_id != user.id:
+        return JSONResponse(
+            status_code=403,
+            content={"detail": "You don't have permission to delete this attachment"}
+        )
+    
+    # Delete file from disk
+    file_path = BASE_DIR.parent / attachment.file_path if attachment.file_path.startswith('app/') else BASE_DIR / attachment.file_path
+    try:
+        if file_path.exists():
+            file_path.unlink()
+    except Exception as e:
+        logger.error(f"Failed to delete attachment file {file_path}: {e}")
+    
+    # Delete from database
+    await db.delete(attachment)
+    await db.commit()
+    
+    return JSONResponse(
+        status_code=200,
+        content={"success": True, "message": "Attachment deleted successfully"}
     )
 
 

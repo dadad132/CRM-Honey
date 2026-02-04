@@ -167,13 +167,25 @@
                                 </p>
                             </div>
                             
-                            <!-- Preview for images -->
-                            {% if attachment.mime_type and attachment.mime_type.startswith('image/') %}
-                            <a href="/web/tickets/attachments/{{ attachment.id }}/preview" target="_blank"
-                               class="text-gray-400 hover:text-gray-600" title="Preview">
-                                <i class="fas fa-eye"></i>
-                            </a>
-                            {% endif %}
+                            <div class="flex items-center gap-2">
+                                <!-- Preview for images -->
+                                {% if attachment.mime_type and attachment.mime_type.startswith('image/') %}
+                                <a href="/web/tickets/attachments/{{ attachment.id }}/preview" target="_blank"
+                                   class="text-gray-400 hover:text-gray-600" title="Preview">
+                                    <i class="fas fa-eye"></i>
+                                </a>
+                                {% endif %}
+                                
+                                <!-- Delete attachment button -->
+                                {% if user.is_admin or (attachment.uploaded_by_id and attachment.uploaded_by_id == user.id) %}
+                                <button type="button" 
+                                        onclick="deleteAttachment({{ attachment.id }}, '{{ attachment.filename }}')"
+                                        class="text-red-400 hover:text-red-600" 
+                                        title="Delete attachment">
+                                    <i class="fas fa-trash"></i>
+                                </button>
+                                {% endif %}
+                            </div>
                         </div>
                     </div>
                     {% endfor %}
@@ -442,4 +454,32 @@
         </div>
     </div>
 </div>
+
+<script>
+function deleteAttachment(attachmentId, filename) {
+    if (!confirm(`Are you sure you want to delete "${filename}"? This action cannot be undone.`)) {
+        return;
+    }
+    
+    fetch(`/web/tickets/attachments/${attachmentId}/delete`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        }
+    })
+    .then(response => {
+        if (response.ok) {
+            location.reload();
+        } else {
+            return response.json().then(data => {
+                alert(data.detail || 'Failed to delete attachment');
+            });
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('Failed to delete attachment');
+    });
+}
+</script>
 {% endblock %}

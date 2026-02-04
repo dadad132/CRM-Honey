@@ -160,7 +160,7 @@
     {% else %}
     <!-- PERSONAL VIEW STATS -->
     <!-- My Tasks -->
-    <div class="bg-white rounded-xl border border-slate-200 p-5 hover:shadow-lg transition">
+    <a href="/web/tasks/list" class="bg-white rounded-xl border border-slate-200 p-5 hover:shadow-lg transition block">
       <div class="flex items-center justify-between">
         <div>
           <p class="text-sm text-slate-500 font-medium">My Tasks</p>
@@ -176,10 +176,10 @@
         <span class="text-green-600 font-medium">{{ stats.my_tasks_done }}</span>
         <span class="text-slate-400">completed this week</span>
       </div>
-    </div>
+    </a>
 
     <!-- Open Tickets -->
-    <div class="bg-white rounded-xl border border-slate-200 p-5 hover:shadow-lg transition">
+    <a href="/web/tickets" class="bg-white rounded-xl border border-slate-200 p-5 hover:shadow-lg transition block">
       <div class="flex items-center justify-between">
         <div>
           <p class="text-sm text-slate-500 font-medium">Open Tickets</p>
@@ -198,10 +198,10 @@
         <span class="text-green-600 font-medium">No urgent tickets</span>
         {% endif %}
       </div>
-    </div>
+    </a>
 
     <!-- Projects -->
-    <div class="bg-white rounded-xl border border-slate-200 p-5 hover:shadow-lg transition">
+    <a href="/web/projects" class="bg-white rounded-xl border border-slate-200 p-5 hover:shadow-lg transition block">
       <div class="flex items-center justify-between">
         <div>
           <p class="text-sm text-slate-500 font-medium">Active Projects</p>
@@ -216,10 +216,10 @@
       <div class="mt-3 flex items-center gap-2 text-sm">
         <span class="text-slate-500">{{ stats.total_team_members }} team members</span>
       </div>
-    </div>
+    </a>
 
     <!-- Meetings Today -->
-    <div class="bg-white rounded-xl border border-slate-200 p-5 hover:shadow-lg transition">
+    <a href="/web/calendar" class="bg-white rounded-xl border border-slate-200 p-5 hover:shadow-lg transition block">
       <div class="flex items-center justify-between">
         <div>
           <p class="text-sm text-slate-500 font-medium">Meetings Today</p>
@@ -232,9 +232,9 @@
         </div>
       </div>
       <div class="mt-3 flex items-center gap-2 text-sm">
-        <a href="/web/calendar" class="text-blue-600 hover:text-blue-700 font-medium">View calendar →</a>
+        <span class="text-slate-400">View calendar →</span>
       </div>
-    </div>
+    </a>
     {% endif %}
   </div>
 
@@ -455,16 +455,174 @@
   </div>
   {% endif %}
 
-  <!-- Recent Activity -->
+  <!-- ========== ENHANCED ACTIVITY SECTIONS ========== -->
+  
+  <!-- Overdue Tasks Warning -->
+  {% if overdue_tasks %}
+  <div class="bg-red-50 rounded-xl border border-red-200 overflow-hidden">
+    <div class="px-5 py-4 border-b border-red-200 flex items-center justify-between">
+      <h2 class="font-semibold text-red-800 flex items-center gap-2">
+        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+        </svg>
+        Overdue Tasks ({{ overdue_tasks|length }})
+      </h2>
+      <a href="/web/tasks/list" class="text-sm text-red-600 hover:text-red-700 font-medium">View all →</a>
+    </div>
+    <div class="divide-y divide-red-100">
+      {% for task in overdue_tasks[:5] %}
+      <a href="/web/tasks/{{ task.id }}" class="block px-5 py-3 hover:bg-red-100/50 transition">
+        <div class="flex items-center justify-between">
+          <div class="flex items-center gap-3">
+            <div class="w-2 h-2 rounded-full {% if task.priority == 'critical' %}bg-red-700{% elif task.priority == 'high' %}bg-red-600{% else %}bg-red-400{% endif %}"></div>
+            <div>
+              <p class="font-medium text-red-900">{{ task.title }}</p>
+              <p class="text-sm text-red-700">{{ task.project_name }}</p>
+            </div>
+          </div>
+          <span class="text-sm font-medium text-red-600">{{ task.days_overdue }} day{% if task.days_overdue > 1 %}s{% endif %} overdue</span>
+        </div>
+      </a>
+      {% endfor %}
+    </div>
+  </div>
+  {% endif %}
+
+  <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+    <!-- Tasks Allocated TO Me (by others) -->
+    <div class="bg-white rounded-xl border border-slate-200 overflow-hidden">
+      <div class="px-5 py-4 border-b border-slate-200 flex items-center justify-between">
+        <h2 class="font-semibold text-slate-900 flex items-center gap-2">
+          <svg class="w-5 h-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/>
+          </svg>
+          Tasks Assigned to Me
+        </h2>
+        <a href="/web/tasks/list" class="text-sm text-blue-600 hover:text-blue-700 font-medium">View all →</a>
+      </div>
+      <div class="divide-y divide-slate-100">
+        {% if tasks_allocated_to_me %}
+          {% for task in tasks_allocated_to_me %}
+          <a href="/web/tasks/{{ task.id }}" class="block px-5 py-3 hover:bg-slate-50 transition">
+            <div class="flex items-center justify-between">
+              <div class="flex-1 min-w-0 mr-3">
+                <p class="font-medium text-slate-900 truncate">{{ task.title }}</p>
+                <p class="text-sm text-slate-500">{{ task.project_name }} • From: {{ task.creator }}</p>
+              </div>
+              <div class="flex items-center gap-2">
+                <span class="px-2 py-0.5 text-xs font-medium rounded-full {% if task.priority == 'critical' %}bg-red-100 text-red-700{% elif task.priority == 'high' %}bg-orange-100 text-orange-700{% elif task.priority == 'medium' %}bg-yellow-100 text-yellow-700{% else %}bg-blue-100 text-blue-700{% endif %}">
+                  {{ task.priority }}
+                </span>
+                {% if task.due_date %}
+                <span class="text-xs text-slate-500">{{ task.due_date.strftime('%d %b') }}</span>
+                {% endif %}
+              </div>
+            </div>
+          </a>
+          {% endfor %}
+        {% else %}
+          <div class="px-5 py-6 text-center">
+            <p class="text-slate-500 text-sm">No tasks assigned to you by others</p>
+          </div>
+        {% endif %}
+      </div>
+    </div>
+
+    <!-- Tasks I Allocated to Others -->
+    <div class="bg-white rounded-xl border border-slate-200 overflow-hidden">
+      <div class="px-5 py-4 border-b border-slate-200 flex items-center justify-between">
+        <h2 class="font-semibold text-slate-900 flex items-center gap-2">
+          <svg class="w-5 h-5 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"/>
+          </svg>
+          Tasks I Assigned to Others
+        </h2>
+        <a href="/web/tasks/list" class="text-sm text-blue-600 hover:text-blue-700 font-medium">View all →</a>
+      </div>
+      <div class="divide-y divide-slate-100">
+        {% if tasks_allocated_by_me %}
+          {% for task in tasks_allocated_by_me %}
+          <a href="/web/tasks/{{ task.id }}" class="block px-5 py-3 hover:bg-slate-50 transition">
+            <div class="flex items-center justify-between">
+              <div class="flex-1 min-w-0 mr-3">
+                <p class="font-medium text-slate-900 truncate">{{ task.title }}</p>
+                <p class="text-sm text-slate-500">{{ task.project_name }} • Assigned to: {{ task.assignee }}</p>
+              </div>
+              <div class="flex items-center gap-2">
+                <span class="px-2 py-0.5 text-xs font-medium rounded-full {% if task.status == 'in_progress' %}bg-blue-100 text-blue-700{% elif task.status == 'blocked' %}bg-red-100 text-red-700{% else %}bg-slate-100 text-slate-700{% endif %}">
+                  {{ task.status|replace('_', ' ')|title }}
+                </span>
+              </div>
+            </div>
+          </a>
+          {% endfor %}
+        {% else %}
+          <div class="px-5 py-6 text-center">
+            <p class="text-slate-500 text-sm">No tasks assigned to others</p>
+          </div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+  <!-- Task Progress Updates (from others) -->
+  {% if task_progress_updates %}
   <div class="bg-white rounded-xl border border-slate-200 overflow-hidden">
     <div class="px-5 py-4 border-b border-slate-200 flex items-center justify-between">
-      <h2 class="font-semibold text-slate-900">Recent Activity</h2>
+      <h2 class="font-semibold text-slate-900 flex items-center gap-2">
+        <svg class="w-5 h-5 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/>
+        </svg>
+        Task Progress Updates
+      </h2>
+    </div>
+    <div class="divide-y divide-slate-100">
+      {% for update in task_progress_updates[:8] %}
+      <a href="/web/tasks/{{ update.task_id }}" class="block px-5 py-3 hover:bg-slate-50 transition">
+        <div class="flex items-start gap-3">
+          <div class="w-8 h-8 rounded-full bg-green-100 flex items-center justify-center flex-shrink-0">
+            {% if update.action == 'status' %}
+              <svg class="w-4 h-4 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+              </svg>
+            {% elif update.action == 'comment' %}
+              <svg class="w-4 h-4 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"/>
+              </svg>
+            {% else %}
+              <svg class="w-4 h-4 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/>
+              </svg>
+            {% endif %}
+          </div>
+          <div class="flex-1 min-w-0">
+            <p class="text-sm text-slate-900">{{ update.description }}</p>
+            <p class="text-sm text-slate-600 font-medium truncate">Task: {{ update.task_title }}</p>
+            <p class="text-xs text-slate-500 mt-0.5">{{ update.created_at.strftime('%d %b at %H:%M') }}</p>
+          </div>
+        </div>
+      </a>
+      {% endfor %}
+    </div>
+  </div>
+  {% endif %}
+
+  <!-- Recent Activity (My Actions) -->
+  <div class="bg-white rounded-xl border border-slate-200 overflow-hidden">
+    <div class="px-5 py-4 border-b border-slate-200 flex items-center justify-between">
+      <h2 class="font-semibold text-slate-900 flex items-center gap-2">
+        <svg class="w-5 h-5 text-slate-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
+        </svg>
+        My Recent Activity
+      </h2>
       <a href="/web/activity" class="text-sm text-blue-600 hover:text-blue-700 font-medium">View all →</a>
     </div>
     <div class="divide-y divide-slate-100">
       {% if recent_activities %}
         {% for activity in recent_activities[:5] %}
-        <div class="px-5 py-3 flex items-start gap-3">
+        <a href="/web/tasks/{{ activity.task_id }}" class="block px-5 py-3 hover:bg-slate-50 transition">
+          <div class="flex items-start gap-3">
           <div class="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center flex-shrink-0">
             {% if activity.type == 'task_created' %}
               <svg class="w-4 h-4 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -486,9 +644,14 @@
           </div>
           <div class="flex-1 min-w-0">
             <p class="text-sm text-slate-900">{{ activity.description }}</p>
+            {% if activity.project_name %}
+            <p class="text-xs text-slate-500 mt-0.5">{{ activity.project_name }} • {{ activity.created_at.strftime('%d %b at %H:%M') }}</p>
+            {% else %}
             <p class="text-xs text-slate-500 mt-0.5">{{ activity.created_at.strftime('%d %b at %H:%M') }}</p>
+            {% endif %}
           </div>
         </div>
+        </a>
         {% endfor %}
       {% else %}
         <div class="px-5 py-8 text-center">

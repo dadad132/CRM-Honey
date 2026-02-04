@@ -42,6 +42,7 @@ class UserBase(SQLModel):
     profile_picture: Optional[str] = None  # Path to profile picture file
     calendar_color: Optional[str] = Field(default_factory=get_random_user_color)  # Random color for calendar display
     can_see_all_tickets: bool = Field(default=False)  # If True, user sees all tickets regardless of project membership
+    mute_ticket_notifications: bool = Field(default=False)  # If True, user won't receive ticket notifications
 
 
 class User(UserBase, table=True):

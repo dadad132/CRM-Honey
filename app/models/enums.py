@@ -1,21 +1,21 @@
-from enum import StrEnum
+from enum import Enum
 
 
-class TaskStatus(StrEnum):
+class TaskStatus(str, Enum):
     todo = "todo"
     in_progress = "in_progress"
     done = "done"
     blocked = "blocked"
 
 
-class TaskPriority(StrEnum):
+class TaskPriority(str, Enum):
     low = "low"
     medium = "medium"
     high = "high"
     critical = "critical"
 
 
-class MeetingPlatform(StrEnum):
+class MeetingPlatform(str, Enum):
     zoom = "zoom"
     teams = "teams"
     discord = "discord"

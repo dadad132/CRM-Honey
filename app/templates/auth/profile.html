@@ -145,6 +145,30 @@
         </div>
       </div>
 
+      {% if user.is_admin %}
+      <div>
+        <label class="block text-sm font-semibold text-slate-700 mb-2">
+          Notification Settings
+        </label>
+        <div class="flex items-start gap-3 p-4 bg-slate-50 rounded-lg border border-slate-200">
+          <input 
+            type="checkbox" 
+            id="mute_ticket_notifications" 
+            name="mute_ticket_notifications"
+            value="true"
+            {% if user.mute_ticket_notifications %}checked{% endif %}
+            class="mt-1 w-4 h-4 text-indigo-600 border-slate-300 rounded focus:ring-2 focus:ring-indigo-500"
+          />
+          <div class="flex-1">
+            <label for="mute_ticket_notifications" class="text-sm font-medium text-slate-700 cursor-pointer">
+              Mute ticket notifications
+            </label>
+            <p class="text-xs text-slate-500 mt-1">You will not receive email notifications for new tickets or ticket updates</p>
+          </div>
+        </div>
+      </div>
+      {% endif %}
+
       <div class="pt-4 border-t border-slate-200 flex items-center gap-3">
         <button 
           type="submit" 
@@ -181,6 +205,29 @@
           </div>
         </div>
           </div>
+        </div>
+      </div>
+
+      <!-- Push Notifications Section -->
+      <div class="border-t border-slate-200 pt-6">
+        <h3 class="text-sm font-semibold text-slate-700 mb-3">Push Notifications</h3>
+        <div class="p-4 bg-slate-50 border border-slate-200 rounded-lg">
+          <div class="flex items-start justify-between mb-3">
+            <div class="flex items-start gap-3">
+              <svg class="w-8 h-8 text-indigo-600 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"/>
+              </svg>
+              <div>
+                <p class="text-sm font-medium text-slate-700">Browser Notifications</p>
+                <p class="text-xs text-slate-500 mt-1">Get notified about important updates even when CEM is not open</p>
+                <p id="notificationStatus" class="text-sm text-slate-500 font-medium mt-2"></p>
+              </div>
+            </div>
+          </div>
+          <button id="enableNotificationsBtn" 
+                  class="px-4 py-2 bg-indigo-600 text-white font-medium rounded-lg hover:bg-indigo-700 transition-all">
+            Enable Notifications
+          </button>
         </div>
       </div>
 
