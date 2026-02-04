@@ -11481,4 +11481,257 @@ async def web_goals_delete(
     return JSONResponse(status_code=200, content={'success': True})
 
 
+# ============ TASK TEMPLATES ============
+
+@router.get('/templates', response_class=HTMLResponse)
+async def templates_page(
+    request: Request,
+    db: AsyncSession = Depends(get_session),
+    user: User = Depends(get_current_user)
+):
+    """Task templates management page"""
+    from app.models.task_extensions import TaskTemplate
+    if not user or not user.workspace_id:
+        return RedirectResponse(url='/web/login', status_code=303)
+    
+    # Get templates for this workspace
+    templates_list = (await db.execute(
+        select(TaskTemplate).where(
+            TaskTemplate.workspace_id == user.workspace_id,
+            or_(TaskTemplate.is_shared == True, TaskTemplate.created_by_id == user.id)
+        ).order_by(TaskTemplate.use_count.desc())
+    )).scalars().all()
+    
+    # Get projects for the "use template" modal
+    projects = (await db.execute(
+        select(Project).where(Project.workspace_id == user.workspace_id, Project.is_archived == False)
+        .order_by(Project.name)
+    )).scalars().all()
+    
+    # Get workspace members
+    members = (await db.execute(
+        select(User).where(User.workspace_id == user.workspace_id, User.is_active == True)
+        .order_by(User.full_name)
+    )).scalars().all()
+    
+    return templates.TemplateResponse("templates/index.html", {
+        "request": request,
+        "user": user,
+        "templates": templates_list,
+        "projects": projects,
+        "members": members,
+        **await get_template_context(request, user, db)
+    })
+
+
+@router.post('/templates/create')
+async def create_template(
+    request: Request,
+    db: AsyncSession = Depends(get_session),
+    user: User = Depends(get_current_user)
+):
+    """Create a new task template"""
+    from app.models.task_extensions import TaskTemplate
+    if not user or not user.workspace_id:
+        return RedirectResponse(url='/web/login', status_code=303)
+    
+    form = await request.form()
+    
+    template = TaskTemplate(
+        workspace_id=user.workspace_id,
+        name=form.get('name'),
+        title_template=form.get('title_template'),
+        description_template=form.get('description_template') or None,
+        priority=form.get('priority', 'medium'),
+        estimated_hours=float(form.get('estimated_hours')) if form.get('estimated_hours') else None,
+        default_tags=form.get('default_tags') or None,
+        is_shared='is_shared' in form,
+        created_by_id=user.id
+    )
+    
+    db.add(template)
+    await db.commit()
+    
+    return RedirectResponse(url='/web/templates', status_code=303)
+
+
+@router.post('/templates/{template_id}/update')
+async def update_template(
+    request: Request,
+    template_id: int,
+    db: AsyncSession = Depends(get_session),
+    user: User = Depends(get_current_user)
+):
+    """Update a task template"""
+    from app.models.task_extensions import TaskTemplate
+    if not user or not user.workspace_id:
+        return RedirectResponse(url='/web/login', status_code=303)
+    
+    template = (await db.execute(
+        select(TaskTemplate).where(
+            TaskTemplate.id == template_id,
+            TaskTemplate.workspace_id == user.workspace_id
+        )
+    )).scalar_one_or_none()
+    
+    if not template:
+        return RedirectResponse(url='/web/templates', status_code=303)
+    
+    form = await request.form()
+    
+    template.name = form.get('name')
+    template.title_template = form.get('title_template')
+    template.description_template = form.get('description_template') or None
+    template.priority = form.get('priority', 'medium')
+    template.estimated_hours = float(form.get('estimated_hours')) if form.get('estimated_hours') else None
+    template.default_tags = form.get('default_tags') or None
+    template.is_shared = 'is_shared' in form
+    
+    await db.commit()
+    
+    return RedirectResponse(url='/web/templates', status_code=303)
+
+
+@router.post('/templates/{template_id}/delete')
+async def delete_template(
+    template_id: int,
+    db: AsyncSession = Depends(get_session),
+    user: User = Depends(get_current_user)
+):
+    """Delete a task template"""
+    from app.models.task_extensions import TaskTemplate
+    if not user or not user.workspace_id:
+        return JSONResponse(status_code=401, content={'error': 'Unauthorized'})
+    
+    template = (await db.execute(
+        select(TaskTemplate).where(
+            TaskTemplate.id == template_id,
+            TaskTemplate.workspace_id == user.workspace_id
+        )
+    )).scalar_one_or_none()
+    
+    if not template:
+        return JSONResponse(status_code=404, content={'error': 'Template not found'})
+    
+    await db.delete(template)
+    await db.commit()
+    
+    return JSONResponse(status_code=200, content={'success': True})
+
+
+@router.post('/templates/use')
+async def use_template(
+    request: Request,
+    db: AsyncSession = Depends(get_session),
+    user: User = Depends(get_current_user)
+):
+    """Create a task from a template"""
+    from app.models.task_extensions import TaskTemplate
+    if not user or not user.workspace_id:
+        return RedirectResponse(url='/web/login', status_code=303)
+    
+    form = await request.form()
+    template_id = int(form.get('template_id'))
+    
+    template = (await db.execute(
+        select(TaskTemplate).where(
+            TaskTemplate.id == template_id,
+            TaskTemplate.workspace_id == user.workspace_id
+        )
+    )).scalar_one_or_none()
+    
+    if not template:
+        return RedirectResponse(url='/web/templates', status_code=303)
+    
+    # Create the task from template
+    from datetime import datetime
+    task = Task(
+        title=form.get('title') or template.title_template,
+        description=template.description_template,
+        project_id=int(form.get('project_id')),
+        priority=template.priority,
+        status='pending',
+        created_by_id=user.id,
+        assigned_to_id=int(form.get('assigned_to_id')) if form.get('assigned_to_id') else None,
+        due_date=datetime.strptime(form.get('due_date'), '%Y-%m-%d') if form.get('due_date') else None
+    )
+    
+    db.add(task)
+    
+    # Increment template use count
+    template.use_count += 1
+    
+    await db.commit()
+    await db.refresh(task)
+    
+    return RedirectResponse(url=f'/web/tasks/{task.id}', status_code=303)
+
+
+# ============ ACTIVITY FEED ============
+
+@router.get('/activity', response_class=HTMLResponse)
+async def activity_page(
+    request: Request,
+    page: int = 1,
+    ajax: int = 0,
+    db: AsyncSession = Depends(get_session),
+    user: User = Depends(get_current_user)
+):
+    """Team activity feed page"""
+    from app.models.task_extensions import ActivityLog
+    if not user or not user.workspace_id:
+        return RedirectResponse(url='/web/login', status_code=303)
+    
+    per_page = 20
+    offset = (page - 1) * per_page
+    
+    # Get activity logs with user info
+    activities_query = (
+        select(ActivityLog)
+        .where(ActivityLog.workspace_id == user.workspace_id)
+        .order_by(ActivityLog.created_at.desc())
+        .offset(offset)
+        .limit(per_page + 1)
+    )
+    
+    activities = list((await db.execute(activities_query)).scalars().all())
+    has_more = len(activities) > per_page
+    activities = activities[:per_page]
+    
+    # Load user info for each activity
+    user_ids = list(set(a.user_id for a in activities))
+    if user_ids:
+        users_result = (await db.execute(
+            select(User).where(User.id.in_(user_ids))
+        )).scalars().all()
+        users_map = {u.id: u for u in users_result}
+        for a in activities:
+            a.user = users_map.get(a.user_id)
+    
+    def get_entity_url(entity_type, entity_id):
+        urls = {
+            'task': f'/web/tasks/{entity_id}',
+            'project': f'/web/projects/{entity_id}',
+            'ticket': f'/web/tickets/{entity_id}',
+            'goal': '/web/goals',
+        }
+        return urls.get(entity_type, '#')
+    
+    if ajax:
+        # Return just the activity items for AJAX loading
+        html = ""
+        for activity in activities:
+            html += f"<!-- Activity item HTML would go here -->"
+        return HTMLResponse(html)
+    
+    return templates.TemplateResponse("activity/index.html", {
+        "request": request,
+        "user": user,
+        "activities": activities,
+        "has_more": has_more,
+        "get_entity_url": get_entity_url,
+        **await get_template_context(request, user, db)
+    })
+
+
 # Calls feature removed - routes deleted
