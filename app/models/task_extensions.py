@@ -1,10 +1,71 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, date
 from typing import Optional
 
 from sqlmodel import Field, SQLModel
 
+
+# ============ GOALS & MILESTONES ============
+
+class Goal(SQLModel, table=True):
+    """Workspace or project goals with progress tracking"""
+    id: Optional[int] = Field(default=None, primary_key=True)
+    workspace_id: int = Field(foreign_key="workspace.id", index=True)
+    project_id: Optional[int] = Field(default=None, foreign_key="project.id", index=True)  # Optional: link to project
+    title: str
+    description: Optional[str] = None
+    target_date: Optional[date] = None
+    progress: int = Field(default=0)  # 0-100 percentage
+    status: str = Field(default="on_track")  # on_track, at_risk, behind, completed
+    owner_id: int = Field(foreign_key="user.id")
+    parent_goal_id: Optional[int] = Field(default=None, foreign_key="goal.id")  # For sub-goals
+    is_archived: bool = Field(default=False)
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class Milestone(SQLModel, table=True):
+    """Key milestones within a goal or project"""
+    id: Optional[int] = Field(default=None, primary_key=True)
+    goal_id: Optional[int] = Field(default=None, foreign_key="goal.id", index=True)
+    project_id: Optional[int] = Field(default=None, foreign_key="project.id", index=True)
+    title: str
+    description: Optional[str] = None
+    due_date: Optional[date] = None
+    completed_date: Optional[date] = None
+    is_completed: bool = Field(default=False)
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class TaskTemplate(SQLModel, table=True):
+    """Reusable task templates"""
+    id: Optional[int] = Field(default=None, primary_key=True)
+    workspace_id: int = Field(foreign_key="workspace.id", index=True)
+    name: str
+    title_template: str  # Template for task title with placeholders
+    description_template: Optional[str] = None
+    priority: str = Field(default="medium")  # low, medium, high, critical
+    estimated_hours: Optional[float] = None
+    default_tags: Optional[str] = None  # Comma-separated tags
+    subtasks_json: Optional[str] = None  # JSON array of subtask titles
+    created_by_id: int = Field(foreign_key="user.id")
+    is_shared: bool = Field(default=True)  # Available to all workspace members
+    use_count: int = Field(default=0)  # Track popularity
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class FocusTask(SQLModel, table=True):
+    """Daily focus/priority tasks for users"""
+    id: Optional[int] = Field(default=None, primary_key=True)
+    user_id: int = Field(foreign_key="user.id", index=True)
+    task_id: int = Field(foreign_key="task.id", index=True)
+    focus_date: date = Field(index=True)  # The day this is a focus
+    order: int = Field(default=0)  # Sort order for the day
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+# ============ EXISTING MODELS ============
 
 class TaskDependency(SQLModel, table=True):
     """Tracks task dependencies - which tasks block other tasks"""

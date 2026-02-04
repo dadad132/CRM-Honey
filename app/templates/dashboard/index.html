@@ -337,6 +337,60 @@
   
   {% elif view != 'user' %}
   <!-- PERSONAL VIEW CONTENT -->
+  
+  <!-- My Focus Today - Priority Tasks -->
+  <div class="bg-gradient-to-r from-blue-600 to-indigo-600 rounded-xl p-6 text-white mb-6">
+    <div class="flex items-center justify-between mb-4">
+      <div class="flex items-center gap-3">
+        <div class="w-10 h-10 bg-white/20 rounded-lg flex items-center justify-center">
+          <i class="fas fa-bullseye text-xl"></i>
+        </div>
+        <div>
+          <h2 class="font-bold text-lg">My Focus Today</h2>
+          <p class="text-blue-200 text-sm">Your top priorities for {{ today.strftime('%A, %d %B') }}</p>
+        </div>
+      </div>
+      <a href="/web/my-tasks" class="px-3 py-1.5 bg-white/20 hover:bg-white/30 rounded-lg text-sm font-medium transition">
+        View All Tasks
+      </a>
+    </div>
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+      {% set focus_tasks = (tasks_due_soon[:3] if tasks_due_soon else []) %}
+      {% for task in focus_tasks %}
+      <a href="/web/tasks/{{ task.id }}" class="bg-white/10 hover:bg-white/20 rounded-lg p-4 transition block">
+        <div class="flex items-start gap-3">
+          <div class="w-6 h-6 rounded-full border-2 border-white/50 flex items-center justify-center text-xs mt-0.5">
+            {{ loop.index }}
+          </div>
+          <div class="flex-1 min-w-0">
+            <p class="font-medium truncate">{{ task.title }}</p>
+            <p class="text-blue-200 text-sm truncate">{{ task.project_name }}</p>
+            {% if task.due_date %}
+            <div class="mt-2 flex items-center gap-2 text-xs">
+              <i class="fas fa-clock"></i>
+              {% set days_left = (task.due_date - today).days %}
+              {% if days_left < 0 %}
+                <span class="text-red-200">{{ -days_left }} days overdue</span>
+              {% elif days_left == 0 %}
+                <span class="text-yellow-200">Due today</span>
+              {% else %}
+                <span>Due in {{ days_left }} day{% if days_left != 1 %}s{% endif %}</span>
+              {% endif %}
+            </div>
+            {% endif %}
+          </div>
+        </div>
+      </a>
+      {% endfor %}
+      {% if not focus_tasks %}
+      <div class="col-span-3 text-center py-4">
+        <i class="fas fa-check-circle text-3xl text-white/50 mb-2"></i>
+        <p class="text-blue-200">All caught up! No urgent tasks today. 🎉</p>
+      </div>
+      {% endif %}
+    </div>
+  </div>
+  
   <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
     <!-- My Tasks Due Soon -->
     <div class="lg:col-span-2 bg-white rounded-xl border border-slate-200 overflow-hidden">

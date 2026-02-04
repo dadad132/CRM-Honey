@@ -33,6 +33,10 @@ from .task_extensions import (
     TicketWatcher,
     RecurringTask,
     RecurringTaskInstance,
+    Goal,
+    Milestone,
+    TaskTemplate,
+    FocusTask,
 )
 from .user_behavior import UserBehavior, UserPreference, SmartSuggestion
 __all__ = [
@@ -83,6 +87,10 @@ __all__ = [
     "TicketWatcher",
     "RecurringTask",
     "RecurringTaskInstance",
+    "Goal",
+    "Milestone",
+    "TaskTemplate",
+    "FocusTask",
     "UserBehavior",
     "UserPreference",
     "SmartSuggestion",

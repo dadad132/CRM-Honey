@@ -11126,4 +11126,359 @@ async def web_activity_feed(
     })
 
 
+# --------------------------
+# Workload View (Asana-inspired)
+# --------------------------
+@router.get('/workload', response_class=HTMLResponse)
+async def web_workload(
+    request: Request,
+    project_id: int = None,
+    time_range: str = 'week',
+    db: AsyncSession = Depends(get_session)
+):
+    """Team workload visualization"""
+    user_id = request.session.get('user_id')
+    if not user_id:
+        return RedirectResponse('/web/login', status_code=303)
+    
+    user = (await db.execute(select(User).where(User.id == user_id))).scalar_one_or_none()
+    if not user:
+        return RedirectResponse('/web/login', status_code=303)
+    
+    from app.models.task import Task
+    from app.models.assignment import Assignment
+    from app.models.project import Project
+    from app.models.project_member import ProjectMember
+    from datetime import timedelta
+    
+    today = date.today()
+    
+    # Determine date range
+    if time_range == 'week':
+        start_date = today - timedelta(days=today.weekday())
+        end_date = start_date + timedelta(days=6)
+    elif time_range == 'month':
+        start_date = today.replace(day=1)
+        next_month = today.replace(day=28) + timedelta(days=4)
+        end_date = next_month - timedelta(days=next_month.day)
+    else:  # quarter
+        quarter_start_month = ((today.month - 1) // 3) * 3 + 1
+        start_date = today.replace(month=quarter_start_month, day=1)
+        end_date = (start_date + timedelta(days=92)).replace(day=1) - timedelta(days=1)
+    
+    # Get accessible projects
+    if user.is_admin:
+        projects_query = select(Project).where(
+            Project.workspace_id == user.workspace_id,
+            Project.is_archived == False
+        )
+    else:
+        projects_query = (
+            select(Project)
+            .join(ProjectMember, ProjectMember.project_id == Project.id)
+            .where(
+                Project.workspace_id == user.workspace_id,
+                ProjectMember.user_id == user_id,
+                Project.is_archived == False
+            )
+        )
+    projects = (await db.execute(projects_query)).scalars().all()
+    project_ids = [p.id for p in projects]
+    
+    if project_id and project_id in project_ids:
+        project_ids = [project_id]
+    
+    # Base task query for active tasks
+    task_query = select(Task).where(
+        Task.project_id.in_(project_ids),
+        Task.is_archived == False,
+        Task.status != 'done'
+    )
+    all_tasks = (await db.execute(task_query)).scalars().all()
+    
+    # Get assignments
+    task_ids = [t.id for t in all_tasks]
+    assignments = (await db.execute(
+        select(Assignment.task_id, Assignment.user_id)
+        .where(Assignment.task_id.in_(task_ids))
+    )).all() if task_ids else []
+    
+    assignments_map = {}
+    for a in assignments:
+        if a.task_id not in assignments_map:
+            assignments_map[a.task_id] = []
+        assignments_map[a.task_id].append(a.user_id)
+    
+    # Get team members
+    team_members = (await db.execute(
+        select(User).where(User.workspace_id == user.workspace_id, User.is_active == True)
+    )).scalars().all()
+    
+    # Calculate workload per member
+    team_workload = []
+    for member in team_members:
+        member_tasks = [t for t in all_tasks if member.id in assignments_map.get(t.id, [])]
+        todo_count = len([t for t in member_tasks if t.status.value == 'todo'])
+        in_progress_count = len([t for t in member_tasks if t.status.value == 'in_progress'])
+        blocked_count = len([t for t in member_tasks if t.status.value == 'blocked'])
+        overdue_count = len([t for t in member_tasks if t.due_date and t.due_date < today])
+        
+        team_workload.append({
+            'id': member.id,
+            'username': member.username,
+            'full_name': member.full_name,
+            'task_count': len(member_tasks),
+            'todo_count': todo_count,
+            'in_progress_count': in_progress_count,
+            'blocked_count': blocked_count,
+            'overdue_count': overdue_count,
+        })
+    
+    # Sort by task count (busiest first)
+    team_workload.sort(key=lambda x: x['task_count'], reverse=True)
+    
+    # Calculate summary stats
+    total_tasks = len(all_tasks)
+    in_progress_tasks = len([t for t in all_tasks if t.status.value == 'in_progress'])
+    overdue_tasks = len([t for t in all_tasks if t.due_date and t.due_date < today])
+    unassigned_tasks = len([t for t in all_tasks if t.id not in assignments_map or not assignments_map[t.id]])
+    
+    # Priority breakdown
+    priority_breakdown = {
+        'critical': len([t for t in all_tasks if t.priority.value == 'critical']),
+        'high': len([t for t in all_tasks if t.priority.value == 'high']),
+        'medium': len([t for t in all_tasks if t.priority.value == 'medium']),
+        'low': len([t for t in all_tasks if t.priority.value == 'low']),
+    }
+    
+    # Due date breakdown
+    week_end = today + timedelta(days=(6 - today.weekday()))
+    due_breakdown = {
+        'overdue': len([t for t in all_tasks if t.due_date and t.due_date < today]),
+        'today': len([t for t in all_tasks if t.due_date and t.due_date == today]),
+        'this_week': len([t for t in all_tasks if t.due_date and today < t.due_date <= week_end]),
+        'later': len([t for t in all_tasks if t.due_date and t.due_date > week_end]),
+        'no_date': len([t for t in all_tasks if not t.due_date]),
+    }
+    
+    # Unassigned tasks list with project names
+    project_names = {p.id: p.name for p in projects}
+    unassigned_task_list = []
+    for t in all_tasks:
+        if t.id not in assignments_map or not assignments_map[t.id]:
+            unassigned_task_list.append({
+                'id': t.id,
+                'title': t.title,
+                'priority': t.priority.value,
+                'due_date': t.due_date,
+                'project_name': project_names.get(t.project_id, 'Unknown')
+            })
+    
+    return templates.TemplateResponse('workload/index.html', {
+        'request': request,
+        'user': user,
+        'projects': projects,
+        'selected_project_id': project_id,
+        'time_range': time_range,
+        'team_workload': team_workload,
+        'total_tasks': total_tasks,
+        'in_progress_tasks': in_progress_tasks,
+        'overdue_tasks': overdue_tasks,
+        'unassigned_tasks': unassigned_tasks,
+        'priority_breakdown': priority_breakdown,
+        'due_breakdown': due_breakdown,
+        'unassigned_task_list': unassigned_task_list,
+    })
+
+
+# --------------------------
+# Goals & Milestones (Asana-inspired)
+# --------------------------
+@router.get('/goals', response_class=HTMLResponse)
+async def web_goals(request: Request, db: AsyncSession = Depends(get_session)):
+    """Goals and milestones tracking"""
+    user_id = request.session.get('user_id')
+    if not user_id:
+        return RedirectResponse('/web/login', status_code=303)
+    
+    user = (await db.execute(select(User).where(User.id == user_id))).scalar_one_or_none()
+    if not user:
+        return RedirectResponse('/web/login', status_code=303)
+    
+    from app.models.task_extensions import Goal, Milestone
+    from app.models.project import Project
+    
+    # Get goals for workspace
+    goals_query = select(Goal).where(
+        Goal.workspace_id == user.workspace_id,
+        Goal.is_archived == False
+    ).order_by(Goal.created_at.desc())
+    goals_result = (await db.execute(goals_query)).scalars().all()
+    
+    # Get milestones and project names
+    goal_ids = [g.id for g in goals_result]
+    milestones = (await db.execute(
+        select(Milestone).where(Milestone.goal_id.in_(goal_ids))
+    )).scalars().all() if goal_ids else []
+    
+    milestones_map = {}
+    for m in milestones:
+        if m.goal_id not in milestones_map:
+            milestones_map[m.goal_id] = []
+        milestones_map[m.goal_id].append(m)
+    
+    # Get project names
+    project_ids = [g.project_id for g in goals_result if g.project_id]
+    projects = (await db.execute(
+        select(Project).where(Project.id.in_(project_ids))
+    )).scalars().all() if project_ids else []
+    project_names = {p.id: p.name for p in projects}
+    
+    # Get owner names
+    owner_ids = [g.owner_id for g in goals_result]
+    owners = (await db.execute(
+        select(User).where(User.id.in_(owner_ids))
+    )).scalars().all() if owner_ids else []
+    owner_names = {u.id: u.full_name or u.username for u in owners}
+    
+    # Combine data
+    goals = []
+    for g in goals_result:
+        goals.append({
+            'id': g.id,
+            'title': g.title,
+            'description': g.description,
+            'target_date': g.target_date,
+            'progress': g.progress,
+            'status': g.status,
+            'project_name': project_names.get(g.project_id),
+            'owner_name': owner_names.get(g.owner_id),
+            'milestones': milestones_map.get(g.id, [])
+        })
+    
+    # Get projects for dropdown
+    from app.models.project_member import ProjectMember
+    if user.is_admin:
+        all_projects = (await db.execute(
+            select(Project).where(Project.workspace_id == user.workspace_id, Project.is_archived == False)
+        )).scalars().all()
+    else:
+        all_projects = (await db.execute(
+            select(Project)
+            .join(ProjectMember, ProjectMember.project_id == Project.id)
+            .where(Project.workspace_id == user.workspace_id, ProjectMember.user_id == user_id, Project.is_archived == False)
+        )).scalars().all()
+    
+    return templates.TemplateResponse('goals/index.html', {
+        'request': request,
+        'user': user,
+        'goals': goals,
+        'projects': all_projects,
+    })
+
+
+@router.post('/goals/create')
+async def web_goals_create(
+    request: Request,
+    db: AsyncSession = Depends(get_session)
+):
+    """Create a new goal"""
+    user_id = request.session.get('user_id')
+    if not user_id:
+        return RedirectResponse('/web/login', status_code=303)
+    
+    user = (await db.execute(select(User).where(User.id == user_id))).scalar_one_or_none()
+    if not user:
+        return RedirectResponse('/web/login', status_code=303)
+    
+    form = await request.form()
+    
+    from app.models.task_extensions import Goal
+    
+    goal = Goal(
+        workspace_id=user.workspace_id,
+        title=form.get('title'),
+        description=form.get('description') or None,
+        target_date=date.fromisoformat(form.get('target_date')) if form.get('target_date') else None,
+        progress=int(form.get('progress', 0)),
+        project_id=int(form.get('project_id')) if form.get('project_id') else None,
+        owner_id=user_id,
+        status='on_track' if int(form.get('progress', 0)) < 100 else 'completed'
+    )
+    
+    db.add(goal)
+    await db.commit()
+    
+    return RedirectResponse('/web/goals', status_code=303)
+
+
+@router.post('/goals/{goal_id}/progress')
+async def web_goals_update_progress(
+    request: Request,
+    goal_id: int,
+    db: AsyncSession = Depends(get_session)
+):
+    """Update goal progress"""
+    user_id = request.session.get('user_id')
+    if not user_id:
+        return RedirectResponse('/web/login', status_code=303)
+    
+    user = (await db.execute(select(User).where(User.id == user_id))).scalar_one_or_none()
+    if not user:
+        return RedirectResponse('/web/login', status_code=303)
+    
+    from app.models.task_extensions import Goal
+    
+    goal = (await db.execute(
+        select(Goal).where(Goal.id == goal_id, Goal.workspace_id == user.workspace_id)
+    )).scalar_one_or_none()
+    
+    if not goal:
+        return RedirectResponse('/web/goals', status_code=303)
+    
+    form = await request.form()
+    goal.progress = int(form.get('progress', 0))
+    goal.status = form.get('status', 'on_track')
+    goal.updated_at = datetime.utcnow()
+    
+    await db.commit()
+    
+    return RedirectResponse('/web/goals', status_code=303)
+
+
+@router.post('/goals/{goal_id}/delete')
+async def web_goals_delete(
+    request: Request,
+    goal_id: int,
+    db: AsyncSession = Depends(get_session)
+):
+    """Delete a goal"""
+    user_id = request.session.get('user_id')
+    if not user_id:
+        return JSONResponse(status_code=401, content={'error': 'Not authenticated'})
+    
+    user = (await db.execute(select(User).where(User.id == user_id))).scalar_one_or_none()
+    if not user:
+        return JSONResponse(status_code=401, content={'error': 'User not found'})
+    
+    from app.models.task_extensions import Goal, Milestone
+    
+    goal = (await db.execute(
+        select(Goal).where(Goal.id == goal_id, Goal.workspace_id == user.workspace_id)
+    )).scalar_one_or_none()
+    
+    if not goal:
+        return JSONResponse(status_code=404, content={'error': 'Goal not found'})
+    
+    # Delete associated milestones
+    await db.execute(
+        Milestone.__table__.delete().where(Milestone.goal_id == goal_id)
+    )
+    
+    await db.delete(goal)
+    await db.commit()
+    
+    return JSONResponse(status_code=200, content={'success': True})
+
+
 # Calls feature removed - routes deleted
