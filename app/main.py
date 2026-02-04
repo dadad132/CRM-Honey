@@ -99,8 +99,37 @@ class CacheControlMiddleware(BaseHTTPMiddleware):
 
 app.add_middleware(CacheControlMiddleware)
 
+# Security headers middleware for HTTPS optimization
+class SecurityHeadersMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next):
+        response = await call_next(request)
+        # Prevent clickjacking
+        response.headers['X-Frame-Options'] = 'SAMEORIGIN'
+        # Prevent MIME type sniffing
+        response.headers['X-Content-Type-Options'] = 'nosniff'
+        # Enable XSS filter
+        response.headers['X-XSS-Protection'] = '1; mode=block'
+        # Referrer policy
+        response.headers['Referrer-Policy'] = 'strict-origin-when-cross-origin'
+        # Permissions policy
+        response.headers['Permissions-Policy'] = 'geolocation=(), microphone=(), camera=()'
+        # HSTS - only in production (when not debug mode)
+        if not settings.debug:
+            response.headers['Strict-Transport-Security'] = 'max-age=31536000; includeSubDomains'
+        return response
+
+app.add_middleware(SecurityHeadersMiddleware)
+
 # Session middleware for server-rendered web UI
-app.add_middleware(SessionMiddleware, secret_key=settings.secret_key)
+# In production: secure=True ensures cookies only sent over HTTPS
+# httponly=True prevents JavaScript access to session cookie
+# same_site='lax' provides CSRF protection while allowing normal navigation
+app.add_middleware(
+    SessionMiddleware, 
+    secret_key=settings.secret_key,
+    https_only=not settings.debug,  # Secure cookies in production
+    same_site='lax'
+)
 
 # Import templates from web routes to get the enhanced version with workspace injection
 from app.web.routes import templates
