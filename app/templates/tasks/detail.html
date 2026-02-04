@@ -287,6 +287,13 @@
                  style="padding: 0.125rem 0.5rem; background: #10b981; color: white; border-radius: 0.25rem; text-decoration: none; font-size: 0.75rem;">
                 ⬇️ Download
               </a>
+              {% if user.is_admin or comment.user_id == user.id %}
+              <button onclick="deleteCommentAttachment({{ attachment.id }}, '{{ attachment.filename | replace("'", "\\'") }}')"
+                      style="padding: 0.125rem 0.5rem; background: #ef4444; color: white; border: none; border-radius: 0.25rem; cursor: pointer; font-size: 0.75rem;"
+                      title="Delete attachment">
+                🗑️ Delete
+              </button>
+              {% endif %}
             </div>
             {% endfor %}
           </div>
@@ -434,6 +441,33 @@
         
         if (response.ok && data.success) {
           // Reload page to show updated attachments
+          window.location.reload();
+        } else {
+          alert(data.detail || 'Failed to delete attachment');
+        }
+      } catch (error) {
+        console.error('Error deleting attachment:', error);
+        alert('Failed to delete attachment');
+      }
+    }
+
+    // Delete comment attachment
+    async function deleteCommentAttachment(attachmentId, filename) {
+      if (!confirm(`Are you sure you want to delete "${filename}"?`)) {
+        return;
+      }
+      
+      try {
+        const response = await fetch(`/web/attachments/${attachmentId}/delete`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          }
+        });
+        
+        const data = await response.json();
+        
+        if (response.ok && data.success) {
           window.location.reload();
         } else {
           alert(data.detail || 'Failed to delete attachment');

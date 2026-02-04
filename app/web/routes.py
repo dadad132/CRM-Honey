@@ -7086,6 +7086,58 @@ async def download_comment_attachment(
     )
 
 
+@router.post('/attachments/{attachment_id}/delete')
+async def delete_comment_attachment(
+    request: Request,
+    attachment_id: int,
+    db: AsyncSession = Depends(get_session)
+):
+    """Delete a comment attachment"""
+    user_id = request.session.get('user_id')
+    if not user_id:
+        return JSONResponse(status_code=401, content={'detail': 'Not authenticated'})
+    user = (await db.execute(select(User).where(User.id == user_id))).scalar_one_or_none()
+    if not user:
+        return JSONResponse(status_code=401, content={'detail': 'User not found'})
+    
+    # Get attachment with permission check
+    attachment = (await db.execute(
+        select(CommentAttachment)
+        .join(Comment, CommentAttachment.comment_id == Comment.id)
+        .join(Task, Comment.task_id == Task.id)
+        .join(Project, Task.project_id == Project.id)
+        .where(
+            CommentAttachment.id == attachment_id,
+            Project.workspace_id == user.workspace_id
+        )
+    )).scalar_one_or_none()
+    
+    if not attachment:
+        return JSONResponse(status_code=404, content={'detail': 'Attachment not found'})
+    
+    # Check permission - only admin or the comment author can delete
+    comment = (await db.execute(select(Comment).where(Comment.id == attachment.comment_id))).scalar_one_or_none()
+    if not user.is_admin and (not comment or comment.user_id != user.id):
+        return JSONResponse(status_code=403, content={'detail': 'Permission denied'})
+    
+    # Delete file from disk
+    file_path = Path(attachment.file_path)
+    if not file_path.is_absolute():
+        file_path = Path.cwd() / file_path
+    
+    if file_path.exists():
+        try:
+            file_path.unlink()
+        except Exception as e:
+            pass  # File may already be deleted
+    
+    # Delete from database
+    await db.delete(attachment)
+    await db.commit()
+    
+    return JSONResponse(status_code=200, content={'success': True})
+
+
 @router.post('/tasks/{task_id}/status')
 async def web_task_update_status(request: Request, task_id: int, status_value: str = Form(...), db: AsyncSession = Depends(get_session)):
     user_id = request.session.get('user_id')
