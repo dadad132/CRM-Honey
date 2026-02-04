@@ -10126,6 +10126,152 @@ async def web_ticket_attachment_delete(
     )
 
 
+# ============ TASK ATTACHMENT ROUTES ============
+
+@router.get('/task-attachments/{attachment_id}/download')
+async def web_task_attachment_download(
+    request: Request,
+    attachment_id: int,
+    db: AsyncSession = Depends(get_session)
+):
+    """Download a task attachment"""
+    user_id = request.session.get('user_id')
+    if not user_id:
+        return RedirectResponse('/web/login', status_code=303)
+    
+    user = (await db.execute(select(User).where(User.id == user_id))).scalar_one_or_none()
+    if not user:
+        request.session.clear()
+        return RedirectResponse('/web/login', status_code=303)
+    
+    from app.models.task_extensions import TaskAttachment
+    from app.models.task import Task
+    from app.models.project import Project
+    
+    # Get attachment
+    attachment = (await db.execute(
+        select(TaskAttachment).where(TaskAttachment.id == attachment_id)
+    )).scalar_one_or_none()
+    
+    if not attachment:
+        raise HTTPException(status_code=404, detail="Attachment not found")
+    
+    # Verify user has access to this task's project/workspace
+    task = (await db.execute(
+        select(Task).where(Task.id == attachment.task_id)
+    )).scalar_one_or_none()
+    
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
+    
+    project = (await db.execute(
+        select(Project).where(
+            Project.id == task.project_id,
+            Project.workspace_id == user.workspace_id
+        )
+    )).scalar_one_or_none()
+    
+    if not project:
+        raise HTTPException(status_code=403, detail="Access denied")
+    
+    # Build file path
+    file_path = BASE_DIR.parent / attachment.file_path if attachment.file_path.startswith('app/') else BASE_DIR / attachment.file_path
+    
+    if not file_path.exists():
+        raise HTTPException(status_code=404, detail="File not found on disk")
+    
+    return FileResponse(
+        path=str(file_path),
+        filename=attachment.filename,
+        media_type=attachment.file_type or 'application/octet-stream'
+    )
+
+
+@router.post('/task-attachments/{attachment_id}/delete')
+async def web_task_attachment_delete(
+    request: Request,
+    attachment_id: int,
+    db: AsyncSession = Depends(get_session)
+):
+    """Delete a task attachment"""
+    user_id = request.session.get('user_id')
+    if not user_id:
+        return JSONResponse(
+            status_code=401,
+            content={"detail": "Not authenticated"}
+        )
+    
+    user = (await db.execute(select(User).where(User.id == user_id))).scalar_one_or_none()
+    if not user:
+        return JSONResponse(
+            status_code=401,
+            content={"detail": "User not found"}
+        )
+    
+    from app.models.task_extensions import TaskAttachment
+    from app.models.task import Task
+    from app.models.project import Project
+    
+    # Get attachment
+    attachment = (await db.execute(
+        select(TaskAttachment).where(TaskAttachment.id == attachment_id)
+    )).scalar_one_or_none()
+    
+    if not attachment:
+        return JSONResponse(
+            status_code=404,
+            content={"detail": "Attachment not found"}
+        )
+    
+    # Verify user has access to this task's project/workspace
+    task = (await db.execute(
+        select(Task).where(Task.id == attachment.task_id)
+    )).scalar_one_or_none()
+    
+    if not task:
+        return JSONResponse(
+            status_code=404,
+            content={"detail": "Task not found"}
+        )
+    
+    project = (await db.execute(
+        select(Project).where(
+            Project.id == task.project_id,
+            Project.workspace_id == user.workspace_id
+        )
+    )).scalar_one_or_none()
+    
+    if not project:
+        return JSONResponse(
+            status_code=403,
+            content={"detail": "Access denied"}
+        )
+    
+    # Check permissions: admin or the uploader
+    if not user.is_admin and attachment.uploaded_by != user.id:
+        return JSONResponse(
+            status_code=403,
+            content={"detail": "You don't have permission to delete this attachment"}
+        )
+    
+    # Delete file from disk
+    file_path = BASE_DIR.parent / attachment.file_path if attachment.file_path.startswith('app/') else BASE_DIR / attachment.file_path
+    try:
+        if file_path.exists():
+            file_path.unlink()
+    except Exception as e:
+        logger.error(f"Failed to delete task attachment file {file_path}: {e}")
+    
+    # Delete from database
+    await db.delete(attachment)
+    await db.commit()
+    
+    return JSONResponse(
+        status_code=200,
+        content={"success": True, "message": "Attachment deleted successfully"}
+    )
+
+
 @router.post('/tickets/process-emails')
 async def web_tickets_process_emails(request: Request, db: AsyncSession = Depends(get_session)):
     """Manually trigger email-to-ticket processing (admin only) - Processes emails immediately"""
