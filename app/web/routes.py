@@ -11519,8 +11519,7 @@ async def templates_page(
         "user": user,
         "templates": templates_list,
         "projects": projects,
-        "members": members,
-        **await get_template_context(request, user, db)
+        "members": members
     })
 
 
@@ -11730,8 +11729,7 @@ async def activity_page(
         "activities": activities,
         "users_map": users_map,
         "has_more": has_more,
-        "get_entity_url": get_entity_url,
-        **await get_template_context(request, user, db)
+        "get_entity_url": get_entity_url
     })
 
 
