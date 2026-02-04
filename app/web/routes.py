@@ -11701,11 +11701,12 @@ async def activity_page(
     # Load user info for each activity
     users_map = {}
     if activities:
-        user_ids = list(set(a.user_id for a in activities))
-        users_result = (await db.execute(
-            select(User).where(User.id.in_(user_ids))
-        )).scalars().all()
-        users_map = {u.id: u for u in users_result}
+        user_ids = [a.user_id for a in activities if hasattr(a, 'user_id') and a.user_id is not None]
+        if user_ids:
+            users_result = (await db.execute(
+                select(User).where(User.id.in_(user_ids))
+            )).scalars().all()
+            users_map = {u.id: u for u in users_result}
     
     def get_entity_url(entity_type, entity_id):
         urls = {
