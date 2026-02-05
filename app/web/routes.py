@@ -390,9 +390,8 @@ async def web_profile_post(
     if calendar_color:
         user.calendar_color = calendar_color
     
-    # Update mute_ticket_notifications (only for admins)
-    if user.is_admin:
-        user.mute_ticket_notifications = mute_ticket_notifications == 'true'
+    # Update mute_ticket_notifications (for all users)
+    user.mute_ticket_notifications = mute_ticket_notifications == 'true'
     
     await db.commit()
     return templates.TemplateResponse('auth/profile.html', {
