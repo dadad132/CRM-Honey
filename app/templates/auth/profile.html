@@ -303,4 +303,76 @@
     </div>
   </div>
 </div>
+
+<script>
+// Push Notifications
+document.addEventListener('DOMContentLoaded', function() {
+    const btn = document.getElementById('enableNotificationsBtn');
+    const status = document.getElementById('notificationStatus');
+    
+    // Check current notification status
+    function updateStatus() {
+        if (!('Notification' in window)) {
+            status.textContent = 'Your browser does not support notifications';
+            status.className = 'text-sm text-red-500 font-medium mt-2';
+            btn.disabled = true;
+            btn.className = 'px-4 py-2 bg-gray-400 text-white font-medium rounded-lg cursor-not-allowed';
+            btn.textContent = 'Not Supported';
+        } else if (Notification.permission === 'granted') {
+            status.textContent = '✓ Notifications are enabled';
+            status.className = 'text-sm text-green-600 font-medium mt-2';
+            btn.textContent = 'Notifications Enabled';
+            btn.className = 'px-4 py-2 bg-green-600 text-white font-medium rounded-lg cursor-default';
+        } else if (Notification.permission === 'denied') {
+            status.textContent = '✗ Notifications are blocked. Please enable them in your browser settings.';
+            status.className = 'text-sm text-red-500 font-medium mt-2';
+            btn.textContent = 'Blocked by Browser';
+            btn.className = 'px-4 py-2 bg-red-600 text-white font-medium rounded-lg cursor-not-allowed';
+            btn.disabled = true;
+        } else {
+            status.textContent = 'Click to enable browser notifications';
+            status.className = 'text-sm text-slate-500 font-medium mt-2';
+        }
+    }
+    
+    updateStatus();
+    
+    btn.addEventListener('click', async function() {
+        if (!('Notification' in window)) {
+            alert('Your browser does not support notifications');
+            return;
+        }
+        
+        if (Notification.permission === 'granted') {
+            // Already enabled, show a test notification
+            new Notification('CEM Notifications', {
+                body: 'Notifications are working!',
+                icon: '/static/icons/icon-192.png'
+            });
+            return;
+        }
+        
+        if (Notification.permission === 'denied') {
+            alert('Notifications are blocked. Please enable them in your browser settings:\n\n1. Click the lock icon in the address bar\n2. Find "Notifications" setting\n3. Change it to "Allow"');
+            return;
+        }
+        
+        // Request permission
+        try {
+            const permission = await Notification.requestPermission();
+            updateStatus();
+            
+            if (permission === 'granted') {
+                new Notification('CEM Notifications Enabled!', {
+                    body: 'You will now receive notifications for important updates.',
+                    icon: '/static/icons/icon-192.png'
+                });
+            }
+        } catch (error) {
+            console.error('Error requesting notification permission:', error);
+            alert('Failed to enable notifications. Please try again.');
+        }
+    });
+});
+</script>
 {% endblock %}
