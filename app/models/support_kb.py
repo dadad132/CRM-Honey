@@ -51,6 +51,8 @@ class SupportConversation(SQLModel, table=True):
     # Conversation tracking
     initial_problem: str  # What the user first asked
     resolved: bool = Field(default=False)  # Did we resolve it?
+    was_helpful: bool = Field(default=False)  # Was the solution helpful?
+    resolution_type: Optional[str] = None  # 'kb_article', 'web_search', 'pre_trained', etc.
     article_id: Optional[int] = Field(default=None, foreign_key="supportarticle.id")  # Which article helped
     escalated_to_ticket: bool = Field(default=False)  # Did they create a ticket?
     ticket_id: Optional[int] = Field(default=None, foreign_key="ticket.id")

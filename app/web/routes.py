@@ -9405,7 +9405,7 @@ async def support_assistant_chat(
                             or_(
                                 SupportArticle.problem_keywords.ilike(f'%{keyword}%'),
                                 SupportArticle.problem_description.ilike(f'%{keyword}%'),
-                                SupportArticle.title.ilike(f'%{keyword}%')
+                                SupportArticle.problem_title.ilike(f'%{keyword}%')
                             )
                         )
                     ).order_by(SupportArticle.success_rate.desc()).limit(3)
@@ -9434,14 +9434,14 @@ async def support_assistant_chat(
             for article in unique_kb_results[:3]:
                 response_data['kb_articles'].append({
                     'id': article.id,
-                    'title': article.title,
+                    'title': article.problem_title,
                     'problem': article.problem_description,
                     'solution': article.solution_steps,
                     'success_rate': article.success_rate,
-                    'times_used': article.times_used
+                    'times_used': article.times_shown
                 })
                 # Increment usage count
-                article.times_used += 1
+                article.times_shown += 1
             
             await db.commit()
             
@@ -9497,14 +9497,15 @@ async def support_assistant_feedback(
             
             if article:
                 if helpful:
-                    article.times_successful += 1
-                    article.success_rate = (article.times_successful / article.times_used) * 100
+                    article.times_helpful += 1
+                    article.success_rate = (article.times_helpful / article.times_shown) * 100 if article.times_shown > 0 else 100.0
                     if conversation:
                         conversation.was_helpful = True
                         conversation.resolution_type = 'kb_article'
                 else:
                     # Not helpful, decrease success rate
-                    article.success_rate = max(0, article.success_rate - 1)
+                    article.times_not_helpful += 1
+                    article.success_rate = (article.times_helpful / (article.times_helpful + article.times_not_helpful)) * 100 if (article.times_helpful + article.times_not_helpful) > 0 else 0
                 
                 await db.commit()
         
@@ -9514,13 +9515,14 @@ async def support_assistant_feedback(
             keywords = ','.join([word for word in problem.lower().split() if len(word) > 3][:10])
             
             new_article = SupportArticle(
-                title=problem[:100] + ('...' if len(problem) > 100 else ''),
+                workspace_id=1,
+                problem_title=problem[:100] + ('...' if len(problem) > 100 else ''),
                 problem_description=problem,
                 problem_keywords=keywords,
                 solution_steps=solution,
-                source='web_search',
-                times_used=1,
-                times_successful=1,
+                solution_source='web_search',
+                times_shown=1,
+                times_helpful=1,
                 success_rate=100.0
             )
             db.add(new_article)
