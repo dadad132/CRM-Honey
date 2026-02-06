@@ -8716,6 +8716,9 @@ async def web_tickets_report_pdf(
     
     from app.models.ticket import Ticket, TicketComment, TicketHistory
     
+    # Get workspace for business hours settings
+    workspace = await get_workspace_for_user(user_id, db)
+    
     # Parse date range
     if start_date:
         start_dt = datetime.strptime(start_date, '%Y-%m-%d')
