@@ -1042,10 +1042,69 @@ TECH_FRUSTRATION_RESPONSES = [
     "I feel you! 💫 Let's try to solve whatever's causing this frustration! What's going on?",
 ]
 
+# Paper Jam specific responses (IMPORTANT SAFETY INFO)
+PAPER_JAM_TRIGGERS = [
+    'paper jam', 'jammed paper', 'paper stuck', 'paper is stuck', 'paper jammed',
+    'stuck paper', 'jam in printer', 'printer jam', 'remove jammed paper',
+    'clear paper jam', 'paper is jammed'
+]
+
+PAPER_JAM_RESPONSES = [
+    """⚠️ **IMPORTANT - Paper Jam Safety!** 🖨️
+
+**Before you do anything:** 
+🔴 **TURN OFF the printer!** This prevents injury and damage to the printer.
+
+**Steps to clear a paper jam:**
+1. Turn OFF the printer and unplug it
+2. Wait 30 seconds for it to cool down
+3. Open all access doors/covers
+4. Gently pull jammed paper in the direction it would normally travel
+5. Check for any small torn pieces
+6. Close all doors and plug back in
+7. Turn on and try again
+
+⚠️ Never force the paper - if it won't come out easily, submit a ticket for help! 🫧""",
+
+    """🖨️ Paper jam? Let's fix it safely!
+
+⚠️ **FIRST:** Turn OFF your printer! This is really important to prevent damage or injury.
+
+**Then:**
+1. Unplug the printer
+2. Open all panels and doors
+3. Gently (GENTLY!) remove stuck paper
+4. Look for any torn bits left behind
+5. Close everything, plug back in, power on
+
+💡 **Pro tip:** Always turn off the printer before removing jammed paper! 
+
+Still stuck? Create a ticket and we'll help! 🫧""",
+
+    """⚠️ **Paper Jam Alert!** 
+
+**Step 1 (MOST IMPORTANT):** Turn OFF your printer before attempting to remove any jammed paper!
+
+Why? It protects you from moving parts and prevents damage to the printer.
+
+**Safe removal steps:**
+• Power off & unplug
+• Open covers carefully  
+• Remove paper gently (don't yank!)
+• Check for scraps
+• Reassemble & power on
+
+Need hands-on help? Submit a ticket! 🖨️🫧"""
+]
+
 # Update the main function to include new categories
 def get_conversational_response_v2(message_lower: str) -> str:
     """Enhanced version with additional conversational categories"""
     message_clean = message_lower.strip()
+    
+    # IMPORTANT: Check for paper jam FIRST (safety-critical response)
+    if any(t in message_clean for t in PAPER_JAM_TRIGGERS):
+        return random.choice(PAPER_JAM_RESPONSES)
     
     # Try the base function first
     base_response = _get_conversational_response_base(message_clean)

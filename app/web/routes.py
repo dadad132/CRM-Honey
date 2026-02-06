@@ -10054,19 +10054,21 @@ Need more help? I can create a ticket for our tech team!"""
 Sometimes routers need a reset or there might be an outage. Submit a ticket and we'll help!"""
     },
     'printer': {
-        'keywords': ['printer', 'print', 'printing', 'paper jam', 'not printing'],
+        'keywords': ['printer', 'print', 'printing', 'paper jam', 'not printing', 'jammed'],
         'response': """Printer problems? Let's troubleshoot! 🖨️
 
 **Basic Checks:**
 1. ✅ Is the printer **turned ON** with lights showing?
-2. ✅ Check for **paper jams** - open all covers and look inside
-3. ✅ Make sure there's **paper loaded** correctly
+2. ✅ **IMPORTANT - Paper Jams:** ⚠️ **TURN OFF THE PRINTER** before attempting to remove any jammed paper! Then open all covers and gently remove stuck paper.
+3. ✅ Make sure there's **paper loaded** correctly (not overfilled)
 4. ✅ Check **ink/toner levels**
-5. ✅ Try turning the printer **OFF and ON** again
+5. ✅ Try turning the printer **OFF and ON** again (power cycle)
 
 **Connection issues:**
 - For USB: Unplug and replug the cable
-- For WiFi: Make sure printer is on the same network
+- For WiFi: Make sure printer is on the same network as your computer
+
+⚠️ **Safety Tip:** Always turn off the printer before clearing paper jams to avoid injury or damage!
 
 Need more help? Create a ticket and include your printer model!"""
     },
