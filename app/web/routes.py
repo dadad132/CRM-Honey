@@ -9341,7 +9341,7 @@ async def support_assistant_chat(
     try:
         data = await request.json()
         message = data.get('message', '').strip()
-        session_id = data.get('session_id', str(uuid.uuid4()))
+        session_id = data.get('session_id') or str(uuid.uuid4())
         
         if not message:
             return JSONResponse({'error': 'Message is required'}, status_code=400)
