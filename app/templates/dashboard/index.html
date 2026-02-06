@@ -1,6 +1,130 @@
 {% extends "base.html" %}
 {% block content %}
-<div class="space-y-6" x-data="{ dashboardView: '{{ view or 'personal' }}' }">
+<div class="space-y-6" x-data="{ 
+  dashboardView: '{{ view or 'personal' }}',
+  ...whatChangedAssistant()
+}">
+  
+  <!-- What Changed While You Were Away - AI Assistant -->
+  <template x-if="showWhatChanged">
+    <div class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50" @click.self="dismissSummary">
+      <div class="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden transform transition-all"
+           x-transition:enter="ease-out duration-300"
+           x-transition:enter-start="opacity-0 scale-95"
+           x-transition:enter-end="opacity-100 scale-100">
+        <!-- Header -->
+        <div class="bg-gradient-to-r from-indigo-600 to-purple-600 px-6 py-4">
+          <div class="flex items-center gap-3">
+            <div class="w-12 h-12 bg-white/20 rounded-full flex items-center justify-center">
+              <i class="fas fa-robot text-2xl text-white"></i>
+            </div>
+            <div>
+              <h3 class="text-lg font-bold text-white">Welcome Back! 👋</h3>
+              <p class="text-indigo-200 text-sm" x-text="'You were away for ' + timeAwayDisplay"></p>
+            </div>
+          </div>
+        </div>
+        
+        <!-- Summary Content -->
+        <div class="px-6 py-4 max-h-96 overflow-y-auto">
+          <!-- AI Summary -->
+          <div class="prose prose-sm max-w-none" x-html="formatMarkdown(summary)"></div>
+          
+          <!-- Quick Stats -->
+          <template x-if="totalChanges > 0">
+            <div class="mt-4 grid grid-cols-2 gap-3">
+              <template x-if="newTasksAssigned.length > 0">
+                <div class="bg-blue-50 rounded-lg p-3">
+                  <p class="text-2xl font-bold text-blue-600" x-text="newTasksAssigned.length"></p>
+                  <p class="text-xs text-blue-700">New Tasks</p>
+                </div>
+              </template>
+              <template x-if="completedTasks.length > 0">
+                <div class="bg-green-50 rounded-lg p-3">
+                  <p class="text-2xl font-bold text-green-600" x-text="completedTasks.length"></p>
+                  <p class="text-xs text-green-700">Completed</p>
+                </div>
+              </template>
+              <template x-if="newTickets.length > 0">
+                <div class="bg-red-50 rounded-lg p-3">
+                  <p class="text-2xl font-bold text-red-600" x-text="newTickets.length"></p>
+                  <p class="text-xs text-red-700">New Tickets</p>
+                </div>
+              </template>
+              <template x-if="meetingsScheduled.length > 0">
+                <div class="bg-purple-50 rounded-lg p-3">
+                  <p class="text-2xl font-bold text-purple-600" x-text="meetingsScheduled.length"></p>
+                  <p class="text-xs text-purple-700">Meetings</p>
+                </div>
+              </template>
+            </div>
+          </template>
+          
+          <!-- Detailed Lists (expandable) -->
+          <template x-if="newTasksAssigned.length > 0">
+            <div class="mt-4" x-data="{ expanded: false }">
+              <button @click="expanded = !expanded" class="flex items-center justify-between w-full text-left py-2 border-b border-slate-200">
+                <span class="font-medium text-slate-800">New Tasks Assigned</span>
+                <i class="fas" :class="expanded ? 'fa-chevron-up' : 'fa-chevron-down'"></i>
+              </button>
+              <div x-show="expanded" x-collapse class="mt-2 space-y-2">
+                <template x-for="task in newTasksAssigned" :key="task.id">
+                  <a :href="'/web/tasks/' + task.id" class="block p-2 bg-slate-50 rounded-lg hover:bg-slate-100 transition">
+                    <p class="font-medium text-sm text-slate-800" x-text="task.title"></p>
+                    <p class="text-xs text-slate-500">
+                      <span x-text="task.project"></span> • From: <span x-text="task.creator"></span>
+                    </p>
+                  </a>
+                </template>
+              </div>
+            </div>
+          </template>
+        </div>
+        
+        <!-- Footer Actions -->
+        <div class="px-6 py-4 bg-slate-50 border-t border-slate-200">
+          <div class="flex items-center justify-between">
+            <!-- Preference Toggle -->
+            <div class="flex items-center gap-2 text-sm text-slate-600">
+              <select x-model="preference" @change="updatePreference" class="text-xs border border-slate-300 rounded px-2 py-1">
+                <option value="always">Always show summary</option>
+                <option value="ask">Ask me each time</option>
+                <option value="never">Don't show again</option>
+              </select>
+            </div>
+            <button @click="dismissSummary" 
+                    class="px-4 py-2 bg-indigo-600 text-white rounded-lg font-medium hover:bg-indigo-700 transition">
+              Got it!
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </template>
+  
+  <!-- Ask Prompt (when preference is "ask") -->
+  <template x-if="showAskPrompt && !showWhatChanged">
+    <div class="bg-gradient-to-r from-indigo-500 to-purple-500 rounded-xl p-4 text-white flex items-center justify-between">
+      <div class="flex items-center gap-3">
+        <div class="w-10 h-10 bg-white/20 rounded-full flex items-center justify-center">
+          <i class="fas fa-robot text-xl"></i>
+        </div>
+        <div>
+          <p class="font-medium">Welcome back! You were away for <span x-text="timeAwayDisplay"></span>.</p>
+          <p class="text-indigo-200 text-sm" x-text="totalChanges + ' things happened while you were away.'"></p>
+        </div>
+      </div>
+      <div class="flex items-center gap-2">
+        <button @click="showWhatChanged = true" class="px-4 py-2 bg-white text-indigo-600 rounded-lg font-medium hover:bg-indigo-50 transition">
+          Show Summary
+        </button>
+        <button @click="dismissPrompt" class="px-4 py-2 bg-white/20 text-white rounded-lg font-medium hover:bg-white/30 transition">
+          Dismiss
+        </button>
+      </div>
+    </div>
+  </template>
+
   <!-- Welcome Header -->
   <div class="bg-gradient-to-r from-slate-900 to-slate-800 rounded-xl p-6 text-white">
     <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
@@ -826,6 +950,109 @@
   modal?.addEventListener('click', (e) => {
     if (e.target === modal) modal.close();
   });
+  
+  // What Changed While You Were Away - AI Assistant
+  function whatChangedAssistant() {
+    return {
+      showWhatChanged: false,
+      showAskPrompt: false,
+      loading: true,
+      timeAwayDisplay: '',
+      totalChanges: 0,
+      summary: '',
+      preference: 'ask',
+      newTasksAssigned: [],
+      completedTasks: [],
+      taskUpdates: [],
+      newTickets: [],
+      ticketUpdates: [],
+      meetingsScheduled: [],
+      
+      init() {
+        // Check what changed when page loads
+        this.checkWhatChanged();
+        
+        // Update last seen when user leaves the page
+        window.addEventListener('beforeunload', () => {
+          navigator.sendBeacon('/web/dashboard/update-last-seen');
+        });
+        
+        // Also update periodically while active
+        setInterval(() => {
+          fetch('/web/dashboard/update-last-seen', { method: 'POST' });
+        }, 5 * 60 * 1000); // Every 5 minutes
+      },
+      
+      async checkWhatChanged() {
+        try {
+          const response = await fetch('/web/dashboard/what-changed');
+          const data = await response.json();
+          
+          if (!data.show_summary) {
+            this.loading = false;
+            return;
+          }
+          
+          this.timeAwayDisplay = data.time_away_display || '';
+          this.totalChanges = data.total_changes || 0;
+          this.summary = data.summary || '';
+          this.preference = data.preference || 'ask';
+          this.newTasksAssigned = data.new_tasks_assigned || [];
+          this.completedTasks = data.completed_tasks || [];
+          this.taskUpdates = data.task_updates || [];
+          this.newTickets = data.new_tickets || [];
+          this.ticketUpdates = data.ticket_updates || [];
+          this.meetingsScheduled = data.meetings_scheduled || [];
+          
+          // Decide whether to show based on preference
+          if (this.preference === 'always') {
+            this.showWhatChanged = true;
+          } else if (this.preference === 'ask') {
+            this.showAskPrompt = true;
+          }
+          // If 'never', don't show anything
+          
+          this.loading = false;
+        } catch (error) {
+          console.error('Error checking what changed:', error);
+          this.loading = false;
+        }
+      },
+      
+      dismissSummary() {
+        this.showWhatChanged = false;
+        this.showAskPrompt = false;
+        // Update last seen to current time
+        fetch('/web/dashboard/update-last-seen', { method: 'POST' });
+      },
+      
+      dismissPrompt() {
+        this.showAskPrompt = false;
+        fetch('/web/dashboard/update-last-seen', { method: 'POST' });
+      },
+      
+      async updatePreference() {
+        try {
+          await fetch('/web/dashboard/away-preference', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ preference: this.preference })
+          });
+        } catch (error) {
+          console.error('Error updating preference:', error);
+        }
+      },
+      
+      formatMarkdown(text) {
+        // Simple markdown formatting
+        if (!text) return '';
+        return text
+          .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+          .replace(/\n\n/g, '<br><br>')
+          .replace(/\n/g, '<br>');
+      }
+    }
+  }
   
   function quickTaskSuggestions() {
     return {

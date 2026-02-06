@@ -57,6 +57,9 @@ class User(UserBase, table=True):
     google_access_token: Optional[str] = None
     google_refresh_token: Optional[str] = None
     google_token_expiry: Optional[datetime] = None
+    # Activity tracking for "What Changed" feature
+    last_seen_at: Optional[datetime] = None  # Last time user was active
+    away_summary_preference: str = Field(default="ask")  # "always", "ask", or "never"
 
 
 class UserCreate(SQLModel):
@@ -81,3 +84,4 @@ class UserUpdate(SQLModel):
     profile_completed: Optional[bool] = None
     profile_picture: Optional[str] = None
     calendar_color: Optional[str] = None
+    away_summary_preference: Optional[str] = None  # "always", "ask", or "never"

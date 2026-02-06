@@ -1142,6 +1142,315 @@ async def web_dashboard_quick_task(
 
 
 # --------------------------
+# What Changed While You Were Away - AI Summary Feature
+# --------------------------
+@router.get('/dashboard/what-changed')
+async def get_what_changed(request: Request, db: AsyncSession = Depends(get_session)):
+    """Get summary of changes since user's last visit"""
+    user_id = request.session.get('user_id')
+    if not user_id:
+        return JSONResponse({'error': 'Not authenticated'}, status_code=401)
+    
+    user = (await db.execute(select(User).where(User.id == user_id))).scalar_one_or_none()
+    if not user:
+        return JSONResponse({'error': 'User not found'}, status_code=404)
+    
+    from app.models.ticket import Ticket
+    from app.models.task_history import TaskHistory
+    from app.models.project_member import ProjectMember
+    from datetime import timedelta
+    
+    # Determine the time range to check
+    now = datetime.utcnow()
+    last_seen = user.last_seen_at or (now - timedelta(hours=24))  # Default to 24 hours if never tracked
+    time_away = now - last_seen
+    
+    # Only show if away for more than 30 minutes
+    if time_away < timedelta(minutes=30):
+        return JSONResponse({
+            'show_summary': False,
+            'reason': 'Not away long enough',
+            'minutes_away': int(time_away.total_seconds() / 60)
+        })
+    
+    # Get user's projects
+    if user.is_admin:
+        projects_result = await db.execute(
+            select(Project.id)
+            .where(Project.workspace_id == user.workspace_id, Project.is_archived == False)
+        )
+        project_ids = [r[0] for r in projects_result.fetchall()]
+    else:
+        member_result = await db.execute(
+            select(ProjectMember.project_id)
+            .where(ProjectMember.user_id == user_id)
+        )
+        project_ids = [r[0] for r in member_result.fetchall()]
+    
+    changes = {
+        'time_away_hours': round(time_away.total_seconds() / 3600, 1),
+        'time_away_display': format_time_away(time_away),
+        'last_seen': last_seen.isoformat() if last_seen else None,
+        'preference': user.away_summary_preference or 'ask',
+        'new_tasks_assigned': [],
+        'task_updates': [],
+        'new_tickets': [],
+        'ticket_updates': [],
+        'completed_tasks': [],
+        'meetings_scheduled': [],
+        'summary': ''
+    }
+    
+    # 1. New tasks assigned to user since last seen
+    new_tasks_result = await db.execute(
+        select(Task, Project.name.label('project_name'), User.full_name.label('creator_name'))
+        .join(Project, Task.project_id == Project.id)
+        .join(Assignment, Task.id == Assignment.task_id)
+        .join(User, Task.creator_id == User.id)
+        .where(
+            Assignment.assignee_id == user_id,
+            Task.created_at > last_seen,
+            Task.creator_id != user_id  # Not self-assigned
+        )
+        .order_by(Task.created_at.desc())
+    )
+    for task, project_name, creator_name in new_tasks_result.fetchall():
+        changes['new_tasks_assigned'].append({
+            'id': task.id,
+            'title': task.title,
+            'project': project_name,
+            'creator': creator_name or 'Unknown',
+            'priority': task.priority.value if hasattr(task.priority, 'value') else str(task.priority),
+            'due_date': task.due_date.isoformat() if task.due_date else None
+        })
+    
+    # 2. Updates on tasks assigned to user or created by user
+    my_task_ids_result = await db.execute(
+        select(Task.id)
+        .join(Assignment, Task.id == Assignment.task_id, isouter=True)
+        .where(
+            or_(Assignment.assignee_id == user_id, Task.creator_id == user_id)
+        )
+    )
+    my_task_ids = [r[0] for r in my_task_ids_result.fetchall()]
+    
+    if my_task_ids:
+        task_updates_result = await db.execute(
+            select(TaskHistory, Task.title.label('task_title'), User.full_name.label('editor_name'))
+            .join(Task, TaskHistory.task_id == Task.id)
+            .join(User, TaskHistory.editor_id == User.id)
+            .where(
+                TaskHistory.task_id.in_(my_task_ids),
+                TaskHistory.created_at > last_seen,
+                TaskHistory.editor_id != user_id  # Changes by others
+            )
+            .order_by(TaskHistory.created_at.desc())
+            .limit(20)
+        )
+        for history, task_title, editor_name in task_updates_result.fetchall():
+            if history.field == 'status' and history.new_value == 'done':
+                changes['completed_tasks'].append({
+                    'task_id': history.task_id,
+                    'title': task_title,
+                    'completed_by': editor_name or 'Unknown'
+                })
+            else:
+                changes['task_updates'].append({
+                    'task_id': history.task_id,
+                    'title': task_title,
+                    'field': history.field,
+                    'new_value': history.new_value,
+                    'editor': editor_name or 'Unknown'
+                })
+    
+    # 3. New tickets in workspace (for admins/agents)
+    if user.is_admin or user.can_see_all_tickets:
+        new_tickets_result = await db.execute(
+            select(Ticket)
+            .where(
+                Ticket.workspace_id == user.workspace_id,
+                Ticket.created_at > last_seen
+            )
+            .order_by(Ticket.created_at.desc())
+            .limit(10)
+        )
+        for ticket in new_tickets_result.scalars().all():
+            changes['new_tickets'].append({
+                'id': ticket.id,
+                'subject': ticket.subject,
+                'priority': ticket.priority,
+                'status': ticket.status
+            })
+    
+    # 4. Ticket updates on assigned tickets
+    assigned_tickets_result = await db.execute(
+        select(Ticket)
+        .where(
+            Ticket.assigned_to_id == user_id,
+            Ticket.updated_at > last_seen,
+            Ticket.updated_at != Ticket.created_at  # Actually updated, not just created
+        )
+    )
+    for ticket in assigned_tickets_result.scalars().all():
+        changes['ticket_updates'].append({
+            'id': ticket.id,
+            'subject': ticket.subject,
+            'status': ticket.status
+        })
+    
+    # 5. Meetings scheduled during absence
+    meetings_result = await db.execute(
+        select(Meeting)
+        .join(MeetingAttendee, Meeting.id == MeetingAttendee.meeting_id)
+        .where(
+            MeetingAttendee.user_id == user_id,
+            Meeting.created_at > last_seen,
+            Meeting.is_cancelled == False
+        )
+        .order_by(Meeting.date, Meeting.start_time)
+    )
+    for meeting in meetings_result.scalars().all():
+        changes['meetings_scheduled'].append({
+            'id': meeting.id,
+            'title': meeting.title,
+            'date': meeting.date.isoformat() if meeting.date else None,
+            'time': meeting.start_time.strftime('%H:%M') if meeting.start_time else None
+        })
+    
+    # Generate AI-like summary
+    changes['summary'] = generate_away_summary(changes)
+    
+    # Determine if we should show the summary
+    total_changes = (
+        len(changes['new_tasks_assigned']) + 
+        len(changes['task_updates']) + 
+        len(changes['new_tickets']) + 
+        len(changes['completed_tasks']) +
+        len(changes['meetings_scheduled'])
+    )
+    
+    changes['show_summary'] = total_changes > 0
+    changes['total_changes'] = total_changes
+    
+    return JSONResponse(changes)
+
+
+@router.post('/dashboard/update-last-seen')
+async def update_last_seen(request: Request, db: AsyncSession = Depends(get_session)):
+    """Update user's last seen timestamp"""
+    user_id = request.session.get('user_id')
+    if not user_id:
+        return JSONResponse({'error': 'Not authenticated'}, status_code=401)
+    
+    user = (await db.execute(select(User).where(User.id == user_id))).scalar_one_or_none()
+    if user:
+        user.last_seen_at = datetime.utcnow()
+        await db.commit()
+    
+    return JSONResponse({'success': True})
+
+
+@router.post('/dashboard/away-preference')
+async def update_away_preference(request: Request, db: AsyncSession = Depends(get_session)):
+    """Update user's preference for away summary"""
+    user_id = request.session.get('user_id')
+    if not user_id:
+        return JSONResponse({'error': 'Not authenticated'}, status_code=401)
+    
+    data = await request.json()
+    preference = data.get('preference', 'ask')
+    
+    if preference not in ['always', 'ask', 'never']:
+        return JSONResponse({'error': 'Invalid preference'}, status_code=400)
+    
+    user = (await db.execute(select(User).where(User.id == user_id))).scalar_one_or_none()
+    if user:
+        user.away_summary_preference = preference
+        await db.commit()
+    
+    return JSONResponse({'success': True, 'preference': preference})
+
+
+def format_time_away(delta: timedelta) -> str:
+    """Format time away into human-readable string"""
+    total_seconds = int(delta.total_seconds())
+    hours = total_seconds // 3600
+    minutes = (total_seconds % 3600) // 60
+    
+    if hours >= 24:
+        days = hours // 24
+        remaining_hours = hours % 24
+        if days == 1:
+            return f"1 day and {remaining_hours} hours" if remaining_hours else "1 day"
+        return f"{days} days and {remaining_hours} hours" if remaining_hours else f"{days} days"
+    elif hours > 0:
+        if hours == 1:
+            return f"1 hour and {minutes} minutes" if minutes else "1 hour"
+        return f"{hours} hours and {minutes} minutes" if minutes else f"{hours} hours"
+    else:
+        return f"{minutes} minutes"
+
+
+def generate_away_summary(changes: dict) -> str:
+    """Generate a friendly AI-style summary of changes"""
+    parts = []
+    
+    time_away = changes.get('time_away_display', 'a while')
+    
+    # New tasks assigned
+    new_tasks = len(changes.get('new_tasks_assigned', []))
+    if new_tasks > 0:
+        if new_tasks == 1:
+            task = changes['new_tasks_assigned'][0]
+            parts.append(f"📋 **{task['creator']}** assigned you a new task: \"{task['title']}\"")
+        else:
+            parts.append(f"📋 You have **{new_tasks} new tasks** assigned to you")
+    
+    # Completed tasks
+    completed = len(changes.get('completed_tasks', []))
+    if completed > 0:
+        if completed == 1:
+            task = changes['completed_tasks'][0]
+            parts.append(f"✅ **{task['completed_by']}** completed the task: \"{task['title']}\"")
+        else:
+            parts.append(f"✅ **{completed} tasks** were completed by your team")
+    
+    # Task updates
+    updates = len(changes.get('task_updates', []))
+    if updates > 0:
+        parts.append(f"📝 **{updates} updates** were made on tasks you're involved with")
+    
+    # New tickets
+    tickets = len(changes.get('new_tickets', []))
+    if tickets > 0:
+        if tickets == 1:
+            ticket = changes['new_tickets'][0]
+            parts.append(f"🎫 **1 new ticket**: \"{ticket['subject']}\" ({ticket['priority']} priority)")
+        else:
+            parts.append(f"🎫 **{tickets} new tickets** were created")
+    
+    # Ticket updates
+    ticket_updates = len(changes.get('ticket_updates', []))
+    if ticket_updates > 0:
+        parts.append(f"🔄 **{ticket_updates} tickets** assigned to you were updated")
+    
+    # Meetings
+    meetings = len(changes.get('meetings_scheduled', []))
+    if meetings > 0:
+        if meetings == 1:
+            meeting = changes['meetings_scheduled'][0]
+            parts.append(f"📅 **1 meeting** was scheduled: \"{meeting['title']}\"")
+        else:
+            parts.append(f"📅 **{meetings} meetings** were scheduled for you")
+    
+    if not parts:
+        return f"🎉 All caught up! Nothing significant happened while you were away."
+    
+    intro = f"Welcome back! Here's what happened in the last **{time_away}**:\n\n"
+    return intro + "\n\n".join(parts)
+
+
+# --------------------------
 # Email Verification (kept for later, not enforced)
 # --------------------------
 @router.get('/verify-email', response_class=HTMLResponse)
