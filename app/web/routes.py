@@ -9287,6 +9287,14 @@ async def web_tickets_guest_form(request: Request):
     })
 
 
+@router.get('/tickets/bubbles', response_class=HTMLResponse)
+async def web_tickets_bubbles_chat(request: Request):
+    """Bubbles AI Assistant chat page (no login required)"""
+    return templates.TemplateResponse('tickets/bubbles.html', {
+        'request': request
+    })
+
+
 @router.post('/tickets/guest')
 async def web_tickets_guest_submit(
     request: Request,
