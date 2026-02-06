@@ -24,10 +24,10 @@
             <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
                 <button onclick="showForm('assistant')" id="btn-assistant"
                         class="p-6 bg-gradient-to-r from-purple-500 to-purple-600 text-white rounded-xl shadow-lg hover:from-purple-600 hover:to-purple-700 hover:shadow-xl transition-all duration-200 flex flex-col items-center gap-3">
-                    <i class="fas fa-robot text-4xl"></i>
+                    <span class="text-4xl">🫧</span>
                     <div>
-                        <div class="font-semibold text-lg">Get Help First</div>
-                        <div class="text-sm text-purple-100">Try our AI assistant</div>
+                        <div class="font-semibold text-lg">Chat with Bubbles</div>
+                        <div class="text-sm text-purple-100">Our friendly AI assistant</div>
                     </div>
                 </button>
                 
@@ -102,33 +102,50 @@
             <div id="assistant-form" class="bg-white rounded-xl shadow-xl overflow-hidden mb-6 border border-slate-200">
                 <div class="p-8">
                     <h2 class="text-2xl font-semibold text-gray-900 mb-4 flex items-center">
-                        <i class="fas fa-robot text-purple-600 mr-3"></i>
-                        Support Assistant
+                        <span class="text-2xl mr-2">🫧</span>
+                        Bubbles - Support Assistant
                     </h2>
-                    <p class="text-gray-600 mb-6">Describe your problem and I'll search our knowledge base and the web to find solutions for you.</p>
+                    <p class="text-gray-600 mb-6">Chat with Bubbles! Describe your problem and I'll search our knowledge base and the web to find solutions for you.</p>
                     
                     <!-- Chat Container -->
                     <div id="chat-container" class="border border-gray-200 rounded-xl bg-gray-50 mb-4 h-80 overflow-y-auto p-4">
                         <div id="chat-messages">
                             <!-- Welcome message -->
                             <div class="flex items-start gap-3 mb-4">
-                                <div class="w-8 h-8 rounded-full bg-purple-500 flex items-center justify-center flex-shrink-0">
-                                    <i class="fas fa-robot text-white text-sm"></i>
+                                <div class="w-8 h-8 rounded-full bg-gradient-to-br from-purple-400 to-pink-400 flex items-center justify-center flex-shrink-0">
+                                    <span class="text-white text-sm">🫧</span>
                                 </div>
                                 <div class="bg-white rounded-xl p-4 shadow-sm max-w-lg">
-                                    <p class="text-gray-700">👋 Hi! I'm your support assistant. Tell me about the issue you're experiencing and I'll try to help you find a solution.</p>
+                                    <p class="text-gray-700">👋 Hi there! I'm <strong>Bubbles</strong>, your friendly support assistant! Tell me about the issue you're experiencing and I'll try to help you find a solution.</p>
                                     <p class="text-gray-500 text-sm mt-2">For example: "My printer won't connect to wifi" or "I can't login to my account"</p>
+                                    <p class="text-gray-400 text-xs mt-2">💡 Tip: You can also send a photo of an error message!</p>
                                 </div>
                             </div>
                         </div>
                     </div>
                     
+                    <!-- Hidden image inputs for chat OCR -->
+                    <input type="file" id="chat-image-input" accept="image/*" class="hidden" onchange="handleChatImage(this)">
+                    <input type="file" id="chat-camera-input" accept="image/*" capture="environment" class="hidden" onchange="handleChatImage(this)">
+                    
                     <!-- Chat Input -->
                     <div class="flex gap-2">
                         <input type="text" id="chat-input" 
                                class="flex-1 px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500"
-                               placeholder="Describe your problem here..."
+                               placeholder="Say hi or describe your problem..."
                                onkeypress="if(event.key === 'Enter') sendMessage()">
+                        <!-- Upload image button -->
+                        <button type="button" onclick="document.getElementById('chat-image-input').click()" 
+                                class="px-4 py-3 bg-gray-100 text-gray-600 rounded-xl hover:bg-gray-200 transition-all duration-200"
+                                title="Upload a screenshot">
+                            <i class="fas fa-image"></i>
+                        </button>
+                        <!-- Camera button (mobile only, shown via JS when camera available) -->
+                        <button type="button" id="chat-camera-btn" onclick="document.getElementById('chat-camera-input').click()" 
+                                class="hidden px-4 py-3 bg-green-100 text-green-600 rounded-xl hover:bg-green-200 transition-all duration-200"
+                                title="Take a photo">
+                            <i class="fas fa-camera"></i>
+                        </button>
                         <button onclick="sendMessage()" id="send-btn"
                                 class="px-6 py-3 bg-gradient-to-r from-purple-500 to-purple-600 text-white font-semibold rounded-xl hover:from-purple-600 hover:to-purple-700 shadow-md hover:shadow-lg transition-all flex items-center gap-2">
                             <i class="fas fa-paper-plane"></i>
@@ -392,8 +409,8 @@
                                     </label>
                                 </div>
                                 
-                                <!-- Camera Capture (Mobile) -->
-                                <div class="border-2 border-dashed border-green-300 rounded-xl p-4 hover:border-green-400 transition-colors bg-green-50">
+                                <!-- Camera Capture (Mobile only - hidden by default, shown by JS if camera detected) -->
+                                <div id="camera-capture-option" class="hidden border-2 border-dashed border-green-300 rounded-xl p-4 hover:border-green-400 transition-colors bg-green-50">
                                     <label class="cursor-pointer flex flex-col items-center gap-2">
                                         <i class="fas fa-camera text-3xl text-green-500"></i>
                                         <span class="text-sm font-medium text-green-700">Take Photo</span>
@@ -403,6 +420,10 @@
                                     </label>
                                 </div>
                             </div>
+
+                            <!-- Image input for AI chat (hidden, used for OCR) -->
+                            <input type="file" id="chat-image-input" accept="image/*" class="hidden" onchange="handleChatImage(this)">
+                            <input type="file" id="chat-camera-input" accept="image/*" capture="environment" class="hidden" onchange="handleChatImage(this)">
                             
                             <!-- File Preview Area -->
                             <div id="file-preview" class="hidden bg-gray-50 rounded-xl p-3 mb-3">
@@ -489,7 +510,7 @@
             
             const avatar = isUser 
                 ? '<div class="w-8 h-8 rounded-full bg-blue-500 flex items-center justify-center flex-shrink-0"><i class="fas fa-user text-white text-sm"></i></div>'
-                : '<div class="w-8 h-8 rounded-full bg-purple-500 flex items-center justify-center flex-shrink-0"><i class="fas fa-robot text-white text-sm"></i></div>';
+                : '<div class="w-8 h-8 rounded-full bg-gradient-to-br from-purple-400 to-pink-400 flex items-center justify-center flex-shrink-0"><span class="text-white text-sm">🫧</span></div>';
             
             const bubbleClass = isUser ? 'bg-blue-500 text-white' : 'bg-white';
             
@@ -516,8 +537,8 @@
             const title = solution.title || 'Suggested Solution';
             
             msgDiv.innerHTML = `
-                <div class="w-8 h-8 rounded-full bg-purple-500 flex items-center justify-center flex-shrink-0">
-                    <i class="fas fa-robot text-white text-sm"></i>
+                <div class="w-8 h-8 rounded-full bg-gradient-to-br from-purple-400 to-pink-400 flex items-center justify-center flex-shrink-0">
+                    <span class="text-white text-sm">🫧</span>
                 </div>
                 <div class="bg-gradient-to-br from-purple-50 to-white rounded-xl p-4 shadow-sm border border-purple-200 max-w-lg">
                     <div class="text-xs text-purple-600 mb-2">${source} ${successRate}</div>
@@ -551,11 +572,12 @@
             typing.id = 'typing-indicator';
             typing.className = 'flex items-start gap-3 mb-4';
             typing.innerHTML = `
-                <div class="w-8 h-8 rounded-full bg-purple-500 flex items-center justify-center flex-shrink-0">
-                    <i class="fas fa-robot text-white text-sm"></i>
+                <div class="w-8 h-8 rounded-full bg-gradient-to-br from-purple-400 to-pink-400 flex items-center justify-center flex-shrink-0">
+                    <span class="text-white text-sm">🫧</span>
                 </div>
                 <div class="bg-white rounded-xl p-4 shadow-sm">
-                    <div class="flex gap-1">
+                    <div class="flex gap-1 items-center">
+                        <span class="text-xs text-gray-400 mr-2">Bubbles is typing</span>
                         <span class="w-2 h-2 bg-purple-400 rounded-full animate-bounce" style="animation-delay: 0ms"></span>
                         <span class="w-2 h-2 bg-purple-400 rounded-full animate-bounce" style="animation-delay: 150ms"></span>
                         <span class="w-2 h-2 bg-purple-400 rounded-full animate-bounce" style="animation-delay: 300ms"></span>
@@ -611,8 +633,17 @@
                     return;
                 }
                 
+                // Check if this is a conversational response
+                if (data.is_conversational && data.bubbles_response) {
+                    // Format the response with markdown-like formatting
+                    let formattedResponse = data.bubbles_response
+                        .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+                        .replace(/\n\n/g, '</p><p class="text-gray-700 mt-2">')
+                        .replace(/\n/g, '<br>');
+                    addMessage(`<p class="text-gray-700">${formattedResponse}</p>`);
+                }
                 // Check if we found solutions
-                if (data.found_in_kb && data.kb_articles.length > 0) {
+                else if (data.found_in_kb && data.kb_articles.length > 0) {
                     addMessage(`<p class="text-gray-700">I found <strong>${data.kb_articles.length}</strong> solution(s) in our knowledge base that might help:</p>`);
                     
                     data.kb_articles.forEach(article => {
@@ -626,7 +657,7 @@
                     });
                 } else {
                     addMessage(`
-                        <p class="text-gray-700 mb-3">I couldn't find specific solutions for this issue. Would you like to create a support ticket?</p>
+                        <p class="text-gray-700 mb-3">Hmm, I couldn't find specific solutions for this issue. Would you like to create a support ticket so our human team can help?</p>
                         <button onclick="showForm('submit')" class="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors">
                             <i class="fas fa-ticket-alt mr-2"></i>Create Support Ticket
                         </button>
@@ -770,9 +801,127 @@
             preview.classList.toggle('hidden', !hasFiles);
         }
         
-        // Show assistant form by default
+        // Detect camera availability and show/hide camera buttons
+        async function detectCamera() {
+            // Check if we're on a mobile device first
+            const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+            
+            const cameraBtn = document.getElementById('chat-camera-btn');
+            const cameraOption = document.getElementById('camera-capture-option');
+            
+            if (!isMobile) {
+                // Desktop - hide all camera options
+                if (cameraBtn) cameraBtn.classList.add('hidden');
+                if (cameraOption) cameraOption.classList.add('hidden');
+                return;
+            }
+            
+            // Mobile - check for camera
+            try {
+                if (navigator.mediaDevices && navigator.mediaDevices.enumerateDevices) {
+                    const devices = await navigator.mediaDevices.enumerateDevices();
+                    const hasCamera = devices.some(device => device.kind === 'videoinput');
+                    
+                    if (hasCamera) {
+                        // Show camera buttons on mobile with camera
+                        if (cameraBtn) cameraBtn.classList.remove('hidden');
+                        if (cameraOption) cameraOption.classList.remove('hidden');
+                    } else {
+                        // No camera detected
+                        if (cameraBtn) cameraBtn.classList.add('hidden');
+                        if (cameraOption) cameraOption.classList.add('hidden');
+                    }
+                } else {
+                    // Fallback for mobile - assume camera exists
+                    if (cameraBtn) cameraBtn.classList.remove('hidden');
+                    if (cameraOption) cameraOption.classList.remove('hidden');
+                }
+            } catch (err) {
+                console.log('Camera detection not supported:', err);
+                // Fallback: show camera option on mobile (most mobiles have cameras)
+                if (cameraBtn) cameraBtn.classList.remove('hidden');
+                if (cameraOption) cameraOption.classList.remove('hidden');
+            }
+        }
+        
+        // Handle image upload for AI chat (OCR)
+        async function handleChatImage(input) {
+            if (!input.files || !input.files[0]) return;
+            
+            const file = input.files[0];
+            const maxSize = 5 * 1024 * 1024; // 5MB limit
+            
+            if (file.size > maxSize) {
+                addMessage('<p class="text-red-600"><i class="fas fa-exclamation-circle mr-2"></i>Image is too large. Please use an image under 5MB.</p>');
+                input.value = '';
+                return;
+            }
+            
+            // Show image preview in chat
+            const reader = new FileReader();
+            reader.onload = async function(e) {
+                const imagePreview = `
+                    <div>
+                        <p class="text-white mb-2"><i class="fas fa-image mr-2"></i>Analyzing image...</p>
+                        <img src="${e.target.result}" class="max-w-xs rounded-lg shadow-sm" alt="Uploaded image">
+                    </div>
+                `;
+                addMessage(imagePreview, true);
+                
+                // Show typing indicator
+                addTypingIndicator();
+                
+                // Send image for OCR analysis
+                try {
+                    const formData = new FormData();
+                    formData.append('image', file);
+                    formData.append('session_id', sessionId || '');
+                    
+                    const response = await fetch('/web/tickets/support/analyze-image', {
+                        method: 'POST',
+                        body: formData
+                    });
+                    
+                    const data = await response.json();
+                    sessionId = data.session_id;
+                    
+                    removeTypingIndicator();
+                    
+                    if (data.error) {
+                        addMessage(`<p class="text-gray-700"><i class="fas fa-info-circle text-yellow-500 mr-2"></i>${data.error}</p>`);
+                    } else if (data.bubbles_response) {
+                        let formattedResponse = data.bubbles_response
+                            .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+                            .replace(/\n\n/g, '</p><p class="text-gray-700 mt-2">')
+                            .replace(/\n/g, '<br>');
+                        addMessage(`<p class="text-gray-700">${formattedResponse}</p>`);
+                        
+                        // Show solutions if found
+                        if (data.kb_articles && data.kb_articles.length > 0) {
+                            data.kb_articles.forEach(article => {
+                                addSolutionCard(article, true);
+                            });
+                        } else if (data.web_results && data.web_results.length > 0) {
+                            data.web_results.forEach(result => {
+                                addSolutionCard(result, false);
+                            });
+                        }
+                    }
+                } catch (error) {
+                    removeTypingIndicator();
+                    addMessage('<p class="text-gray-700"><i class="fas fa-exclamation-circle text-yellow-500 mr-2"></i>I couldn\'t analyze that image. Please try describing your issue in text.</p>');
+                }
+            };
+            reader.readAsDataURL(file);
+            
+            // Reset the input
+            input.value = '';
+        }
+        
+        // Show assistant form by default and detect camera
         document.addEventListener('DOMContentLoaded', function() {
             showForm('assistant');
+            detectCamera();
         });
     </script>
 </body>

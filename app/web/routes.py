@@ -9232,12 +9232,112 @@ async def extract_solution_steps(search_results: list) -> list:
     return steps
 
 
+async def handle_conversational_message(message_lower: str, db: AsyncSession) -> str:
+    """Handle greetings and conversational messages for Bubbles the AI Assistant"""
+    import random
+    
+    # Greetings
+    greetings = ['hi', 'hello', 'hey', 'good morning', 'good afternoon', 'good evening', 'howdy', 'greetings', 'yo', 'sup', 'hiya']
+    if any(message_lower.strip() == greet or message_lower.startswith(greet + ' ') or message_lower.startswith(greet + ',') for greet in greetings):
+        responses = [
+            "Hi there! 👋 I'm Bubbles, your friendly support assistant! How can I help you today?",
+            "Hello! 😊 I'm Bubbles! What can I help you with today?",
+            "Hey there! 👋 Bubbles here, ready to assist! What's on your mind?",
+            "Hi! I'm Bubbles, your support buddy! 🫧 How can I make your day better?",
+        ]
+        return random.choice(responses)
+    
+    # Name questions
+    name_questions = ['what is your name', 'what\'s your name', 'who are you', 'whats your name', 'your name']
+    if any(q in message_lower for q in name_questions):
+        return "I'm Bubbles! 🫧 Your friendly AI support assistant. I'm here to help you troubleshoot issues and find solutions. Nice to meet you!"
+    
+    # How are you / wellbeing questions
+    wellbeing_questions = ['how are you', 'how r u', 'how do you do', 'how\'s it going', 'hows it going', 'how are things', 'you doing', 'are you okay', 'you alright', 'wassup', 'what\'s up', 'whats up']
+    if any(q in message_lower for q in wellbeing_questions):
+        responses = [
+            "I'm doing great, thanks for asking! 😊 I'm Bubbles, always bubbly and ready to help! What can I assist you with?",
+            "I'm fantastic! 🫧 Ready to pop some problems and find solutions for you! How can I help?",
+            "All good here! I'm Bubbles and I'm here to help. What's troubling you today?",
+            "I'm wonderful, thank you! 💫 Now, let's focus on you - what can Bubbles help you with today?",
+        ]
+        return random.choice(responses)
+    
+    # Thank you responses
+    thanks = ['thank you', 'thanks', 'thx', 'ty', 'cheers', 'appreciate it', 'thank u']
+    if any(t in message_lower for t in thanks):
+        responses = [
+            "You're welcome! 😊 Is there anything else Bubbles can help you with?",
+            "Happy to help! 🫧 Let me know if you need anything else!",
+            "Anytime! That's what I'm here for! 💫 Anything else on your mind?",
+            "My pleasure! 🌟 Don't hesitate to ask if you have more questions!",
+        ]
+        return random.choice(responses)
+    
+    # Goodbye responses
+    goodbyes = ['bye', 'goodbye', 'see you', 'later', 'take care', 'gtg', 'gotta go', 'cya']
+    if any(g in message_lower for g in goodbyes):
+        responses = [
+            "Goodbye! 👋 Take care and don't hesitate to come back if you need help! - Bubbles 🫧",
+            "See you later! 😊 Hope I was helpful. Come back anytime! - Bubbles",
+            "Bye for now! 🌟 Remember, Bubbles is always here when you need support!",
+            "Take care! 👋 Wishing you a great day ahead! - Your friend Bubbles 🫧",
+        ]
+        return random.choice(responses)
+    
+    # Request to speak to human/real person/agent
+    human_requests = ['speak to a human', 'talk to a human', 'real person', 'speak to someone', 'talk to someone', 
+                      'human agent', 'live agent', 'real agent', 'speak to agent', 'talk to agent',
+                      'speak to support', 'talk to support', 'customer service', 'tech support person',
+                      'actual person', 'live person', 'human help', 'need a person', 'want to talk to someone',
+                      'speak with someone', 'connect me to', 'transfer me', 'escalate']
+    if any(h in message_lower for h in human_requests):
+        # Get support email from workspace settings
+        support_email = "support@company.com"  # Default
+        try:
+            from app.models.email_settings import EmailSettings
+            settings_result = await db.execute(
+                select(EmailSettings).where(EmailSettings.workspace_id == 1)
+            )
+            email_settings = settings_result.scalar_one_or_none()
+            if email_settings and email_settings.smtp_from_email:
+                support_email = email_settings.smtp_from_email
+        except:
+            pass
+        
+        return f"""I understand you'd like to speak with a human support agent! 👨‍💻 No problem at all!
+
+Here are your options:
+
+📧 **Email Support:** Send an email to **{support_email}** and our team will respond as soon as possible.
+
+🎫 **Submit a Ticket:** Click the "Submit a Ticket" button above to create a detailed support request. Our tech team will review it and get back to you.
+
+I'm Bubbles, and while I try my best to help, I know sometimes you need that human touch! 💫 Our support team is awesome and they'll take great care of you!"""
+    
+    # Help / what can you do
+    help_questions = ['help', 'what can you do', 'how does this work', 'what do you do', 'how can you help', 'your purpose', 'what are you']
+    if any(h in message_lower for h in help_questions):
+        return """Hi! I'm Bubbles! 🫧 Here's what I can do for you:
+
+🔍 **Troubleshoot Issues:** Describe your problem and I'll search our knowledge base and the web for solutions!
+
+💡 **Answer Questions:** Ask me about common technical issues and I'll try to help.
+
+🎫 **Guide You to Support:** If I can't solve your problem, I'll help you submit a ticket to our human support team.
+
+Just type your question or describe your issue, and let's get started! 💫"""
+    
+    # Not a conversational message - return None to proceed with technical support
+    return None
+
+
 @router.post('/tickets/support/chat', response_class=JSONResponse)
 async def support_assistant_chat(
     request: Request,
     db: AsyncSession = Depends(get_session)
 ):
-    """Main support assistant chat endpoint"""
+    """Main support assistant chat endpoint - Bubbles the AI Assistant"""
     try:
         data = await request.json()
         message = data.get('message', '').strip()
@@ -9246,7 +9346,35 @@ async def support_assistant_chat(
         if not message:
             return JSONResponse({'error': 'Message is required'}, status_code=400)
         
-        # Get or create conversation
+        message_lower = message.lower()
+        
+        # Check for conversational messages first
+        conversational_response = await handle_conversational_message(message_lower, db)
+        if conversational_response:
+            return JSONResponse({
+                'session_id': session_id,
+                'is_conversational': True,
+                'bubbles_response': conversational_response,
+                'found_in_kb': False,
+                'kb_articles': [],
+                'web_results': [],
+                'suggestions': []
+            })
+        
+        # Check for pre-trained basic support responses (Bubbles is for basic support only)
+        pretrained = get_pretrained_response(message_lower)
+        if pretrained:
+            return JSONResponse({
+                'session_id': session_id,
+                'is_conversational': True,
+                'bubbles_response': pretrained['response'],
+                'found_in_kb': False,
+                'kb_articles': [],
+                'web_results': [],
+                'suggestions': []
+            })
+        
+        # Get or create conversation (use workspace_id=1 for guest/public chat)
         result = await db.execute(
             select(SupportConversation).where(SupportConversation.session_id == session_id)
         )
@@ -9254,19 +9382,16 @@ async def support_assistant_chat(
         
         if not conversation:
             conversation = SupportConversation(
+                workspace_id=1,  # Default workspace for guest chat
                 session_id=session_id,
-                initial_query=message
+                initial_problem=message
             )
             db.add(conversation)
             await db.commit()
             await db.refresh(conversation)
         
-        # Update conversation
-        conversation.last_message = message
-        conversation.message_count += 1
-        
         # Step 1: Search knowledge base for existing solutions
-        keywords = message.lower().split()
+        keywords = message_lower.split()
         kb_results = []
         
         for keyword in keywords[:5]:  # Limit to first 5 keywords
@@ -9295,6 +9420,7 @@ async def support_assistant_chat(
         
         response_data = {
             'session_id': session_id,
+            'is_conversational': False,
             'found_in_kb': len(unique_kb_results) > 0,
             'kb_articles': [],
             'web_results': [],
@@ -9442,6 +9568,366 @@ async def support_search_web(
     except Exception as e:
         logger.error(f"Web search error: {e}")
         return JSONResponse({'error': str(e)}, status_code=500)
+
+
+# Pre-trained basic support knowledge (Bubbles handles simple issues ONLY)
+BUBBLES_BASIC_SUPPORT = {
+    # Connection/Power issues - basic steps only
+    'not turning on': {
+        'keywords': ['not turning on', 'wont turn on', "won't turn on", 'no power', 'dead', 'not starting', "doesn't turn on"],
+        'response': """I can help with that! 🔌 Here are some basic steps to try:
+
+**Quick Checks:**
+1. ✅ Make sure the power cable is **firmly plugged in** at both ends
+2. ✅ Check if the **power outlet** is working (try another device in it)
+3. ✅ If it has a power strip, make sure it's **switched ON**
+4. ✅ Look for any **LED lights** - do any lights come on at all?
+5. ✅ Try holding the power button for **10-15 seconds**
+
+**Still not working?**
+This might need hands-on support. Would you like to create a ticket?"""
+    },
+    'not connecting': {
+        'keywords': ['not connecting', 'wont connect', "won't connect", 'no connection', 'cant connect', "can't connect", 'connection failed'],
+        'response': """Let me help you with connection issues! 🔗
+
+**Basic Steps:**
+1. ✅ **Unplug** the device completely for 30 seconds, then plug it back in
+2. ✅ Check that all cables are **firmly connected**
+3. ✅ **Restart** both the device and your router/computer
+4. ✅ Make sure the device is **within range** (for wireless)
+5. ✅ Check if other devices can connect
+
+💡 **Tip:** The classic "turn it off and on again" works more often than you'd think!
+
+Need more help? I can create a ticket for our tech team!"""
+    },
+    'wifi issues': {
+        'keywords': ['wifi', 'wi-fi', 'wireless', 'internet', 'network', 'no internet', 'slow internet'],
+        'response': """WiFi troubles? Let's fix that! 📶
+
+**Quick Fixes:**
+1. ✅ **Restart your router** - unplug it for 30 seconds, then plug back in
+2. ✅ Make sure WiFi is **enabled** on your device
+3. ✅ Check you're connecting to the **correct network**
+4. ✅ Move **closer to the router** to test signal
+5. ✅ Try **forgetting** the network and reconnecting
+
+**Still having issues?**
+Sometimes routers need a reset or there might be an outage. Submit a ticket and we'll help!"""
+    },
+    'printer': {
+        'keywords': ['printer', 'print', 'printing', 'paper jam', 'not printing'],
+        'response': """Printer problems? Let's troubleshoot! 🖨️
+
+**Basic Checks:**
+1. ✅ Is the printer **turned ON** with lights showing?
+2. ✅ Check for **paper jams** - open all covers and look inside
+3. ✅ Make sure there's **paper loaded** correctly
+4. ✅ Check **ink/toner levels**
+5. ✅ Try turning the printer **OFF and ON** again
+
+**Connection issues:**
+- For USB: Unplug and replug the cable
+- For WiFi: Make sure printer is on the same network
+
+Need more help? Create a ticket and include your printer model!"""
+    },
+    'slow': {
+        'keywords': ['slow', 'running slow', 'too slow', 'sluggish', 'lagging', 'freezing', 'frozen'],
+        'response': """Let's speed things up! 🚀
+
+**Quick Performance Tips:**
+1. ✅ **Restart** your device - this clears temporary files
+2. ✅ Close any **unused programs** or browser tabs
+3. ✅ Make sure your device isn't **overheating** (check vents)
+4. ✅ Check how much **storage space** is left (keep 10-20% free)
+5. ✅ Check for **updates** - they often fix performance issues
+
+⚠️ **Note:** I can only help with basic tips. For deeper issues like startup programs, system optimization, or virus checks, please submit a ticket!"""
+    },
+    'password': {
+        'keywords': ['password', 'forgot password', 'reset password', 'cant login', "can't login", 'login problem', 'locked out'],
+        'response': """Account access issues? Let me help! 🔐
+
+**Password Problems:**
+1. ✅ Try the **"Forgot Password"** link on the login page
+2. ✅ Check your **email** (including spam folder) for reset link
+3. ✅ Make sure **Caps Lock** isn't on
+4. ✅ Try typing password in a **notepad** first to check for typos
+
+⚠️ **Important:** For security reasons, I can't reset passwords directly. Please use the official password reset option or submit a ticket for account help!"""
+    },
+    'error message': {
+        'keywords': ['error', 'error message', 'error code', 'getting an error', 'shows error'],
+        'response': """I see you're getting an error! 🔍
+
+**To help you best:**
+1. ✅ Can you **take a screenshot** of the error? (Use the camera button!)
+2. ✅ Note down the **exact error message** or code
+3. ✅ What were you **doing** when it appeared?
+
+**Quick try:** Sometimes just **restarting** the application or device fixes temporary errors!
+
+Share the error details and I'll try to find a solution, or create a ticket for detailed help!"""
+    },
+    'update': {
+        'keywords': ['update', 'updating', 'install update', 'software update', 'system update', 'upgrade'],
+        'response': """Updates can be tricky! 🔄
+
+**Basic Update Tips:**
+1. ✅ Make sure you have a **stable internet connection**
+2. ✅ Check you have enough **free space** for the update
+3. ✅ **Don't turn off** your device during updates
+4. ✅ Try **restarting** and attempting the update again
+
+⚠️ **Note:** I only help with basic issues. If an update failed or caused problems, please submit a ticket - our team can help safely!"""
+    },
+    'audio': {
+        'keywords': ['audio', 'sound', 'no sound', 'speakers', 'volume', 'microphone', 'mic', 'cant hear', "can't hear", 'muted'],
+        'response': """No sound? Let's fix that! 🔊
+
+**Quick Audio Checks:**
+1. ✅ Check the **volume isn't muted** (look for speaker icon)
+2. ✅ Make sure **speakers/headphones** are plugged in correctly
+3. ✅ Check the **correct output device** is selected
+4. ✅ Try **unplugging and replugging** headphones/speakers
+5. ✅ **Restart** the application or device
+
+**Microphone issues:**
+- Check mic isn't **muted** in your app
+- Give the app **permission** to use your microphone
+
+Need more help? Submit a ticket with details!"""
+    },
+    'display': {
+        'keywords': ['display', 'screen', 'monitor', 'black screen', 'blank screen', 'no display', 'flickering', 'resolution'],
+        'response': """Display issues? Let's troubleshoot! 🖥️
+
+**Basic Checks:**
+1. ✅ Is the monitor **turned ON**? Check for power light
+2. ✅ Check the **cable connection** (HDMI, DisplayPort, VGA)
+3. ✅ Try a **different cable** if available
+4. ✅ Press keys to check if it's just **screen sleep mode**
+5. ✅ Try connecting to a **different monitor/TV** to test
+
+**Flickering/Resolution:**
+- Try adjusting **brightness/contrast**
+- Check **display settings** for correct resolution
+
+Still having problems? Create a ticket with your monitor model!"""
+    }
+}
+
+# Responses that Bubbles should REFUSE to help with (advanced/dangerous)
+BUBBLES_REFUSE_TOPICS = [
+    'registry', 'regedit', 'command prompt', 'cmd', 'terminal command', 'powershell',
+    'bios', 'firmware', 'boot order', 'format', 'wipe', 'partition',
+    'system32', 'delete files', 'admin password', 'hack', 'bypass',
+    'root', 'jailbreak', 'unlock bootloader', 'flash', 'overclock',
+    'drivers manually', 'dll', 'system restore', 'safe mode'
+]
+
+
+def get_pretrained_response(message_lower: str) -> Optional[dict]:
+    """Check if Bubbles has a pre-trained response for this basic issue"""
+    # Check for topics Bubbles should refuse
+    for topic in BUBBLES_REFUSE_TOPICS:
+        if topic in message_lower:
+            return {
+                'type': 'refuse',
+                'response': f"""I appreciate you asking, but that's a bit **advanced** for me! 🙈
+
+Topics like **{topic}** require careful handling by a trained technician. Making changes there without expertise could cause more problems.
+
+🎫 **I recommend submitting a ticket** so our tech team can help you safely!
+
+Is there something simpler I can help with instead? Like connection issues or basic troubleshooting?"""
+            }
+    
+    # Check for pre-trained basic support
+    for topic_key, topic_data in BUBBLES_BASIC_SUPPORT.items():
+        for keyword in topic_data['keywords']:
+            if keyword in message_lower:
+                return {
+                    'type': 'basic_support',
+                    'response': topic_data['response']
+                }
+    
+    return None
+
+
+@router.post('/tickets/support/analyze-image', response_class=JSONResponse)
+async def support_analyze_image(
+    request: Request,
+    image: UploadFile = File(...),
+    session_id: str = Form(''),
+    db: AsyncSession = Depends(get_session)
+):
+    """Analyze uploaded image for error messages using OCR"""
+    import uuid
+    
+    try:
+        # Generate session ID if not provided
+        if not session_id:
+            session_id = str(uuid.uuid4())
+        
+        # Read image
+        image_data = await image.read()
+        
+        if len(image_data) > 5 * 1024 * 1024:  # 5MB limit
+            return JSONResponse({
+                'session_id': session_id,
+                'error': 'Image is too large. Please use an image under 5MB.'
+            })
+        
+        # Perform OCR using pytesseract if available, otherwise basic analysis
+        extracted_text = ""
+        ocr_available = False
+        
+        try:
+            import pytesseract
+            from PIL import Image
+            import io
+            
+            # Convert to PIL Image
+            img = Image.open(io.BytesIO(image_data))
+            
+            # Perform OCR
+            extracted_text = pytesseract.image_to_string(img)
+            ocr_available = True
+            logger.info(f"OCR extracted text: {extracted_text[:200]}...")
+            
+        except ImportError:
+            logger.warning("pytesseract not available, using basic image analysis")
+        except Exception as ocr_error:
+            logger.warning(f"OCR failed: {ocr_error}")
+        
+        # Prepare response
+        response_data = {
+            'session_id': session_id,
+            'is_conversational': True,
+            'found_in_kb': False,
+            'kb_articles': [],
+            'web_results': []
+        }
+        
+        if extracted_text and len(extracted_text.strip()) > 10:
+            # We got text from OCR - analyze it
+            text_lower = extracted_text.lower()
+            
+            # Check for pre-trained responses first
+            pretrained = get_pretrained_response(text_lower)
+            if pretrained:
+                response_data['bubbles_response'] = f"""📸 I analyzed your image!
+
+{pretrained['response']}"""
+                return JSONResponse(response_data)
+            
+            # Look for common error patterns
+            error_keywords = ['error', 'failed', 'denied', 'unable', 'cannot', 'problem', 'exception', 'crash', 'warning']
+            found_errors = [kw for kw in error_keywords if kw in text_lower]
+            
+            if found_errors:
+                # Search KB and web for solutions based on extracted text
+                # First try KB
+                keywords = [word for word in text_lower.split() if len(word) > 3][:5]
+                kb_results = []
+                
+                for keyword in keywords:
+                    result = await db.execute(
+                        select(SupportArticle).where(
+                            and_(
+                                SupportArticle.is_active == True,
+                                or_(
+                                    SupportArticle.problem_keywords.ilike(f'%{keyword}%'),
+                                    SupportArticle.problem_description.ilike(f'%{keyword}%')
+                                )
+                            )
+                        ).order_by(SupportArticle.success_rate.desc()).limit(2)
+                    )
+                    kb_results.extend(result.scalars().all())
+                
+                # Deduplicate
+                seen = set()
+                unique_kb = []
+                for article in kb_results:
+                    if article.id not in seen:
+                        seen.add(article.id)
+                        unique_kb.append(article)
+                
+                if unique_kb:
+                    response_data['found_in_kb'] = True
+                    response_data['kb_articles'] = [
+                        {
+                            'id': a.id,
+                            'title': a.title,
+                            'problem': a.problem_description,
+                            'solution': a.solution_steps,
+                            'success_rate': a.success_rate
+                        }
+                        for a in unique_kb[:3]
+                    ]
+                    response_data['bubbles_response'] = f"""📸 I analyzed your image and found some text!
+
+**I detected:** "{extracted_text[:150]}{'...' if len(extracted_text) > 150 else ''}"
+
+I found some solutions in our knowledge base that might help:"""
+                else:
+                    # Search web
+                    search_query = ' '.join(keywords[:3]) + ' error fix'
+                    web_results = await search_duckduckgo(search_query, max_results=3)
+                    solution_steps = await extract_solution_steps(web_results)
+                    
+                    response_data['web_results'] = solution_steps
+                    response_data['bubbles_response'] = f"""📸 I analyzed your image!
+
+**I detected:** "{extracted_text[:150]}{'...' if len(extracted_text) > 150 else ''}"
+
+I searched for solutions and found some suggestions:"""
+            else:
+                # No error keywords found
+                response_data['bubbles_response'] = f"""📸 I analyzed your image!
+
+**I found this text:** "{extracted_text[:200]}{'...' if len(extracted_text) > 200 else ''}"
+
+I don't see a specific error message. Could you describe what's happening? For example:
+- What were you trying to do?
+- What's not working as expected?
+
+This helps me find the right solution for you! 💫"""
+        
+        else:
+            # OCR couldn't extract text or not available
+            if ocr_available:
+                response_data['bubbles_response'] = """📸 I received your image, but I couldn't read any text from it clearly.
+
+**Tips for better results:**
+- Make sure the text in the image is **clear and readable**
+- Try to capture just the **error message area**
+- Ensure good **lighting** and focus
+
+Could you **describe the error** you're seeing in words? I'd be happy to help! 💫"""
+            else:
+                response_data['bubbles_response'] = """📸 I received your image! Thanks for sharing.
+
+Unfortunately, I can't analyze images directly right now. But I can still help!
+
+**Please describe what you see:**
+- What error message is showing?
+- What were you trying to do?
+- What device or software is this?
+
+Type your description and I'll find solutions for you! 💫"""
+        
+        return JSONResponse(response_data)
+        
+    except Exception as e:
+        logger.error(f"Image analysis error: {e}")
+        return JSONResponse({
+            'session_id': session_id or str(uuid.uuid4()),
+            'error': 'Sorry, I had trouble analyzing that image. Please try describing your issue in words.'
+        })
 
 
 @router.get('/tickets/support/articles', response_class=JSONResponse)
