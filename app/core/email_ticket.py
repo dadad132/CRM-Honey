@@ -200,16 +200,23 @@ class EmailTicketService:
                 )
                 db.add(ticket_attachment)
         
-        # Notify assigned user
+        # Notify assigned user (only if they haven't muted ticket notifications)
         if self.default_assigned_to:
-            notification = Notification(
-                user_id=self.default_assigned_to,
-                type='ticket',
-                message=f'New ticket from email: {ticket_number} - {subject}',
-                url=f'/web/tickets/{ticket.id}',
-                related_id=ticket.id
+            # Get the assigned user to check mute setting
+            assigned_user = await db.execute(
+                select(User).where(User.id == self.default_assigned_to)
             )
-            db.add(notification)
+            assigned_user = assigned_user.scalar_one_or_none()
+            
+            if assigned_user and not getattr(assigned_user, 'mute_ticket_notifications', False):
+                notification = Notification(
+                    user_id=self.default_assigned_to,
+                    type='ticket',
+                    message=f'New ticket from email: {ticket_number} - {subject}',
+                    url=f'/web/tickets/{ticket.id}',
+                    related_id=ticket.id
+                )
+                db.add(notification)
         
         await db.commit()
         await db.refresh(ticket)

@@ -39,6 +39,7 @@ from .task_extensions import (
     FocusTask,
 )
 from .user_behavior import UserBehavior, UserPreference, SmartSuggestion
+from .support_kb import SupportArticle, SupportConversation, SupportCategory
 __all__ = [
     "Workspace",
     "User",
@@ -94,4 +95,7 @@ __all__ = [
     "UserBehavior",
     "UserPreference",
     "SmartSuggestion",
+    "SupportArticle",
+    "SupportConversation",
+    "SupportCategory",
 ]

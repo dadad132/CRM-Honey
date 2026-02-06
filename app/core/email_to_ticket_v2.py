@@ -630,6 +630,9 @@ class EmailToTicketService:
             notification_message = f'New ticket for {project.name} from email #{ticket_number}: {subject[:100]}'
         
         for admin in admin_users:
+            # Check if admin has muted ticket notifications
+            if getattr(admin, 'mute_ticket_notifications', False):
+                continue
             notification = Notification(
                 user_id=admin.id,
                 type='ticket',
@@ -689,8 +692,11 @@ class EmailToTicketService:
         )
         non_admin_users = (await db.execute(users_query)).scalars().all()
         
-        # Create notification for each non-admin user
+        # Create notification for each non-admin user (if they haven't muted)
         for user in non_admin_users:
+            # Check if user has muted ticket notifications
+            if getattr(user, 'mute_ticket_notifications', False):
+                continue
             notification = Notification(
                 user_id=user.id,
                 type='email_reply',
@@ -1147,8 +1153,11 @@ async def add_comment_from_email_for_account(
     )
     non_admin_users = (await db.execute(users_query)).scalars().all()
     
-    # Create notification for each non-admin user
+    # Create notification for each non-admin user (if they haven't muted)
     for user in non_admin_users:
+        # Check if user has muted ticket notifications
+        if getattr(user, 'mute_ticket_notifications', False):
+            continue
         notification = Notification(
             user_id=user.id,
             type='email_reply',
@@ -1483,6 +1492,9 @@ async def process_email_account(db: AsyncSession, account) -> List[Ticket]:
                     notify_users = result.scalars().all()
                     
                     for user in notify_users:
+                        # Check if user has muted ticket notifications
+                        if getattr(user, 'mute_ticket_notifications', False):
+                            continue
                         notification = Notification(
                             user_id=user.id,
                             title=f"📧 New Ticket: #{ticket_number}",

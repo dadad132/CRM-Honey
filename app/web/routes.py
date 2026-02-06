@@ -9153,6 +9153,329 @@ async def web_tickets_guest_submit(
         })
 
 
+# =====================================================
+# SUPPORT ASSISTANT - Self-Learning Knowledge Base
+# =====================================================
+
+from app.models.support_kb import SupportArticle, SupportConversation, SupportCategory
+
+async def search_duckduckgo(query: str, max_results: int = 5) -> list:
+    """Search DuckDuckGo for troubleshooting information"""
+    import urllib.parse
+    import re
+    
+    try:
+        import httpx
+        
+        # Use DuckDuckGo HTML search (no API key needed)
+        search_url = f"https://html.duckduckgo.com/html/?q={urllib.parse.quote(query + ' troubleshooting solution')}"
+        
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            response = await client.get(search_url, headers={
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+            })
+            
+            if response.status_code != 200:
+                return []
+            
+            html = response.text
+            results = []
+            
+            # Extract search results using regex
+            # DuckDuckGo HTML results have class="result__a" for links and class="result__snippet" for descriptions
+            link_pattern = r'class="result__a"[^>]*href="([^"]+)"[^>]*>([^<]+)</a>'
+            snippet_pattern = r'class="result__snippet"[^>]*>([^<]+)</span>'
+            
+            links = re.findall(link_pattern, html)
+            snippets = re.findall(snippet_pattern, html)
+            
+            for i, (url, title) in enumerate(links[:max_results]):
+                snippet = snippets[i] if i < len(snippets) else ""
+                # Clean up the snippet
+                snippet = snippet.strip().replace('&amp;', '&').replace('&lt;', '<').replace('&gt;', '>')
+                results.append({
+                    'title': title.strip(),
+                    'url': url,
+                    'snippet': snippet
+                })
+            
+            return results
+            
+    except Exception as e:
+        logger.error(f"DuckDuckGo search error: {e}")
+        return []
+
+
+async def extract_solution_steps(search_results: list) -> list:
+    """Extract actionable solution steps from search results"""
+    steps = []
+    
+    for result in search_results:
+        snippet = result.get('snippet', '')
+        title = result.get('title', '')
+        
+        # Create a suggested step from the snippet
+        if snippet:
+            # Clean up and format the step
+            step = {
+                'source': result.get('url', ''),
+                'title': title,
+                'suggestion': snippet,
+                'confidence': 'medium'
+            }
+            steps.append(step)
+    
+    return steps
+
+
+@router.post('/tickets/support/chat', response_class=JSONResponse)
+async def support_assistant_chat(
+    request: Request,
+    db: AsyncSession = Depends(get_session)
+):
+    """Main support assistant chat endpoint"""
+    try:
+        data = await request.json()
+        message = data.get('message', '').strip()
+        session_id = data.get('session_id', str(uuid.uuid4()))
+        
+        if not message:
+            return JSONResponse({'error': 'Message is required'}, status_code=400)
+        
+        # Get or create conversation
+        result = await db.execute(
+            select(SupportConversation).where(SupportConversation.session_id == session_id)
+        )
+        conversation = result.scalar_one_or_none()
+        
+        if not conversation:
+            conversation = SupportConversation(
+                session_id=session_id,
+                initial_query=message
+            )
+            db.add(conversation)
+            await db.commit()
+            await db.refresh(conversation)
+        
+        # Update conversation
+        conversation.last_message = message
+        conversation.message_count += 1
+        
+        # Step 1: Search knowledge base for existing solutions
+        keywords = message.lower().split()
+        kb_results = []
+        
+        for keyword in keywords[:5]:  # Limit to first 5 keywords
+            if len(keyword) > 3:  # Skip short words
+                result = await db.execute(
+                    select(SupportArticle).where(
+                        and_(
+                            SupportArticle.is_active == True,
+                            or_(
+                                SupportArticle.problem_keywords.ilike(f'%{keyword}%'),
+                                SupportArticle.problem_description.ilike(f'%{keyword}%'),
+                                SupportArticle.title.ilike(f'%{keyword}%')
+                            )
+                        )
+                    ).order_by(SupportArticle.success_rate.desc()).limit(3)
+                )
+                kb_results.extend(result.scalars().all())
+        
+        # Remove duplicates
+        seen_ids = set()
+        unique_kb_results = []
+        for article in kb_results:
+            if article.id not in seen_ids:
+                seen_ids.add(article.id)
+                unique_kb_results.append(article)
+        
+        response_data = {
+            'session_id': session_id,
+            'found_in_kb': len(unique_kb_results) > 0,
+            'kb_articles': [],
+            'web_results': [],
+            'suggestions': []
+        }
+        
+        if unique_kb_results:
+            # Found in knowledge base
+            for article in unique_kb_results[:3]:
+                response_data['kb_articles'].append({
+                    'id': article.id,
+                    'title': article.title,
+                    'problem': article.problem_description,
+                    'solution': article.solution_steps,
+                    'success_rate': article.success_rate,
+                    'times_used': article.times_used
+                })
+                # Increment usage count
+                article.times_used += 1
+            
+            await db.commit()
+            
+            response_data['suggestions'].append({
+                'type': 'kb_match',
+                'message': f"I found {len(unique_kb_results)} solution(s) that might help with your issue."
+            })
+        else:
+            # Not in KB, search the web
+            web_results = await search_duckduckgo(message)
+            solution_steps = await extract_solution_steps(web_results)
+            
+            response_data['web_results'] = solution_steps
+            response_data['suggestions'].append({
+                'type': 'web_search',
+                'message': "I searched the web for solutions. Here's what I found:"
+            })
+        
+        await db.commit()
+        return JSONResponse(response_data)
+        
+    except Exception as e:
+        logger.error(f"Support assistant error: {e}")
+        return JSONResponse({'error': str(e)}, status_code=500)
+
+
+@router.post('/tickets/support/feedback', response_class=JSONResponse)
+async def support_assistant_feedback(
+    request: Request,
+    db: AsyncSession = Depends(get_session)
+):
+    """Handle feedback on support suggestions"""
+    try:
+        data = await request.json()
+        session_id = data.get('session_id')
+        helpful = data.get('helpful', False)
+        article_id = data.get('article_id')
+        problem = data.get('problem', '')
+        solution = data.get('solution', '')
+        
+        # Get conversation
+        result = await db.execute(
+            select(SupportConversation).where(SupportConversation.session_id == session_id)
+        )
+        conversation = result.scalar_one_or_none()
+        
+        if article_id:
+            # Feedback for existing KB article
+            result = await db.execute(
+                select(SupportArticle).where(SupportArticle.id == article_id)
+            )
+            article = result.scalar_one_or_none()
+            
+            if article:
+                if helpful:
+                    article.times_successful += 1
+                    article.success_rate = (article.times_successful / article.times_used) * 100
+                    if conversation:
+                        conversation.was_helpful = True
+                        conversation.resolution_type = 'kb_article'
+                else:
+                    # Not helpful, decrease success rate
+                    article.success_rate = max(0, article.success_rate - 1)
+                
+                await db.commit()
+        
+        elif helpful and problem and solution:
+            # Create new KB article from web search that was helpful
+            # Extract keywords from the problem
+            keywords = ','.join([word for word in problem.lower().split() if len(word) > 3][:10])
+            
+            new_article = SupportArticle(
+                title=problem[:100] + ('...' if len(problem) > 100 else ''),
+                problem_description=problem,
+                problem_keywords=keywords,
+                solution_steps=solution,
+                source='web_search',
+                times_used=1,
+                times_successful=1,
+                success_rate=100.0
+            )
+            db.add(new_article)
+            
+            if conversation:
+                conversation.was_helpful = True
+                conversation.resolution_type = 'web_search'
+            
+            await db.commit()
+            
+            return JSONResponse({
+                'success': True,
+                'message': 'Thank you! This solution has been saved to our knowledge base.',
+                'article_created': True
+            })
+        
+        elif not helpful and conversation:
+            # Mark that we need to escalate
+            conversation.escalated_to_ticket = True
+            await db.commit()
+            
+            return JSONResponse({
+                'success': True,
+                'message': 'Sorry the suggestions didn\'t help. You can create a ticket below.',
+                'escalate': True
+            })
+        
+        return JSONResponse({'success': True})
+        
+    except Exception as e:
+        logger.error(f"Support feedback error: {e}")
+        return JSONResponse({'error': str(e)}, status_code=500)
+
+
+@router.get('/tickets/support/search', response_class=JSONResponse)
+async def support_search_web(
+    q: str = Query(..., description="Search query"),
+    db: AsyncSession = Depends(get_session)
+):
+    """Direct web search endpoint"""
+    try:
+        results = await search_duckduckgo(q, max_results=5)
+        return JSONResponse({
+            'query': q,
+            'results': results
+        })
+    except Exception as e:
+        logger.error(f"Web search error: {e}")
+        return JSONResponse({'error': str(e)}, status_code=500)
+
+
+@router.get('/tickets/support/articles', response_class=JSONResponse)
+async def get_support_articles(
+    category: Optional[str] = None,
+    limit: int = Query(10, le=50),
+    db: AsyncSession = Depends(get_session)
+):
+    """Get knowledge base articles"""
+    try:
+        query = select(SupportArticle).where(SupportArticle.is_active == True)
+        
+        if category:
+            query = query.where(SupportArticle.category_id == int(category))
+        
+        query = query.order_by(SupportArticle.success_rate.desc()).limit(limit)
+        
+        result = await db.execute(query)
+        articles = result.scalars().all()
+        
+        return JSONResponse({
+            'articles': [
+                {
+                    'id': a.id,
+                    'title': a.title,
+                    'problem': a.problem_description,
+                    'solution': a.solution_steps,
+                    'success_rate': a.success_rate,
+                    'times_used': a.times_used
+                }
+                for a in articles
+            ]
+        })
+    except Exception as e:
+        logger.error(f"Get articles error: {e}")
+        return JSONResponse({'error': str(e)}, status_code=500)
+
+
 # Public ticket tracking routes (no login required)
 @router.get('/tickets/track', response_class=HTMLResponse)
 async def web_tickets_track_form(request: Request):

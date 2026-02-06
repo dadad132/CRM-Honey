@@ -21,13 +21,22 @@
 
             <!-- Action Buttons -->
             {% if not success %}
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8">
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
+                <button onclick="showForm('assistant')" id="btn-assistant"
+                        class="p-6 bg-gradient-to-r from-purple-500 to-purple-600 text-white rounded-xl shadow-lg hover:from-purple-600 hover:to-purple-700 hover:shadow-xl transition-all duration-200 flex flex-col items-center gap-3">
+                    <i class="fas fa-robot text-4xl"></i>
+                    <div>
+                        <div class="font-semibold text-lg">Get Help First</div>
+                        <div class="text-sm text-purple-100">Try our AI assistant</div>
+                    </div>
+                </button>
+                
                 <button onclick="showForm('submit')" id="btn-submit"
-                        class="p-6 bg-gradient-to-r from-blue-500 to-blue-600 text-white rounded-xl shadow-lg hover:from-blue-600 hover:to-blue-700 hover:shadow-xl transition-all duration-200 flex flex-col items-center gap-3">
+                        class="p-6 bg-white border border-slate-200 text-slate-700 rounded-xl shadow-lg hover:border-blue-400 hover:text-blue-600 hover:shadow-xl transition-all duration-200 flex flex-col items-center gap-3">
                     <i class="fas fa-plus-circle text-4xl"></i>
                     <div>
                         <div class="font-semibold text-lg">Submit a Ticket</div>
-                        <div class="text-sm text-blue-100">Create a new support request</div>
+                        <div class="text-sm text-gray-500">Create a new support request</div>
                     </div>
                 </button>
                 
@@ -89,6 +98,53 @@
 
             <!-- Form -->
             {% if not success %}
+            <!-- Support Assistant Chat (shown by default) -->
+            <div id="assistant-form" class="bg-white rounded-xl shadow-xl overflow-hidden mb-6 border border-slate-200">
+                <div class="p-8">
+                    <h2 class="text-2xl font-semibold text-gray-900 mb-4 flex items-center">
+                        <i class="fas fa-robot text-purple-600 mr-3"></i>
+                        Support Assistant
+                    </h2>
+                    <p class="text-gray-600 mb-6">Describe your problem and I'll search our knowledge base and the web to find solutions for you.</p>
+                    
+                    <!-- Chat Container -->
+                    <div id="chat-container" class="border border-gray-200 rounded-xl bg-gray-50 mb-4 h-80 overflow-y-auto p-4">
+                        <div id="chat-messages">
+                            <!-- Welcome message -->
+                            <div class="flex items-start gap-3 mb-4">
+                                <div class="w-8 h-8 rounded-full bg-purple-500 flex items-center justify-center flex-shrink-0">
+                                    <i class="fas fa-robot text-white text-sm"></i>
+                                </div>
+                                <div class="bg-white rounded-xl p-4 shadow-sm max-w-lg">
+                                    <p class="text-gray-700">👋 Hi! I'm your support assistant. Tell me about the issue you're experiencing and I'll try to help you find a solution.</p>
+                                    <p class="text-gray-500 text-sm mt-2">For example: "My printer won't connect to wifi" or "I can't login to my account"</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Chat Input -->
+                    <div class="flex gap-2">
+                        <input type="text" id="chat-input" 
+                               class="flex-1 px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500"
+                               placeholder="Describe your problem here..."
+                               onkeypress="if(event.key === 'Enter') sendMessage()">
+                        <button onclick="sendMessage()" id="send-btn"
+                                class="px-6 py-3 bg-gradient-to-r from-purple-500 to-purple-600 text-white font-semibold rounded-xl hover:from-purple-600 hover:to-purple-700 shadow-md hover:shadow-lg transition-all flex items-center gap-2">
+                            <i class="fas fa-paper-plane"></i>
+                            Send
+                        </button>
+                    </div>
+                    
+                    <!-- Quick Skip Option -->
+                    <div class="mt-4 text-center">
+                        <button onclick="showForm('submit')" class="text-sm text-gray-500 hover:text-blue-600 transition-colors">
+                            <i class="fas fa-forward mr-1"></i>Skip and submit a ticket directly
+                        </button>
+                    </div>
+                </div>
+            </div>
+
             <!-- Ticket Tracking Form (hidden by default) -->
             <div id="track-form" class="bg-white rounded-xl shadow-xl overflow-hidden mb-6 border border-slate-200" style="display: none;">
                 <div class="p-8">
@@ -296,28 +352,251 @@
     </div>
 
     <script>
+        // Session ID for this conversation
+        let sessionId = null;
+        let currentProblem = '';
+        let currentSolution = '';
+        let currentArticleId = null;
+        
         function showForm(type) {
             const submitForm = document.getElementById('submit-form');
             const trackForm = document.getElementById('track-form');
+            const assistantForm = document.getElementById('assistant-form');
             const btnSubmit = document.getElementById('btn-submit');
             const btnTrack = document.getElementById('btn-track');
+            const btnAssistant = document.getElementById('btn-assistant');
             
-            if (type === 'submit') {
+            const activeClass = 'p-6 bg-gradient-to-r from-purple-500 to-purple-600 text-white rounded-xl shadow-lg hover:from-purple-600 hover:to-purple-700 hover:shadow-xl transition-all duration-200 flex flex-col items-center gap-3';
+            const inactiveClass = 'p-6 bg-white border border-slate-200 text-slate-700 rounded-xl shadow-lg hover:border-blue-400 hover:text-blue-600 hover:shadow-xl transition-all duration-200 flex flex-col items-center gap-3';
+            const blueActiveClass = 'p-6 bg-gradient-to-r from-blue-500 to-blue-600 text-white rounded-xl shadow-lg hover:from-blue-600 hover:to-blue-700 hover:shadow-xl transition-all duration-200 flex flex-col items-center gap-3';
+            
+            // Hide all
+            submitForm.style.display = 'none';
+            trackForm.style.display = 'none';
+            assistantForm.style.display = 'none';
+            
+            // Reset all buttons
+            btnSubmit.className = inactiveClass;
+            btnTrack.className = inactiveClass;
+            btnAssistant.className = inactiveClass;
+            
+            if (type === 'assistant') {
+                assistantForm.style.display = 'block';
+                btnAssistant.className = activeClass;
+            } else if (type === 'submit') {
                 submitForm.style.display = 'block';
-                trackForm.style.display = 'none';
-                btnSubmit.className = 'p-6 bg-gradient-to-r from-blue-500 to-blue-600 text-white rounded-xl shadow-lg hover:from-blue-600 hover:to-blue-700 hover:shadow-xl transition-all duration-200 flex flex-col items-center gap-3';
-                btnTrack.className = 'p-6 bg-white border border-slate-200 text-slate-700 rounded-xl shadow-lg hover:border-blue-400 hover:text-blue-600 hover:shadow-xl transition-all duration-200 flex flex-col items-center gap-3';
+                btnSubmit.className = blueActiveClass;
             } else {
-                submitForm.style.display = 'none';
                 trackForm.style.display = 'block';
-                btnTrack.className = 'p-6 bg-gradient-to-r from-blue-500 to-blue-600 text-white rounded-xl shadow-lg hover:from-blue-600 hover:to-blue-700 hover:shadow-xl transition-all duration-200 flex flex-col items-center gap-3';
-                btnSubmit.className = 'p-6 bg-white border border-slate-200 text-slate-700 rounded-xl shadow-lg hover:border-blue-400 hover:text-blue-600 hover:shadow-xl transition-all duration-200 flex flex-col items-center gap-3';
+                btnTrack.className = blueActiveClass;
             }
         }
         
-        // Show submit form by default
+        function addMessage(content, isUser = false) {
+            const container = document.getElementById('chat-messages');
+            const msgDiv = document.createElement('div');
+            msgDiv.className = 'flex items-start gap-3 mb-4 ' + (isUser ? 'flex-row-reverse' : '');
+            
+            const avatar = isUser 
+                ? '<div class="w-8 h-8 rounded-full bg-blue-500 flex items-center justify-center flex-shrink-0"><i class="fas fa-user text-white text-sm"></i></div>'
+                : '<div class="w-8 h-8 rounded-full bg-purple-500 flex items-center justify-center flex-shrink-0"><i class="fas fa-robot text-white text-sm"></i></div>';
+            
+            const bubbleClass = isUser ? 'bg-blue-500 text-white' : 'bg-white';
+            
+            msgDiv.innerHTML = `
+                ${avatar}
+                <div class="${bubbleClass} rounded-xl p-4 shadow-sm max-w-lg">
+                    ${content}
+                </div>
+            `;
+            
+            container.appendChild(msgDiv);
+            document.getElementById('chat-container').scrollTop = document.getElementById('chat-container').scrollHeight;
+        }
+        
+        function addSolutionCard(solution, isKB = false) {
+            const container = document.getElementById('chat-messages');
+            const msgDiv = document.createElement('div');
+            msgDiv.className = 'flex items-start gap-3 mb-4';
+            
+            const source = isKB ? '📚 From Knowledge Base' : '🌐 From Web Search';
+            const successRate = solution.success_rate ? `<span class="text-green-600"><i class="fas fa-check-circle"></i> ${Math.round(solution.success_rate)}% success rate</span>` : '';
+            
+            const content = isKB ? solution.solution : solution.suggestion;
+            const title = solution.title || 'Suggested Solution';
+            
+            msgDiv.innerHTML = `
+                <div class="w-8 h-8 rounded-full bg-purple-500 flex items-center justify-center flex-shrink-0">
+                    <i class="fas fa-robot text-white text-sm"></i>
+                </div>
+                <div class="bg-gradient-to-br from-purple-50 to-white rounded-xl p-4 shadow-sm border border-purple-200 max-w-lg">
+                    <div class="text-xs text-purple-600 mb-2">${source} ${successRate}</div>
+                    <h4 class="font-semibold text-gray-800 mb-2">${title}</h4>
+                    <p class="text-gray-700 text-sm mb-3">${content}</p>
+                    ${solution.source ? `<a href="${solution.source}" target="_blank" class="text-xs text-blue-500 hover:underline"><i class="fas fa-external-link-alt mr-1"></i>View source</a>` : ''}
+                    <div class="flex gap-2 mt-3 pt-3 border-t border-purple-100">
+                        <button onclick="sendFeedback(true, ${solution.id || 'null'}, '${isKB}')" 
+                                class="flex-1 px-3 py-2 bg-green-100 text-green-700 rounded-lg hover:bg-green-200 transition-colors text-sm">
+                            <i class="fas fa-thumbs-up mr-1"></i>This helped!
+                        </button>
+                        <button onclick="sendFeedback(false, ${solution.id || 'null'}, '${isKB}')" 
+                                class="flex-1 px-3 py-2 bg-red-100 text-red-700 rounded-lg hover:bg-red-200 transition-colors text-sm">
+                            <i class="fas fa-thumbs-down mr-1"></i>Not helpful
+                        </button>
+                    </div>
+                </div>
+            `;
+            
+            container.appendChild(msgDiv);
+            document.getElementById('chat-container').scrollTop = document.getElementById('chat-container').scrollHeight;
+            
+            // Store for potential feedback
+            currentSolution = content;
+            currentArticleId = solution.id || null;
+        }
+        
+        function addTypingIndicator() {
+            const container = document.getElementById('chat-messages');
+            const typing = document.createElement('div');
+            typing.id = 'typing-indicator';
+            typing.className = 'flex items-start gap-3 mb-4';
+            typing.innerHTML = `
+                <div class="w-8 h-8 rounded-full bg-purple-500 flex items-center justify-center flex-shrink-0">
+                    <i class="fas fa-robot text-white text-sm"></i>
+                </div>
+                <div class="bg-white rounded-xl p-4 shadow-sm">
+                    <div class="flex gap-1">
+                        <span class="w-2 h-2 bg-purple-400 rounded-full animate-bounce" style="animation-delay: 0ms"></span>
+                        <span class="w-2 h-2 bg-purple-400 rounded-full animate-bounce" style="animation-delay: 150ms"></span>
+                        <span class="w-2 h-2 bg-purple-400 rounded-full animate-bounce" style="animation-delay: 300ms"></span>
+                    </div>
+                </div>
+            `;
+            container.appendChild(typing);
+            document.getElementById('chat-container').scrollTop = document.getElementById('chat-container').scrollHeight;
+        }
+        
+        function removeTypingIndicator() {
+            const typing = document.getElementById('typing-indicator');
+            if (typing) typing.remove();
+        }
+        
+        async function sendMessage() {
+            const input = document.getElementById('chat-input');
+            const message = input.value.trim();
+            
+            if (!message) return;
+            
+            // Store for feedback
+            currentProblem = message;
+            
+            // Add user message
+            addMessage(`<p class="text-white">${message}</p>`, true);
+            input.value = '';
+            
+            // Show typing indicator
+            addTypingIndicator();
+            
+            // Disable input while processing
+            input.disabled = true;
+            document.getElementById('send-btn').disabled = true;
+            
+            try {
+                const response = await fetch('/web/tickets/support/chat', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ 
+                        message: message,
+                        session_id: sessionId
+                    })
+                });
+                
+                const data = await response.json();
+                sessionId = data.session_id;
+                
+                removeTypingIndicator();
+                
+                if (data.error) {
+                    addMessage(`<p class="text-red-600"><i class="fas fa-exclamation-circle mr-2"></i>${data.error}</p>`);
+                    return;
+                }
+                
+                // Check if we found solutions
+                if (data.found_in_kb && data.kb_articles.length > 0) {
+                    addMessage(`<p class="text-gray-700">I found <strong>${data.kb_articles.length}</strong> solution(s) in our knowledge base that might help:</p>`);
+                    
+                    data.kb_articles.forEach(article => {
+                        addSolutionCard(article, true);
+                    });
+                } else if (data.web_results && data.web_results.length > 0) {
+                    addMessage(`<p class="text-gray-700">I searched the web and found some suggestions:</p>`);
+                    
+                    data.web_results.forEach(result => {
+                        addSolutionCard(result, false);
+                    });
+                } else {
+                    addMessage(`
+                        <p class="text-gray-700 mb-3">I couldn't find specific solutions for this issue. Would you like to create a support ticket?</p>
+                        <button onclick="showForm('submit')" class="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors">
+                            <i class="fas fa-ticket-alt mr-2"></i>Create Support Ticket
+                        </button>
+                    `);
+                }
+                
+            } catch (error) {
+                removeTypingIndicator();
+                addMessage(`<p class="text-red-600"><i class="fas fa-exclamation-circle mr-2"></i>Sorry, something went wrong. Please try again or submit a ticket.</p>`);
+            } finally {
+                input.disabled = false;
+                document.getElementById('send-btn').disabled = false;
+                input.focus();
+            }
+        }
+        
+        async function sendFeedback(helpful, articleId, isKB) {
+            try {
+                const response = await fetch('/web/tickets/support/feedback', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        session_id: sessionId,
+                        helpful: helpful,
+                        article_id: articleId !== 'null' ? articleId : null,
+                        problem: currentProblem,
+                        solution: currentSolution
+                    })
+                });
+                
+                const data = await response.json();
+                
+                if (helpful) {
+                    addMessage(`
+                        <p class="text-gray-700">
+                            <i class="fas fa-check-circle text-green-500 mr-2"></i>
+                            Great! I'm glad that helped. ${data.article_created ? 'This solution has been saved to help others!' : ''}
+                        </p>
+                        <p class="text-gray-500 text-sm mt-2">Is there anything else I can help you with?</p>
+                    `);
+                } else {
+                    addMessage(`
+                        <p class="text-gray-700 mb-3">
+                            <i class="fas fa-info-circle text-blue-500 mr-2"></i>
+                            I'm sorry that didn't help. You can try describing the problem differently, or create a support ticket for personalized assistance.
+                        </p>
+                        <button onclick="showForm('submit')" class="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors">
+                            <i class="fas fa-ticket-alt mr-2"></i>Create Support Ticket
+                        </button>
+                    `);
+                }
+                
+            } catch (error) {
+                console.error('Feedback error:', error);
+            }
+        }
+        
+        // Show assistant form by default
         document.addEventListener('DOMContentLoaded', function() {
-            showForm('submit');
+            showForm('assistant');
         });
     </script>
 </body>
