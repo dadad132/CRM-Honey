@@ -300,7 +300,7 @@
                             <label class="block text-sm font-medium text-gray-700 mb-1">
                                 Description <span class="text-red-500">*</span>
                             </label>
-                            <textarea name="description" rows="6" required
+                            <textarea name="description" rows="6" required id="description-field"
                                       class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                                       placeholder="Please provide as much detail as possible about your issue or request..."></textarea>
                             <p class="text-sm text-gray-500 mt-1">
@@ -309,22 +309,112 @@
                             </p>
                         </div>
                         
+                        <!-- Steps to Reproduce Helper -->
+                        <div class="mt-4 bg-amber-50 border border-amber-200 rounded-xl p-4">
+                            <h3 class="font-semibold text-amber-800 mb-3 flex items-center">
+                                <i class="fas fa-lightbulb text-amber-500 mr-2"></i>
+                                Help Us Help You Faster!
+                            </h3>
+                            <p class="text-sm text-amber-700 mb-3">Please include the following in your description:</p>
+                            <ul class="text-sm text-amber-700 space-y-2">
+                                <li class="flex items-start gap-2">
+                                    <span class="bg-amber-200 text-amber-800 rounded-full w-5 h-5 flex items-center justify-center text-xs font-bold flex-shrink-0 mt-0.5">1</span>
+                                    <span><strong>What were you trying to do?</strong> (e.g., "I was trying to login to my account")</span>
+                                </li>
+                                <li class="flex items-start gap-2">
+                                    <span class="bg-amber-200 text-amber-800 rounded-full w-5 h-5 flex items-center justify-center text-xs font-bold flex-shrink-0 mt-0.5">2</span>
+                                    <span><strong>What happened instead?</strong> (e.g., "I received an error message saying...")</span>
+                                </li>
+                                <li class="flex items-start gap-2">
+                                    <span class="bg-amber-200 text-amber-800 rounded-full w-5 h-5 flex items-center justify-center text-xs font-bold flex-shrink-0 mt-0.5">3</span>
+                                    <span><strong>Any error messages?</strong> Copy and paste the exact error text if possible</span>
+                                </li>
+                            </ul>
+                            <button type="button" onclick="fillDescriptionTemplate()" 
+                                    class="mt-3 text-sm bg-amber-100 text-amber-800 px-3 py-1.5 rounded-lg hover:bg-amber-200 transition-colors">
+                                <i class="fas fa-magic mr-1"></i>Fill Template for Me
+                            </button>
+                        </div>
+                        
                         <!-- File Attachments -->
-                        <div class="mt-4">
-                            <label class="block text-sm font-medium text-gray-700 mb-1">
-                                <i class="fas fa-paperclip mr-1"></i>Attachments (optional)
+                        <div class="mt-6">
+                            <label class="block text-sm font-medium text-gray-700 mb-2">
+                                <i class="fas fa-paperclip mr-1"></i>Attachments (optional but recommended)
                             </label>
-                            <input type="file" name="files" multiple
-                                   accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.txt,.zip,.rar"
-                                   class="block w-full text-sm text-gray-500
-                                          file:mr-4 file:py-2 file:px-4
-                                          file:rounded-lg file:border-0
-                                          file:text-sm file:font-semibold
-                                          file:bg-blue-50 file:text-blue-700
-                                          hover:file:bg-blue-100">
-                            <p class="text-sm text-gray-500 mt-1">
+                            
+                            <!-- Screenshot/Photo Instructions -->
+                            <div class="bg-blue-50 border border-blue-200 rounded-xl p-4 mb-4">
+                                <h4 class="font-semibold text-blue-800 mb-3 flex items-center">
+                                    <i class="fas fa-camera text-blue-500 mr-2"></i>
+                                    How to Capture Your Screen or Take a Photo
+                                </h4>
+                                
+                                <!-- Desktop Instructions (collapsible) -->
+                                <div class="mb-3">
+                                    <button type="button" onclick="toggleInstructions('desktop')" 
+                                            class="w-full flex items-center justify-between text-left text-sm font-medium text-blue-700 hover:text-blue-800">
+                                        <span><i class="fas fa-desktop mr-2"></i>On Computer (Screenshot)</span>
+                                        <i class="fas fa-chevron-down text-xs" id="desktop-chevron"></i>
+                                    </button>
+                                    <div id="desktop-instructions" class="hidden mt-2 pl-6 text-sm text-blue-600 space-y-1">
+                                        <p><strong>Windows:</strong> Press <kbd class="bg-blue-100 px-1.5 py-0.5 rounded text-xs">Win</kbd> + <kbd class="bg-blue-100 px-1.5 py-0.5 rounded text-xs">Shift</kbd> + <kbd class="bg-blue-100 px-1.5 py-0.5 rounded text-xs">S</kbd> → Select area → Paste or save</p>
+                                        <p><strong>Mac:</strong> Press <kbd class="bg-blue-100 px-1.5 py-0.5 rounded text-xs">Cmd</kbd> + <kbd class="bg-blue-100 px-1.5 py-0.5 rounded text-xs">Shift</kbd> + <kbd class="bg-blue-100 px-1.5 py-0.5 rounded text-xs">4</kbd> → Select area → File saves to Desktop</p>
+                                        <p><strong>Or:</strong> Press <kbd class="bg-blue-100 px-1.5 py-0.5 rounded text-xs">Print Screen</kbd> key → Open Paint → Paste → Save as image</p>
+                                    </div>
+                                </div>
+                                
+                                <!-- Mobile Instructions (collapsible) -->
+                                <div>
+                                    <button type="button" onclick="toggleInstructions('mobile')" 
+                                            class="w-full flex items-center justify-between text-left text-sm font-medium text-blue-700 hover:text-blue-800">
+                                        <span><i class="fas fa-mobile-alt mr-2"></i>On Phone/Tablet</span>
+                                        <i class="fas fa-chevron-down text-xs" id="mobile-chevron"></i>
+                                    </button>
+                                    <div id="mobile-instructions" class="hidden mt-2 pl-6 text-sm text-blue-600 space-y-1">
+                                        <p><strong>iPhone:</strong> Press <kbd class="bg-blue-100 px-1.5 py-0.5 rounded text-xs">Side</kbd> + <kbd class="bg-blue-100 px-1.5 py-0.5 rounded text-xs">Volume Up</kbd> buttons together</p>
+                                        <p><strong>Android:</strong> Press <kbd class="bg-blue-100 px-1.5 py-0.5 rounded text-xs">Power</kbd> + <kbd class="bg-blue-100 px-1.5 py-0.5 rounded text-xs">Volume Down</kbd> buttons together</p>
+                                        <p><strong>Or use the camera button below</strong> to take a photo directly!</p>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <!-- File Upload Options -->
+                            <div class="grid grid-cols-1 md:grid-cols-2 gap-3 mb-3">
+                                <!-- Regular File Upload -->
+                                <div class="border-2 border-dashed border-gray-300 rounded-xl p-4 hover:border-blue-400 transition-colors">
+                                    <label class="cursor-pointer flex flex-col items-center gap-2">
+                                        <i class="fas fa-file-upload text-3xl text-gray-400"></i>
+                                        <span class="text-sm font-medium text-gray-700">Upload Files</span>
+                                        <span class="text-xs text-gray-500">Screenshots, documents, etc.</span>
+                                        <input type="file" name="files" multiple id="file-upload"
+                                               accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.txt,.zip,.rar"
+                                               class="hidden" onchange="updateFileList()">
+                                    </label>
+                                </div>
+                                
+                                <!-- Camera Capture (Mobile) -->
+                                <div class="border-2 border-dashed border-green-300 rounded-xl p-4 hover:border-green-400 transition-colors bg-green-50">
+                                    <label class="cursor-pointer flex flex-col items-center gap-2">
+                                        <i class="fas fa-camera text-3xl text-green-500"></i>
+                                        <span class="text-sm font-medium text-green-700">Take Photo</span>
+                                        <span class="text-xs text-green-600">Use your camera</span>
+                                        <input type="file" name="camera_files" accept="image/*" capture="environment"
+                                               class="hidden" id="camera-capture" onchange="updateFileList()">
+                                    </label>
+                                </div>
+                            </div>
+                            
+                            <!-- File Preview Area -->
+                            <div id="file-preview" class="hidden bg-gray-50 rounded-xl p-3 mb-3">
+                                <h4 class="text-sm font-medium text-gray-700 mb-2">
+                                    <i class="fas fa-check-circle text-green-500 mr-1"></i>Selected Files:
+                                </h4>
+                                <ul id="file-list" class="text-sm text-gray-600 space-y-1"></ul>
+                            </div>
+                            
+                            <p class="text-sm text-gray-500">
                                 <i class="fas fa-info-circle mr-1"></i>
-                                You can attach screenshots, error logs, or any files that help explain your issue (max 10MB each)
+                                Attach screenshots or photos showing the error. This helps us understand and resolve your issue faster! (max 10MB each)
                             </p>
                         </div>
                     </div>
@@ -592,6 +682,92 @@
             } catch (error) {
                 console.error('Feedback error:', error);
             }
+        }
+        
+        // Toggle screenshot instructions
+        function toggleInstructions(type) {
+            const instructions = document.getElementById(type + '-instructions');
+            const chevron = document.getElementById(type + '-chevron');
+            
+            if (instructions.classList.contains('hidden')) {
+                instructions.classList.remove('hidden');
+                chevron.classList.remove('fa-chevron-down');
+                chevron.classList.add('fa-chevron-up');
+            } else {
+                instructions.classList.add('hidden');
+                chevron.classList.remove('fa-chevron-up');
+                chevron.classList.add('fa-chevron-down');
+            }
+        }
+        
+        // Fill description template
+        function fillDescriptionTemplate() {
+            const description = document.getElementById('description-field');
+            const template = `**What I was trying to do:**
+[Describe what you were attempting to do when the problem occurred]
+
+**What happened:**
+[Describe what actually happened - any error messages, unexpected behavior, etc.]
+
+**Steps to reproduce:**
+1. [First step]
+2. [Second step]
+3. [What happened]
+
+**Error message (if any):**
+[Copy and paste the exact error message here]
+
+**Additional information:**
+- Browser/Device: 
+- When did this start happening: `;
+            
+            if (description.value.trim() === '') {
+                description.value = template;
+            } else {
+                // Ask before overwriting
+                if (confirm('This will replace your current description. Continue?')) {
+                    description.value = template;
+                }
+            }
+            description.focus();
+        }
+        
+        // Update file list display
+        function updateFileList() {
+            const fileUpload = document.getElementById('file-upload');
+            const cameraCapture = document.getElementById('camera-capture');
+            const preview = document.getElementById('file-preview');
+            const list = document.getElementById('file-list');
+            
+            list.innerHTML = '';
+            let hasFiles = false;
+            
+            // Add files from file upload
+            if (fileUpload.files.length > 0) {
+                hasFiles = true;
+                for (let file of fileUpload.files) {
+                    const li = document.createElement('li');
+                    li.className = 'flex items-center gap-2';
+                    const icon = file.type.startsWith('image/') ? 'fa-image text-blue-500' : 'fa-file text-gray-500';
+                    const size = (file.size / 1024).toFixed(1);
+                    li.innerHTML = `<i class="fas ${icon}"></i> ${file.name} <span class="text-gray-400">(${size} KB)</span>`;
+                    list.appendChild(li);
+                }
+            }
+            
+            // Add files from camera capture
+            if (cameraCapture.files.length > 0) {
+                hasFiles = true;
+                for (let file of cameraCapture.files) {
+                    const li = document.createElement('li');
+                    li.className = 'flex items-center gap-2';
+                    const size = (file.size / 1024).toFixed(1);
+                    li.innerHTML = `<i class="fas fa-camera text-green-500"></i> ${file.name} <span class="text-gray-400">(${size} KB)</span> <span class="text-green-600 text-xs">(Camera)</span>`;
+                    list.appendChild(li);
+                }
+            }
+            
+            preview.classList.toggle('hidden', !hasFiles);
         }
         
         // Show assistant form by default

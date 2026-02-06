@@ -8952,9 +8952,10 @@ async def web_tickets_guest_submit(
     subject: str = Form(...),
     description: str = Form(...),
     files: list[UploadFile] = File(default=[]),
+    camera_files: list[UploadFile] = File(default=[]),
     db: AsyncSession = Depends(get_session)
 ):
-    """Handle guest ticket submission with optional file attachments"""
+    """Handle guest ticket submission with optional file attachments and camera photos"""
     from app.models.ticket import Ticket, TicketHistory, TicketAttachment
     from app.models.email_settings import EmailSettings
     from datetime import datetime
@@ -8965,6 +8966,9 @@ async def web_tickets_guest_submit(
     import os
     
     try:
+        # Combine regular files and camera files
+        all_files = list(files) + list(camera_files)
+        
         # Use workspace 1 as default for guest tickets
         workspace_id = 1
         
@@ -9001,14 +9005,14 @@ async def web_tickets_guest_submit(
         db.add(ticket)
         await db.flush()
         
-        # Handle file attachments
+        # Handle file attachments (including camera photos)
         attachment_count = 0
-        if files:
+        if all_files:
             # Create uploads directory if it doesn't exist
             upload_dir = BASE_DIR / 'uploads' / 'tickets'
             upload_dir.mkdir(parents=True, exist_ok=True)
             
-            for file in files:
+            for file in all_files:
                 if file.filename:  # Only process if file was actually uploaded
                     # Read file content
                     file_content = await file.read()
