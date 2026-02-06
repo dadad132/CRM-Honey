@@ -39,6 +39,7 @@ from app.models.contact import Contact
 from app.models.lead import Lead, LeadStatus, LeadSource
 from app.models.deal import Deal, DealStage
 from app.models.activity import Activity, ActivityType
+from app.core.bubbles_personality import get_conversational_response, HUMAN_REQUEST_TRIGGERS
 
 BASE_DIR = Path(__file__).resolve().parents[1]
 templates = Jinja2Templates(directory=str(BASE_DIR / 'templates'))
@@ -9581,64 +9582,11 @@ async def extract_solution_steps(search_results: list) -> list:
 
 async def handle_conversational_message(message_lower: str, db: AsyncSession) -> str:
     """Handle greetings and conversational messages for Bubbles the AI Assistant"""
-    import random
     
-    # Greetings
-    greetings = ['hi', 'hello', 'hey', 'good morning', 'good afternoon', 'good evening', 'howdy', 'greetings', 'yo', 'sup', 'hiya']
-    if any(message_lower.strip() == greet or message_lower.startswith(greet + ' ') or message_lower.startswith(greet + ',') for greet in greetings):
-        responses = [
-            "Hi there! 👋 I'm Bubbles, your friendly support assistant! How can I help you today?",
-            "Hello! 😊 I'm Bubbles! What can I help you with today?",
-            "Hey there! 👋 Bubbles here, ready to assist! What's on your mind?",
-            "Hi! I'm Bubbles, your support buddy! 🫧 How can I make your day better?",
-        ]
-        return random.choice(responses)
+    # Use the comprehensive personality module
+    response = get_conversational_response(message_lower)
     
-    # Name questions
-    name_questions = ['what is your name', 'what\'s your name', 'who are you', 'whats your name', 'your name']
-    if any(q in message_lower for q in name_questions):
-        return "I'm Bubbles! 🫧 Your friendly AI support assistant. I'm here to help you troubleshoot issues and find solutions. Nice to meet you!"
-    
-    # How are you / wellbeing questions
-    wellbeing_questions = ['how are you', 'how r u', 'how do you do', 'how\'s it going', 'hows it going', 'how are things', 'you doing', 'are you okay', 'you alright', 'wassup', 'what\'s up', 'whats up']
-    if any(q in message_lower for q in wellbeing_questions):
-        responses = [
-            "I'm doing great, thanks for asking! 😊 I'm Bubbles, always bubbly and ready to help! What can I assist you with?",
-            "I'm fantastic! 🫧 Ready to pop some problems and find solutions for you! How can I help?",
-            "All good here! I'm Bubbles and I'm here to help. What's troubling you today?",
-            "I'm wonderful, thank you! 💫 Now, let's focus on you - what can Bubbles help you with today?",
-        ]
-        return random.choice(responses)
-    
-    # Thank you responses
-    thanks = ['thank you', 'thanks', 'thx', 'ty', 'cheers', 'appreciate it', 'thank u']
-    if any(t in message_lower for t in thanks):
-        responses = [
-            "You're welcome! 😊 Is there anything else Bubbles can help you with?",
-            "Happy to help! 🫧 Let me know if you need anything else!",
-            "Anytime! That's what I'm here for! 💫 Anything else on your mind?",
-            "My pleasure! 🌟 Don't hesitate to ask if you have more questions!",
-        ]
-        return random.choice(responses)
-    
-    # Goodbye responses
-    goodbyes = ['bye', 'goodbye', 'see you', 'later', 'take care', 'gtg', 'gotta go', 'cya']
-    if any(g in message_lower for g in goodbyes):
-        responses = [
-            "Goodbye! 👋 Take care and don't hesitate to come back if you need help! - Bubbles 🫧",
-            "See you later! 😊 Hope I was helpful. Come back anytime! - Bubbles",
-            "Bye for now! 🌟 Remember, Bubbles is always here when you need support!",
-            "Take care! 👋 Wishing you a great day ahead! - Your friend Bubbles 🫧",
-        ]
-        return random.choice(responses)
-    
-    # Request to speak to human/real person/agent
-    human_requests = ['speak to a human', 'talk to a human', 'real person', 'speak to someone', 'talk to someone', 
-                      'human agent', 'live agent', 'real agent', 'speak to agent', 'talk to agent',
-                      'speak to support', 'talk to support', 'customer service', 'tech support person',
-                      'actual person', 'live person', 'human help', 'need a person', 'want to talk to someone',
-                      'speak with someone', 'connect me to', 'transfer me', 'escalate']
-    if any(h in message_lower for h in human_requests):
+    if response == "HUMAN_REQUEST":
         # Get support email from workspace settings
         support_email = "support@company.com"  # Default
         try:
@@ -9662,21 +9610,7 @@ Here are your options:
 
 I'm Bubbles, and while I try my best to help, I know sometimes you need that human touch! 💫 Our support team is awesome and they'll take great care of you!"""
     
-    # Help / what can you do
-    help_questions = ['help', 'what can you do', 'how does this work', 'what do you do', 'how can you help', 'your purpose', 'what are you']
-    if any(h in message_lower for h in help_questions):
-        return """Hi! I'm Bubbles! 🫧 Here's what I can do for you:
-
-🔍 **Troubleshoot Issues:** Describe your problem and I'll search our knowledge base and the web for solutions!
-
-💡 **Answer Questions:** Ask me about common technical issues and I'll try to help.
-
-🎫 **Guide You to Support:** If I can't solve your problem, I'll help you submit a ticket to our human support team.
-
-Just type your question or describe your issue, and let's get started! 💫"""
-    
-    # Not a conversational message - return None to proceed with technical support
-    return None
+    return response
 
 
 @router.post('/tickets/support/chat', response_class=JSONResponse)
