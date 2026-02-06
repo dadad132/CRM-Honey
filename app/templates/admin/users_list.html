@@ -212,6 +212,23 @@
                                             </form>
                                             {% endif %}
                                             
+                                            <!-- Bubbles Analytics Toggle (only for users who can see all tickets or admins) -->
+                                            {% if u.is_admin or u.can_see_all_tickets %}
+                                            <form method="POST" action="/web/admin/users/{{ u.id }}/toggle-bubbles-analytics" class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">
+                                                {% if u.show_bubbles_analytics %}
+                                                <button type="submit" class="w-full text-left flex items-center">
+                                                    <i class="fas fa-chart-pie mr-2 text-purple-600"></i>
+                                                    <span>🫧 Disable Bubbles Analytics</span>
+                                                </button>
+                                                {% else %}
+                                                <button type="submit" class="w-full text-left flex items-center">
+                                                    <i class="fas fa-chart-pie mr-2 text-purple-400"></i>
+                                                    <span>🫧 Enable Bubbles Analytics</span>
+                                                </button>
+                                                {% endif %}
+                                            </form>
+                                            {% endif %}
+                                            
                                             <!-- Change Password -->
                                             <button onclick="showPasswordModal({{ u.id }}, '{{ u.username }}'); open = false;" class="block w-full px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 text-left">
                                                 <i class="fas fa-key mr-2 text-blue-600"></i>

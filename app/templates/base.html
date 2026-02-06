@@ -212,6 +212,13 @@
             <span>Tickets</span>
           </a>
           
+          {% if user is defined and user.can_see_all_tickets and user.show_bubbles_analytics %}
+          <a href="/web/support/analytics" class="nav-item px-4 py-2.5 rounded-lg hover:bg-gray-700/50 text-gray-300 hover:text-white flex items-center gap-3 transition-all {{ 'active' if '/web/support/analytics' in current_path else '' }}">
+            <span class="w-5 h-5 text-center">🫧</span>
+            <span>Bubbles Analytics</span>
+          </a>
+          {% endif %}
+          
           <!-- Section: Collaborate -->
           <div class="pt-4 pb-2 px-4 text-xs font-bold text-red-400 uppercase tracking-wider">Collaborate</div>
           

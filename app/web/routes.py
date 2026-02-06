@@ -3589,6 +3589,41 @@ async def web_admin_toggle_ticket_visibility(
     return RedirectResponse('/web/admin/users', status_code=303)
 
 
+@router.post('/admin/users/{user_id}/toggle-bubbles-analytics')
+async def web_admin_toggle_bubbles_analytics(
+    request: Request,
+    user_id: int,
+    db: AsyncSession = Depends(get_session),
+):
+    """Toggle whether a user can view Bubbles analytics dashboard"""
+    current_user_id = request.session.get('user_id')
+    if not current_user_id:
+        return RedirectResponse('/web/login', status_code=303)
+    
+    current_user = (await db.execute(select(User).where(User.id == current_user_id))).scalar_one_or_none()
+    if not current_user or not current_user.is_active:
+        request.session.clear()
+        return RedirectResponse('/web/login', status_code=303)
+    
+    if not current_user.is_admin:
+        raise HTTPException(status_code=403, detail="Admin access required")
+    
+    # Get the target user
+    target_user = (await db.execute(select(User).where(User.id == user_id))).scalar_one_or_none()
+    if not target_user:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    # Must be in same workspace
+    if target_user.workspace_id != current_user.workspace_id:
+        raise HTTPException(status_code=403, detail="User not in your workspace")
+    
+    # Toggle bubbles analytics permission
+    target_user.show_bubbles_analytics = not target_user.show_bubbles_analytics
+    await db.commit()
+    
+    return RedirectResponse('/web/admin/users', status_code=303)
+
+
 @router.post('/admin/users/{user_id}/delete')
 async def web_admin_delete_user(
     request: Request,
@@ -9884,6 +9919,158 @@ async def support_search_web(
     except Exception as e:
         logger.error(f"Web search error: {e}")
         return JSONResponse({'error': str(e)}, status_code=500)
+
+
+# --------------------------
+# Bubbles Analytics Dashboard
+# --------------------------
+@router.get('/support/analytics', response_class=HTMLResponse)
+async def bubbles_analytics_dashboard(
+    request: Request,
+    days: int = Query(30, description="Number of days to analyze"),
+    db: AsyncSession = Depends(get_session)
+):
+    """Bubbles Analytics Dashboard - shows what customers are asking"""
+    user_id = request.session.get('user_id')
+    if not user_id:
+        return RedirectResponse('/web/login', status_code=303)
+    
+    user = (await db.execute(select(User).where(User.id == user_id))).scalar_one_or_none()
+    if not user or not user.is_active:
+        request.session.clear()
+        return RedirectResponse('/web/login', status_code=303)
+    
+    # Check permissions: must have can_see_all_tickets AND show_bubbles_analytics enabled
+    if not (user.can_see_all_tickets and user.show_bubbles_analytics):
+        raise HTTPException(status_code=403, detail="You don't have permission to view Bubbles analytics")
+    
+    from datetime import timedelta
+    from collections import Counter
+    
+    # Date range
+    end_date = datetime.utcnow()
+    start_date = end_date - timedelta(days=days)
+    prev_start = start_date - timedelta(days=days)
+    
+    # Get conversations in date range
+    convs_result = await db.execute(
+        select(SupportConversation)
+        .where(
+            SupportConversation.workspace_id == user.workspace_id,
+            SupportConversation.created_at >= start_date
+        )
+        .order_by(SupportConversation.created_at.desc())
+    )
+    conversations = convs_result.scalars().all()
+    
+    # Previous period for comparison
+    prev_convs_result = await db.execute(
+        select(SupportConversation)
+        .where(
+            SupportConversation.workspace_id == user.workspace_id,
+            SupportConversation.created_at >= prev_start,
+            SupportConversation.created_at < start_date
+        )
+    )
+    prev_conversations = prev_convs_result.scalars().all()
+    
+    # Calculate stats
+    total_conversations = len(conversations)
+    prev_total = len(prev_conversations) or 1
+    conversations_change = round(((total_conversations - prev_total) / prev_total) * 100, 1)
+    
+    resolved_by_bubbles = len([c for c in conversations if c.was_helpful])
+    escalated_to_tickets = len([c for c in conversations if c.escalated_to_ticket])
+    resolution_rate = round((resolved_by_bubbles / total_conversations * 100) if total_conversations > 0 else 0, 1)
+    escalation_rate = round((escalated_to_tickets / total_conversations * 100) if total_conversations > 0 else 0, 1)
+    
+    # Get KB articles stats
+    articles_result = await db.execute(
+        select(SupportArticle)
+        .where(SupportArticle.workspace_id == user.workspace_id)
+        .order_by(SupportArticle.success_rate.desc())
+    )
+    all_articles = articles_result.scalars().all()
+    
+    kb_articles_used = len([a for a in all_articles if a.times_shown > 0])
+    total_helpful = sum(a.times_helpful for a in all_articles)
+    total_shown = sum(a.times_shown for a in all_articles) or 1
+    avg_helpful_rate = round((total_helpful / total_shown) * 100, 1)
+    
+    # Top performing articles
+    top_articles = sorted(all_articles, key=lambda a: (a.success_rate, a.times_shown), reverse=True)[:10]
+    
+    # Most common questions (analyze initial_problem)
+    question_counter = Counter()
+    failed_counter = Counter()
+    
+    for conv in conversations:
+        if conv.initial_problem:
+            # Normalize the question
+            normalized = conv.initial_problem.lower().strip()[:100]
+            question_counter[normalized] += 1
+            
+            # Track failed questions (not resolved)
+            if not conv.was_helpful:
+                failed_counter[normalized] += 1
+    
+    common_questions = []
+    for text, count in question_counter.most_common(10):
+        resolved_count = count - failed_counter.get(text, 0)
+        common_questions.append({
+            'text': text.capitalize(),
+            'count': count,
+            'resolved_rate': round((resolved_count / count) * 100) if count > 0 else 0
+        })
+    
+    # Failed questions (needs improvement)
+    failed_questions = []
+    for text, count in failed_counter.most_common(10):
+        if count >= 2:  # Only show if asked multiple times
+            failed_questions.append({
+                'text': text.capitalize(),
+                'count': question_counter.get(text, count),
+                'escalated': count
+            })
+    
+    # Categories breakdown
+    categories = [
+        {'name': 'Email', 'icon': '📧', 'count': len([c for c in conversations if 'email' in (c.initial_problem or '').lower()])},
+        {'name': 'Password', 'icon': '🔑', 'count': len([c for c in conversations if 'password' in (c.initial_problem or '').lower()])},
+        {'name': 'Printer', 'icon': '🖨️', 'count': len([c for c in conversations if 'printer' in (c.initial_problem or '').lower() or 'print' in (c.initial_problem or '').lower()])},
+        {'name': 'Network', 'icon': '📶', 'count': len([c for c in conversations if 'wifi' in (c.initial_problem or '').lower() or 'network' in (c.initial_problem or '').lower() or 'internet' in (c.initial_problem or '').lower()])},
+        {'name': 'Software', 'icon': '💿', 'count': len([c for c in conversations if 'install' in (c.initial_problem or '').lower() or 'software' in (c.initial_problem or '').lower()])},
+        {'name': 'Other', 'icon': '❓', 'count': 0}  # Calculate remaining
+    ]
+    categorized = sum(c['count'] for c in categories[:-1])
+    categories[-1]['count'] = total_conversations - categorized
+    
+    # Recent conversations
+    recent_conversations = conversations[:20]
+    
+    workspace = await get_workspace_for_user(user_id, db)
+    
+    return templates.TemplateResponse('support/analytics.html', {
+        'request': request,
+        'user': user,
+        'workspace': workspace,
+        'stats': {
+            'total_conversations': total_conversations,
+            'conversations_change': conversations_change,
+            'resolved_by_bubbles': resolved_by_bubbles,
+            'resolution_rate': resolution_rate,
+            'escalated_to_tickets': escalated_to_tickets,
+            'escalation_rate': escalation_rate,
+            'kb_articles_used': kb_articles_used,
+            'avg_helpful_rate': avg_helpful_rate
+        },
+        'common_questions': common_questions,
+        'failed_questions': failed_questions,
+        'top_articles': top_articles,
+        'recent_conversations': recent_conversations,
+        'categories': categories,
+        'days': days
+    })
 
 
 # Pre-trained basic support knowledge (Bubbles handles simple issues ONLY)

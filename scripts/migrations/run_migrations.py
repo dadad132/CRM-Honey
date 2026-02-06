@@ -42,6 +42,9 @@ def run_migrations():
         if 'away_summary_preference' not in cols:
             cursor.execute("ALTER TABLE user ADD COLUMN away_summary_preference VARCHAR DEFAULT 'ask'")
             migrations.append("Added: user.away_summary_preference")
+        if 'show_bubbles_analytics' not in cols:
+            cursor.execute("ALTER TABLE user ADD COLUMN show_bubbles_analytics BOOLEAN DEFAULT 0")
+            migrations.append("Added: user.show_bubbles_analytics")
     
     conn.commit()
     conn.close()

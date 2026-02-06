@@ -43,6 +43,7 @@ class UserBase(SQLModel):
     calendar_color: Optional[str] = Field(default_factory=get_random_user_color)  # Random color for calendar display
     can_see_all_tickets: bool = Field(default=False)  # If True, user sees all tickets regardless of project membership
     mute_ticket_notifications: bool = Field(default=False)  # If True, user won't receive ticket notifications
+    show_bubbles_analytics: bool = Field(default=False)  # If True (and can_see_all_tickets), show Bubbles analytics dashboard
 
 
 class User(UserBase, table=True):
