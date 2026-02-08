@@ -45,7 +45,7 @@ class SupportConversation(SQLModel, table=True):
     session_id: str = Field(index=True)  # Browser session identifier
     
     # Guest info (optional)
-    guest_email: Optional[str] = None
+    guest_email: Optional[str] = Field(default=None, index=True)
     guest_name: Optional[str] = None
     
     # Conversation tracking
@@ -57,7 +57,16 @@ class SupportConversation(SQLModel, table=True):
     escalated_to_ticket: bool = Field(default=False)  # Did they create a ticket?
     ticket_id: Optional[int] = Field(default=None, foreign_key="ticket.id")
     
+    # Enhanced tracking
+    conversation_json: Optional[str] = None  # Full conversation history as JSON
+    issue_category: Optional[str] = None  # Detected issue category
+    device_type: Optional[str] = None  # computer, printer, phone, etc.
+    frustration_level: int = Field(default=0)  # 0-5, detected from tone
+    steps_tried: Optional[str] = None  # JSON list of troubleshooting steps already tried
+    total_messages: int = Field(default=0)  # Count of messages in conversation
+    
     created_at: datetime = Field(default_factory=datetime.utcnow)
+    last_message_at: Optional[datetime] = None  # Track activity
 
 
 class SupportCategory(SQLModel, table=True):

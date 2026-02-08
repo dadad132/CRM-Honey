@@ -9626,46 +9626,178 @@ async def support_assistant_chat(
     request: Request,
     db: AsyncSession = Depends(get_session)
 ):
-    """Main support assistant chat endpoint - Bubbles the AI Assistant"""
+    """Main support assistant chat endpoint - Bubbles the AI Assistant with advanced features"""
     try:
+        from app.core.bubbles_ai import (
+            detect_frustration, get_troubleshooting_flow, get_flow_step,
+            CLARIFYING_QUESTIONS, get_video_tutorial, get_welcome_back_message,
+            generate_ticket_prefill, get_status_message
+        )
+        
         data = await request.json()
         message = data.get('message', '').strip()
-        # Handle None, empty string, or "null" string from JavaScript
         raw_session_id = data.get('session_id')
         session_id = raw_session_id if raw_session_id and raw_session_id != 'null' else str(uuid.uuid4())
+        
+        # Get additional context from frontend
+        guest_email = data.get('guest_email', '').strip()
+        flow_name = data.get('flow_name')  # Active troubleshooting flow
+        flow_step = data.get('flow_step')  # Current step in flow
+        conversation_history = data.get('conversation_history', [])
         
         if not message:
             return JSONResponse({'error': 'Message is required'}, status_code=400)
         
         message_lower = message.lower()
         
-        # Check for conversational messages first
+        # Initialize response data
+        response_data = {
+            'session_id': session_id,
+            'is_conversational': False,
+            'found_in_kb': False,
+            'kb_articles': [],
+            'web_results': [],
+            'suggestions': [],
+            'quick_replies': [],
+            'flow_name': None,
+            'flow_step': None,
+            'empathy_prefix': None,
+            'video_tutorial': None,
+            'ticket_prefill': None
+        }
+        
+        # ===== FRUSTRATION DETECTION =====
+        frustration_data = detect_frustration(message)
+        if frustration_data['level'] >= 3:
+            response_data['empathy_prefix'] = frustration_data['empathy_response']
+            response_data['frustration_level'] = frustration_data['level']
+        
+        # ===== CHECK FOR RETURNING USER =====
+        existing_conversation = None
+        if guest_email:
+            # Check for previous conversations
+            result = await db.execute(
+                select(SupportConversation).where(
+                    SupportConversation.guest_email == guest_email
+                ).order_by(SupportConversation.created_at.desc()).limit(1)
+            )
+            previous_convo = result.scalar_one_or_none()
+            if previous_convo and previous_convo.session_id != session_id:
+                # This is a returning user!
+                welcome_back = get_welcome_back_message({
+                    'last_issue': previous_convo.issue_category or previous_convo.initial_problem[:50],
+                    'was_resolved': previous_convo.resolved,
+                    'last_visit': previous_convo.created_at
+                })
+                if welcome_back and not flow_name:  # Don't interrupt active flows
+                    response_data['welcome_back_message'] = welcome_back
+        
+        # ===== HANDLE ACTIVE TROUBLESHOOTING FLOW =====
+        if flow_name and flow_step:
+            flow = get_troubleshooting_flow(flow_name)
+            if flow:
+                step_data = get_flow_step(flow_name, flow_step)
+                if step_data:
+                    response_data['is_conversational'] = True
+                    response_data['bubbles_response'] = step_data.get('message', '')
+                    response_data['quick_replies'] = step_data.get('quick_replies', [])
+                    response_data['flow_name'] = flow_name
+                    
+                    if step_data.get('is_success'):
+                        response_data['flow_step'] = None  # End flow
+                        response_data['show_success'] = True
+                    elif step_data.get('is_escalation'):
+                        response_data['flow_step'] = None  # End flow
+                        response_data['show_ticket_option'] = True
+                        # Generate ticket prefill
+                        response_data['ticket_prefill'] = generate_ticket_prefill({
+                            'initial_problem': message,
+                            'conversation_history': conversation_history,
+                            'frustration_level': frustration_data['level']
+                        })
+                    else:
+                        response_data['flow_step'] = flow_step
+                    
+                    return JSONResponse(response_data)
+        
+        # ===== START NEW TROUBLESHOOTING FLOW =====
+        # Check if message matches a flow trigger
+        flow_triggers = {
+            'printer': ['printer', 'print', 'printing', 'paper jam', 'not printing'],
+            'wifi': ['wifi', 'wi-fi', 'internet', 'network', 'not connecting', 'no connection'],
+            'email': ['email', 'outlook', 'mail', 'cant send', 'not receiving'],
+            'slow_computer': ['slow', 'running slow', 'computer slow', 'laptop slow', 'freezing']
+        }
+        
+        for flow_key, triggers in flow_triggers.items():
+            if any(trigger in message_lower for trigger in triggers):
+                flow = get_troubleshooting_flow(flow_key)
+                if flow:
+                    # Check for known issues first
+                    status_msg = get_status_message(flow_key)
+                    if status_msg:
+                        response_data['system_status'] = status_msg
+                    
+                    response_data['is_conversational'] = True
+                    prefix = response_data['empathy_prefix'] + "\n\n" if response_data['empathy_prefix'] else ""
+                    response_data['bubbles_response'] = prefix + flow['start_question']
+                    response_data['quick_replies'] = flow['quick_replies']
+                    response_data['flow_name'] = flow_key
+                    response_data['flow_step'] = 'start'
+                    
+                    # Add video tutorial if available
+                    if flow_key == 'printer' and 'jam' in message_lower:
+                        response_data['video_tutorial'] = get_video_tutorial('printer_jam')
+                    elif flow_key == 'wifi':
+                        response_data['video_tutorial'] = get_video_tutorial('wifi_reset')
+                    
+                    # Save conversation
+                    result = await db.execute(
+                        select(SupportConversation).where(SupportConversation.session_id == session_id)
+                    )
+                    conversation = result.scalar_one_or_none()
+                    
+                    if not conversation:
+                        conversation = SupportConversation(
+                            workspace_id=1,
+                            session_id=session_id,
+                            initial_problem=message,
+                            guest_email=guest_email if guest_email else None,
+                            issue_category=flow_key,
+                            frustration_level=frustration_data['level']
+                        )
+                        db.add(conversation)
+                    else:
+                        conversation.issue_category = flow_key
+                        conversation.frustration_level = frustration_data['level']
+                        conversation.total_messages += 1
+                        conversation.last_message_at = datetime.utcnow()
+                    
+                    await db.commit()
+                    return JSONResponse(response_data)
+        
+        # ===== CHECK FOR CONVERSATIONAL MESSAGES =====
         conversational_response = await handle_conversational_message(message_lower, db)
         if conversational_response:
-            return JSONResponse({
-                'session_id': session_id,
-                'is_conversational': True,
-                'bubbles_response': conversational_response,
-                'found_in_kb': False,
-                'kb_articles': [],
-                'web_results': [],
-                'suggestions': []
-            })
+            response_data['is_conversational'] = True
+            prefix = response_data['empathy_prefix'] + "\n\n" if response_data['empathy_prefix'] else ""
+            response_data['bubbles_response'] = prefix + conversational_response
+            return JSONResponse(response_data)
         
-        # Check for pre-trained basic support responses (Bubbles is for basic support only)
+        # ===== CHECK FOR PRE-TRAINED BASIC SUPPORT =====
         pretrained = get_pretrained_response(message_lower)
         if pretrained:
-            return JSONResponse({
-                'session_id': session_id,
-                'is_conversational': True,
-                'bubbles_response': pretrained['response'],
-                'found_in_kb': False,
-                'kb_articles': [],
-                'web_results': [],
-                'suggestions': []
-            })
+            response_data['is_conversational'] = True
+            prefix = response_data['empathy_prefix'] + "\n\n" if response_data['empathy_prefix'] else ""
+            response_data['bubbles_response'] = prefix + pretrained['response']
+            
+            # Add clarifying questions if it's a vague issue
+            if len(message.split()) < 5:  # Short message, might need clarification
+                response_data['follow_up'] = CLARIFYING_QUESTIONS.get('device_type')
+            
+            return JSONResponse(response_data)
         
-        # Get or create conversation (use workspace_id=1 for guest/public chat)
+        # ===== SEARCH KNOWLEDGE BASE =====
         result = await db.execute(
             select(SupportConversation).where(SupportConversation.session_id == session_id)
         )
@@ -9673,20 +9805,21 @@ async def support_assistant_chat(
         
         if not conversation:
             conversation = SupportConversation(
-                workspace_id=1,  # Default workspace for guest chat
+                workspace_id=1,
                 session_id=session_id,
-                initial_problem=message
+                initial_problem=message,
+                guest_email=guest_email if guest_email else None,
+                frustration_level=frustration_data['level']
             )
             db.add(conversation)
             await db.commit()
             await db.refresh(conversation)
         
-        # Step 1: Search knowledge base for existing solutions
         keywords = message_lower.split()
         kb_results = []
         
-        for keyword in keywords[:5]:  # Limit to first 5 keywords
-            if len(keyword) > 3:  # Skip short words
+        for keyword in keywords[:5]:
+            if len(keyword) > 3:
                 result = await db.execute(
                     select(SupportArticle).where(
                         and_(
@@ -9701,7 +9834,6 @@ async def support_assistant_chat(
                 )
                 kb_results.extend(result.scalars().all())
         
-        # Remove duplicates
         seen_ids = set()
         unique_kb_results = []
         for article in kb_results:
@@ -9709,17 +9841,9 @@ async def support_assistant_chat(
                 seen_ids.add(article.id)
                 unique_kb_results.append(article)
         
-        response_data = {
-            'session_id': session_id,
-            'is_conversational': False,
-            'found_in_kb': len(unique_kb_results) > 0,
-            'kb_articles': [],
-            'web_results': [],
-            'suggestions': []
-        }
+        response_data['found_in_kb'] = len(unique_kb_results) > 0
         
         if unique_kb_results:
-            # Found in knowledge base
             for article in unique_kb_results[:3]:
                 response_data['kb_articles'].append({
                     'id': article.id,
@@ -9729,31 +9853,33 @@ async def support_assistant_chat(
                     'success_rate': article.success_rate,
                     'times_used': article.times_shown
                 })
-                # Increment usage count
                 article.times_shown += 1
             
             await db.commit()
-            
             response_data['suggestions'].append({
                 'type': 'kb_match',
                 'message': f"I found {len(unique_kb_results)} solution(s) that might help with your issue."
             })
         else:
-            # Not in KB, search the web
             web_results = await search_duckduckgo(message)
             solution_steps = await extract_solution_steps(web_results)
-            
             response_data['web_results'] = solution_steps
             response_data['suggestions'].append({
                 'type': 'web_search',
                 'message': "I searched the web for solutions. Here's what I found:"
             })
         
+        # Add empathy prefix to bubble response if frustrated
+        if response_data['empathy_prefix']:
+            response_data['bubbles_response'] = response_data['empathy_prefix']
+        
         await db.commit()
         return JSONResponse(response_data)
         
     except Exception as e:
         logger.error(f"Support assistant error: {e}")
+        import traceback
+        traceback.print_exc()
         return JSONResponse({'error': str(e)}, status_code=500)
 
 
