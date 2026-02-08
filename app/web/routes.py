@@ -9631,7 +9631,7 @@ async def support_assistant_chat(
         from app.core.bubbles_ai import (
             detect_frustration, get_troubleshooting_flow, get_flow_step,
             CLARIFYING_QUESTIONS, get_video_tutorial, get_welcome_back_message,
-            generate_ticket_prefill, get_status_message
+            generate_ticket_prefill, get_status_message, BubblesLearning, SmartResponder
         )
         
         data = await request.json()
@@ -9663,7 +9663,8 @@ async def support_assistant_chat(
             'flow_step': None,
             'empathy_prefix': None,
             'video_tutorial': None,
-            'ticket_prefill': None
+            'ticket_prefill': None,
+            'learned_solution': None  # New: from learning system
         }
         
         # ===== FRUSTRATION DETECTION =====
@@ -9671,6 +9672,13 @@ async def support_assistant_chat(
         if frustration_data['level'] >= 3:
             response_data['empathy_prefix'] = frustration_data['empathy_response']
             response_data['frustration_level'] = frustration_data['level']
+        
+        # ===== SMART CONTEXT DETECTION =====
+        context_type, context_response = SmartResponder.detect_context(message)
+        if context_type and context_response:
+            response_data['is_conversational'] = True
+            response_data['bubbles_response'] = context_response
+            return JSONResponse(response_data)
         
         # ===== CHECK FOR RETURNING USER =====
         existing_conversation = None
@@ -9706,6 +9714,13 @@ async def support_assistant_chat(
                     if step_data.get('is_success'):
                         response_data['flow_step'] = None  # End flow
                         response_data['show_success'] = True
+                        # Learn from successful resolution
+                        BubblesLearning.learn_from_resolution(
+                            problem=f"[Flow: {flow_name}] User resolved issue",
+                            solution=f"Completed troubleshooting flow: {flow_name}",
+                            was_helpful=True,
+                            category=flow_name
+                        )
                     elif step_data.get('is_escalation'):
                         response_data['flow_step'] = None  # End flow
                         response_data['show_ticket_option'] = True
@@ -9719,6 +9734,21 @@ async def support_assistant_chat(
                         response_data['flow_step'] = flow_step
                     
                     return JSONResponse(response_data)
+        
+        # ===== CHECK LEARNED SOLUTIONS FIRST =====
+        # Try to find solutions from past successful resolutions
+        learned_matches = BubblesLearning.find_similar_solutions(message)
+        if learned_matches and learned_matches[0]['confidence'] >= 0.6:
+            best_match = learned_matches[0]
+            response_data['is_conversational'] = True
+            prefix = response_data['empathy_prefix'] + "\n\n" if response_data['empathy_prefix'] else ""
+            response_data['bubbles_response'] = f"{prefix}🧠 I remember a similar issue! Here's what worked before:\n\n{best_match['solution']}"
+            response_data['learned_solution'] = {
+                'confidence': best_match['confidence'],
+                'similarity': best_match['similarity'],
+                'category': best_match.get('category')
+            }
+            # Don't return yet - still show KB results for comparison
         
         # ===== START NEW TROUBLESHOOTING FLOW =====
         # Check if message matches a flow trigger
@@ -9888,20 +9918,34 @@ async def support_assistant_feedback(
     request: Request,
     db: AsyncSession = Depends(get_session)
 ):
-    """Handle feedback on support suggestions"""
+    """Handle feedback on support suggestions - with learning integration"""
     try:
+        from app.core.bubbles_ai import BubblesLearning
+        
         data = await request.json()
         session_id = data.get('session_id')
         helpful = data.get('helpful', False)
         article_id = data.get('article_id')
         problem = data.get('problem', '')
         solution = data.get('solution', '')
+        category = data.get('category', '')
         
         # Get conversation
         result = await db.execute(
             select(SupportConversation).where(SupportConversation.session_id == session_id)
         )
         conversation = result.scalar_one_or_none()
+        
+        # ===== LEARNING INTEGRATION =====
+        # Learn from this interaction
+        if problem and solution:
+            BubblesLearning.learn_from_resolution(
+                problem=problem,
+                solution=solution,
+                was_helpful=helpful,
+                category=category or (conversation.issue_category if conversation else None),
+                tags=[]
+            )
         
         if article_id:
             # Feedback for existing KB article
@@ -9916,6 +9960,7 @@ async def support_assistant_feedback(
                     article.success_rate = (article.times_helpful / article.times_shown) * 100 if article.times_shown > 0 else 100.0
                     if conversation:
                         conversation.was_helpful = True
+                        conversation.resolved = True
                         conversation.resolution_type = 'kb_article'
                 else:
                     # Not helpful, decrease success rate
@@ -9944,13 +9989,14 @@ async def support_assistant_feedback(
             
             if conversation:
                 conversation.was_helpful = True
+                conversation.resolved = True
                 conversation.resolution_type = 'web_search'
             
             await db.commit()
             
             return JSONResponse({
                 'success': True,
-                'message': 'Thank you! This solution has been saved to our knowledge base.',
+                'message': 'Thank you! This solution has been saved to our knowledge base. 🧠 I\'m learning!',
                 'article_created': True
             })
         
@@ -9965,7 +10011,16 @@ async def support_assistant_feedback(
                 'escalate': True
             })
         
-        return JSONResponse({'success': True})
+        # Return learning stats (for fun!)
+        learning_stats = BubblesLearning.get_learning_stats()
+        
+        return JSONResponse({
+            'success': True,
+            'learning_stats': {
+                'solutions_learned': learning_stats['total_solutions_learned'],
+                'patterns_recognized': learning_stats['unique_patterns']
+            }
+        })
         
     except Exception as e:
         logger.error(f"Support feedback error: {e}")

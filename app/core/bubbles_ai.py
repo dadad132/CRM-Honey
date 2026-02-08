@@ -6,7 +6,306 @@ import re
 import json
 import random
 from datetime import datetime, timedelta
-from typing import Optional, Dict, List, Any
+from typing import Optional, Dict, List, Any, Tuple
+from collections import defaultdict
+
+# ============================================================================
+# LEARNING SYSTEM - Bubbles learns from successful resolutions
+# ============================================================================
+
+class BubblesLearning:
+    """Handles Bubbles' learning capabilities"""
+    
+    # In-memory cache of learned patterns (would be loaded from DB in production)
+    learned_solutions = defaultdict(list)
+    solution_success_rates = defaultdict(lambda: {'success': 0, 'failure': 0})
+    problem_patterns = defaultdict(list)
+    
+    @classmethod
+    def extract_keywords(cls, text: str) -> List[str]:
+        """Extract meaningful keywords from text"""
+        # Common words to ignore
+        stop_words = {
+            'the', 'a', 'an', 'is', 'are', 'was', 'were', 'be', 'been', 'being',
+            'have', 'has', 'had', 'do', 'does', 'did', 'will', 'would', 'could',
+            'should', 'may', 'might', 'must', 'can', 'to', 'of', 'in', 'for',
+            'on', 'with', 'at', 'by', 'from', 'as', 'into', 'through', 'during',
+            'before', 'after', 'above', 'below', 'between', 'under', 'again',
+            'further', 'then', 'once', 'here', 'there', 'when', 'where', 'why',
+            'how', 'all', 'each', 'few', 'more', 'most', 'other', 'some', 'such',
+            'no', 'nor', 'not', 'only', 'own', 'same', 'so', 'than', 'too', 'very',
+            'just', 'and', 'but', 'if', 'or', 'because', 'until', 'while', 'it',
+            'its', 'my', 'your', 'his', 'her', 'their', 'this', 'that', 'these',
+            'those', 'am', 'i', 'me', 'we', 'you', 'he', 'she', 'they', 'what',
+            'which', 'who', 'whom', 'help', 'please', 'thanks', 'thank', 'hi',
+            'hello', 'hey', 'need', 'want', 'get', 'got', 'like', 'know', 'think'
+        }
+        
+        # Clean and split
+        text_lower = text.lower()
+        words = re.findall(r'\b[a-z]+\b', text_lower)
+        
+        # Filter and return meaningful keywords
+        keywords = [w for w in words if w not in stop_words and len(w) > 2]
+        return keywords
+    
+    @classmethod
+    def calculate_similarity(cls, keywords1: List[str], keywords2: List[str]) -> float:
+        """Calculate similarity between two sets of keywords"""
+        if not keywords1 or not keywords2:
+            return 0.0
+        
+        set1 = set(keywords1)
+        set2 = set(keywords2)
+        
+        intersection = set1 & set2
+        union = set1 | set2
+        
+        if not union:
+            return 0.0
+        
+        return len(intersection) / len(union)
+    
+    @classmethod
+    def learn_from_resolution(cls, problem: str, solution: str, was_helpful: bool, 
+                              category: str = None, tags: List[str] = None):
+        """Learn from a resolved issue"""
+        keywords = cls.extract_keywords(problem)
+        
+        learning_entry = {
+            'problem': problem,
+            'solution': solution,
+            'keywords': keywords,
+            'category': category,
+            'tags': tags or [],
+            'was_helpful': was_helpful,
+            'learned_at': datetime.now().isoformat(),
+            'times_used': 1
+        }
+        
+        # Store by category
+        if category:
+            cls.learned_solutions[category].append(learning_entry)
+        
+        # Store by keywords
+        for keyword in keywords[:5]:  # Top 5 keywords
+            cls.problem_patterns[keyword].append(learning_entry)
+        
+        # Update success rate
+        solution_key = f"{category}:{hash(solution[:100])}"
+        if was_helpful:
+            cls.solution_success_rates[solution_key]['success'] += 1
+        else:
+            cls.solution_success_rates[solution_key]['failure'] += 1
+    
+    @classmethod
+    def find_similar_solutions(cls, problem: str, category: str = None, 
+                               min_similarity: float = 0.3) -> List[Dict]:
+        """Find solutions for similar problems"""
+        problem_keywords = cls.extract_keywords(problem)
+        matches = []
+        
+        # Search by category first
+        search_pool = []
+        if category and category in cls.learned_solutions:
+            search_pool.extend(cls.learned_solutions[category])
+        
+        # Also search by keywords
+        for keyword in problem_keywords:
+            if keyword in cls.problem_patterns:
+                search_pool.extend(cls.problem_patterns[keyword])
+        
+        # Remove duplicates (by solution text)
+        seen = set()
+        unique_pool = []
+        for entry in search_pool:
+            sol_hash = hash(entry['solution'][:100])
+            if sol_hash not in seen:
+                seen.add(sol_hash)
+                unique_pool.append(entry)
+        
+        # Calculate similarity and filter
+        for entry in unique_pool:
+            similarity = cls.calculate_similarity(problem_keywords, entry['keywords'])
+            if similarity >= min_similarity and entry['was_helpful']:
+                matches.append({
+                    **entry,
+                    'similarity': similarity,
+                    'confidence': cls.get_solution_confidence(entry)
+                })
+        
+        # Sort by confidence and similarity
+        matches.sort(key=lambda x: (x['confidence'], x['similarity']), reverse=True)
+        
+        return matches[:5]  # Return top 5
+    
+    @classmethod
+    def get_solution_confidence(cls, entry: Dict) -> float:
+        """Calculate confidence score for a solution"""
+        category = entry.get('category', 'unknown')
+        solution_key = f"{category}:{hash(entry['solution'][:100])}"
+        
+        stats = cls.solution_success_rates[solution_key]
+        total = stats['success'] + stats['failure']
+        
+        if total == 0:
+            return 0.5  # Neutral confidence for new solutions
+        
+        success_rate = stats['success'] / total
+        # Factor in sample size (more uses = more confidence)
+        confidence_factor = min(1.0, total / 10)  # Max confidence at 10+ uses
+        
+        return success_rate * confidence_factor
+    
+    @classmethod
+    def get_learning_stats(cls) -> Dict:
+        """Get statistics about what Bubbles has learned"""
+        total_solutions = sum(len(v) for v in cls.learned_solutions.values())
+        total_patterns = len(cls.problem_patterns)
+        
+        categories = list(cls.learned_solutions.keys())
+        
+        return {
+            'total_solutions_learned': total_solutions,
+            'unique_patterns': total_patterns,
+            'categories': categories,
+            'top_categories': sorted(
+                [(k, len(v)) for k, v in cls.learned_solutions.items()],
+                key=lambda x: x[1],
+                reverse=True
+            )[:5]
+        }
+
+
+# ============================================================================
+# SMART RESPONSE GENERATION
+# ============================================================================
+
+class SmartResponder:
+    """Generates smarter, more contextual responses"""
+    
+    CONTEXT_PATTERNS = {
+        'greeting': {
+            'patterns': [r'^(hi|hello|hey|good morning|good afternoon|good evening)\b'],
+            'responses': [
+                "Hey! 👋 It's Bubbles! So happy you're here - what can I help you with today?",
+                "Hi there! 🫧 Bubbles here, ready to help! What's going on?",
+                "Hello! 👋 I'm Bubbles, your friendly support assistant. What brings you here today?",
+            ]
+        },
+        'thanks': {
+            'patterns': [r'\b(thanks|thank you|thx|ty|appreciate)\b'],
+            'responses': [
+                "You're so welcome! 🫧 Is there anything else I can help with?",
+                "Happy to help! 💜 Let me know if you need anything else!",
+                "Anytime! 😊 That's what I'm here for!",
+            ]
+        },
+        'how_are_you': {
+            'patterns': [r'how are you|how you doing|how\'s it going|what\'s up'],
+            'responses': [
+                "I'm fantastic! 🫧 Ready to pop some problems and find solutions for you! How can I help?",
+                "I'm doing great! 💜 Always happy when I get to help someone. What's on your mind?",
+                "Bubbles is bubbly as ever! 🎉 What can I help you with today?",
+            ]
+        },
+        'joke': {
+            'patterns': [r'\b(joke|funny|laugh|humor)\b'],
+            'responses': [
+                "Why did the WiFi break up with the router? 💔 There was no connection anymore! 📶 Bubbles has more where that came from!",
+                "Why did the computer go to the doctor? 💻 Because it had a virus! 🤒 I've got tons of tech jokes!",
+                "What do you call a computer that sings? 🎤 A-Dell! 🎵 Ok ok, I'll stick to tech support! 😄",
+                "Why was the computer cold? 🥶 It left its Windows open! ❄️",
+            ]
+        },
+        'frustration_acknowledgment': {
+            'patterns': [r'\b(ugh|argh|seriously|come on|really)\b'],
+            'responses': [
+                "I hear you! 💜 Let's get this sorted out together.",
+                "I know, technology can be frustrating! 🫧 But we'll figure it out!",
+                "Don't worry, we'll solve this! 💪 Tell me more about what's happening.",
+            ]
+        }
+    }
+    
+    FOLLOW_UP_QUESTIONS = {
+        'vague_problem': [
+            "Could you tell me a bit more about what's happening? 🤔",
+            "What exactly do you see when this happens?",
+            "When did this start happening?",
+            "Does this happen all the time or just sometimes?",
+        ],
+        'need_device': [
+            "What type of device are you using? (Windows PC, Mac, iPhone, etc.)",
+            "Is this happening on a computer, phone, or tablet?",
+        ],
+        'need_error': [
+            "Are you seeing any error messages? If so, what do they say?",
+            "Is there an error code or message displayed?",
+        ],
+        'need_context': [
+            "What were you trying to do when this happened?",
+            "Did anything change recently before this started?",
+        ]
+    }
+    
+    @classmethod
+    def detect_context(cls, message: str) -> Tuple[str, str]:
+        """Detect conversation context and return appropriate response"""
+        message_lower = message.lower().strip()
+        
+        for context_type, data in cls.CONTEXT_PATTERNS.items():
+            for pattern in data['patterns']:
+                if re.search(pattern, message_lower, re.IGNORECASE):
+                    response = random.choice(data['responses'])
+                    return context_type, response
+        
+        return None, None
+    
+    @classmethod
+    def needs_clarification(cls, message: str, conversation_history: List[Dict]) -> Tuple[bool, str]:
+        """Determine if we need to ask for clarification"""
+        message_lower = message.lower()
+        
+        # Very short or vague messages
+        if len(message.split()) < 4:
+            if not any(kw in message_lower for kw in ['printer', 'wifi', 'email', 'password', 'computer', 'slow', 'error']):
+                return True, random.choice(cls.FOLLOW_UP_QUESTIONS['vague_problem'])
+        
+        # Check if we have device info in history
+        has_device_info = any(
+            any(d in str(msg).lower() for d in ['windows', 'mac', 'iphone', 'android', 'laptop', 'pc', 'phone'])
+            for msg in conversation_history
+        )
+        if not has_device_info and len(conversation_history) < 2:
+            # Don't ask for device on every message
+            return False, None
+        
+        return False, None
+    
+    @classmethod
+    def enhance_response(cls, base_response: str, context: Dict) -> str:
+        """Enhance a response with personality and context"""
+        enhancements = []
+        
+        # Add occasional encouragement
+        if random.random() < 0.3:
+            encouragements = [
+                " You've got this! 💪",
+                " We're making progress! 🌟",
+                " Almost there! 🎯",
+            ]
+            enhancements.append(random.choice(encouragements))
+        
+        # Add helpful tips occasionally
+        if random.random() < 0.2:
+            tips = [
+                "\n\n💡 **Pro tip:** Screenshots help a lot if you're stuck!",
+                "\n\n💡 **Did you know?** Restarting fixes about 50% of tech issues!",
+            ]
+            enhancements.append(random.choice(tips))
+        
+        return base_response + ''.join(enhancements)
 
 # ============================================================================
 # FRUSTRATION DETECTION

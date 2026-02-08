@@ -107,6 +107,32 @@ def run_migrations():
         cursor.execute("CREATE INDEX idx_supportconversation_guest_email ON supportconversation(guest_email)")
         migrations.append("Created: idx_supportconversation_guest_email index")
     
+    # Migration: Bubbles learning table - stores learned solutions
+    if 'bubbles_learned_solutions' not in tables:
+        cursor.execute("""
+            CREATE TABLE bubbles_learned_solutions (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                problem TEXT NOT NULL,
+                solution TEXT NOT NULL,
+                keywords TEXT,
+                category VARCHAR(50),
+                tags TEXT,
+                was_helpful BOOLEAN DEFAULT 1,
+                times_used INTEGER DEFAULT 1,
+                success_count INTEGER DEFAULT 1,
+                failure_count INTEGER DEFAULT 0,
+                confidence_score REAL DEFAULT 0.5,
+                learned_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                last_used_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        migrations.append("Created: bubbles_learned_solutions table")
+        
+        # Add index for faster searching
+        cursor.execute("CREATE INDEX idx_bubbles_learned_category ON bubbles_learned_solutions(category)")
+        cursor.execute("CREATE INDEX idx_bubbles_learned_helpful ON bubbles_learned_solutions(was_helpful)")
+        migrations.append("Created: bubbles_learned_solutions indexes")
+    
     conn.commit()
     conn.close()
     
