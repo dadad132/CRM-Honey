@@ -10017,152 +10017,1281 @@ async def bubbles_analytics_dashboard(
 
 # Pre-trained basic support knowledge (Bubbles handles simple issues ONLY)
 BUBBLES_BASIC_SUPPORT = {
-    # Connection/Power issues - basic steps only
+    # =========================================================================
+    # POWER & STARTUP ISSUES
+    # =========================================================================
     'not turning on': {
-        'keywords': ['not turning on', 'wont turn on', "won't turn on", 'no power', 'dead', 'not starting', "doesn't turn on"],
-        'response': """I can help with that! 🔌 Here are some basic steps to try:
+        'keywords': ['not turning on', 'wont turn on', "won't turn on", 'no power', 'dead', 'not starting', "doesn't turn on", 'doesnt turn on', 'wont start', "won't start", 'not powering on', 'not booting', 'wont boot', "won't boot"],
+        'response': """I can help with that! 🔌 Let's get it working again:
 
-**Quick Checks:**
-1. ✅ Make sure the power cable is **firmly plugged in** at both ends
-2. ✅ Check if the **power outlet** is working (try another device in it)
-3. ✅ If it has a power strip, make sure it's **switched ON**
-4. ✅ Look for any **LED lights** - do any lights come on at all?
-5. ✅ Try holding the power button for **10-15 seconds**
+**Step 1 - Check Power Supply:**
+1. ✅ Is the power cable **firmly plugged in** at BOTH ends?
+2. ✅ Is the **power outlet working**? (Test with another device like a phone charger)
+3. ✅ If using a power strip, is it **switched ON**?
+4. ✅ Look for any **LED lights** - even a small flicker
 
-**Still not working?**
-This might need hands-on support. Would you like to create a ticket?"""
+**Step 2 - Power Reset:**
+1. ✅ **Unplug** the power cable completely
+2. ✅ **Hold the power button** for 15-30 seconds (drains residual power)
+3. ✅ **Plug back in** and try again
+
+**Step 3 - For Laptops:**
+1. ✅ Try **without the battery** (plugged in only) if removable
+2. ✅ Try a **different charger** if available
+3. ✅ Check if the **charging light** comes on
+
+**Still no luck?** This likely needs hardware inspection. Would you like to create a ticket? 🎫"""
     },
+    
+    'blue screen': {
+        'keywords': ['blue screen', 'bsod', 'blue screen of death', 'crashed', 'crash', 'system crash', 'keeps crashing', 'random restart', 'randomly restarts', 'sudden shutdown'],
+        'response': """Blue screen or crashes? Let's figure this out! 💙
+
+**Immediate Steps:**
+1. ✅ **Write down the error code** if visible (like "CRITICAL_PROCESS_DIED")
+2. ✅ **Restart** your computer normally
+3. ✅ If it happens again, note **what you were doing** when it crashed
+
+**Common Causes & Fixes:**
+🔹 **Overheating:** Check vents for dust, make sure fans are running
+🔹 **Recent changes:** Did you install new software or hardware recently?
+🔹 **Windows Update:** Sometimes an update causes issues
+
+**Quick Fixes to Try:**
+1. ✅ **Restart** and let Windows repair itself
+2. ✅ **Unplug** any new USB devices
+3. ✅ Make sure your computer has **good ventilation**
+4. ✅ Run **Windows Update** (sometimes fixes are released)
+
+📸 **Tip:** If you see the blue screen, take a photo of the error code!
+
+If crashes continue, please submit a ticket with the error details! 🎫"""
+    },
+    
+    'startup slow': {
+        'keywords': ['slow startup', 'slow boot', 'takes forever to start', 'takes long to boot', 'slow to turn on', 'boots slowly', 'starting slow'],
+        'response': """Slow startup can be frustrating! 🐢➡️🚀 Let's speed it up:
+
+**Quick Wins:**
+1. ✅ **Restart** your computer (not shut down, actually restart)
+2. ✅ Make sure you have at least **20% free disk space**
+3. ✅ Close programs you don't need - they might be set to start automatically
+
+**Check What's Running:**
+1. ✅ Press **Ctrl+Shift+Esc** to open Task Manager
+2. ✅ Click **"Startup"** tab
+3. ✅ Look for programs with "High" impact - those slow you down
+
+**Other Tips:**
+- ✅ Check for **Windows Updates** (they can fix slow issues)
+- ✅ Make sure your **antivirus isn't scanning** at startup
+- ✅ Consider if your device is more than 5-7 years old (hardware aging)
+
+Want detailed help optimizing your startup? Submit a ticket! 🎫"""
+    },
+
+    # =========================================================================
+    # CONNECTION & NETWORK ISSUES  
+    # =========================================================================
     'not connecting': {
-        'keywords': ['not connecting', 'wont connect', "won't connect", 'no connection', 'cant connect', "can't connect", 'connection failed'],
+        'keywords': ['not connecting', 'wont connect', "won't connect", 'no connection', 'cant connect', "can't connect", 'connection failed', 'connection lost', 'keeps disconnecting', 'drops connection'],
         'response': """Let me help you with connection issues! 🔗
 
-**Basic Steps:**
-1. ✅ **Unplug** the device completely for 30 seconds, then plug it back in
-2. ✅ Check that all cables are **firmly connected**
-3. ✅ **Restart** both the device and your router/computer
-4. ✅ Make sure the device is **within range** (for wireless)
-5. ✅ Check if other devices can connect
+**The Magic Reset (works 80% of the time!):**
+1. ✅ **Turn OFF** the device completely
+2. ✅ **Unplug** your router/modem for 30 seconds
+3. ✅ **Plug back in** and wait 2 minutes
+4. ✅ **Turn ON** your device
 
-💡 **Tip:** The classic "turn it off and on again" works more often than you'd think!
+**Check The Basics:**
+1. ✅ Are all cables **firmly connected**?
+2. ✅ Do other devices work on the same network?
+3. ✅ Are you within **range** for wireless?
+4. ✅ Is the correct **network selected**?
 
-Need more help? I can create a ticket for our tech team!"""
+**If Keeps Disconnecting:**
+1. ✅ Move **closer to the router**
+2. ✅ Check for **interference** (microwaves, other electronics)
+3. ✅ Try connecting with a **cable** instead of WiFi
+
+💡 **Pro Tip:** "Turn it off and on again" is IT advice for a reason - it actually works!
+
+Need more help? Create a ticket for our tech team! 🎫"""
     },
+    
     'wifi issues': {
-        'keywords': ['wifi', 'wi-fi', 'wireless', 'internet', 'network', 'no internet', 'slow internet'],
+        'keywords': ['wifi', 'wi-fi', 'wireless', 'no internet', 'internet not working', 'internet down', 'wifi slow', 'weak signal', 'wifi keeps dropping', 'cant find wifi', "can't find wifi", 'wifi not showing'],
         'response': """WiFi troubles? Let's fix that! 📶
 
-**Quick Fixes:**
-1. ✅ **Restart your router** - unplug it for 30 seconds, then plug back in
-2. ✅ Make sure WiFi is **enabled** on your device
-3. ✅ Check you're connecting to the **correct network**
-4. ✅ Move **closer to the router** to test signal
-5. ✅ Try **forgetting** the network and reconnecting
+**Step 1 - Restart Everything:**
+1. ✅ Turn off WiFi on your device, wait 10 seconds, turn back on
+2. ✅ **Restart your router** - unplug for 30 seconds, plug back in
+3. ✅ Wait 2 minutes for it to fully boot up
 
-**Still having issues?**
-Sometimes routers need a reset or there might be an outage. Submit a ticket and we'll help!"""
+**Step 2 - Reconnect Properly:**
+1. ✅ "Forget" the network on your device
+2. ✅ Search for networks again
+3. ✅ Reconnect with the **correct password**
+
+**Step 3 - Signal Strength:**
+1. ✅ Move **closer to the router** to test
+2. ✅ Check if walls/floors are blocking signal
+3. ✅ Try different **locations** in the room
+
+**If WiFi is Slow:**
+- ✅ Too many devices? Try disconnecting some
+- ✅ Check if someone's **streaming or downloading**
+- ✅ Test with speedtest.net - is it your connection or device?
+
+**Network Not Showing?**
+- ✅ Router might be on **5GHz only** (some devices only see 2.4GHz)
+- ✅ Check if router's **WiFi light** is on
+- ✅ Try a different device to see if network appears
+
+Still having issues? Submit a ticket and we'll dig deeper! 🎫"""
     },
+    
+    'ethernet': {
+        'keywords': ['ethernet', 'lan cable', 'wired connection', 'network cable', 'cat5', 'cat6', 'rj45', 'cable internet', 'plugged in but no internet'],
+        'response': """Wired connection not working? Let's check it! 🔌
+
+**Basic Cable Checks:**
+1. ✅ Is the cable **clicked in firmly** at both ends? (You should hear a click)
+2. ✅ Check for **bent pins** or damaged cable
+3. ✅ Try a **different cable** if you have one
+4. ✅ Try a **different port** on the router
+
+**Check The Lights:**
+1. ✅ Look at the **port lights** on your router - is your port lit?
+2. ✅ Check your computer's **ethernet port** - is the light blinking?
+3. ✅ No lights = cable or port issue
+
+**Computer Settings:**
+1. ✅ Make sure ethernet is **enabled** in network settings
+2. ✅ Check if WiFi is being **prioritized** over ethernet
+3. ✅ Try **disabling WiFi** temporarily
+
+**Quick Fix:**
+1. ✅ Unplug cable from both ends
+2. ✅ Wait 30 seconds
+3. ✅ Plug back in firmly
+
+Need hands-on help? Create a ticket! 🎫"""
+    },
+    
+    'vpn': {
+        'keywords': ['vpn', 'vpn not working', 'vpn wont connect', 'vpn slow', 'cant connect to vpn', 'remote access', 'work from home', 'company network'],
+        'response': """VPN troubles? Let's sort this out! 🔐
+
+**Basic VPN Fixes:**
+1. ✅ **Close and reopen** the VPN application
+2. ✅ Try **disconnecting and reconnecting**
+3. ✅ Make sure your **internet is working** first (test without VPN)
+4. ✅ **Restart** your computer
+
+**Check Your Connection:**
+1. ✅ Is your regular internet working?
+2. ✅ Are you using correct **credentials**?
+3. ✅ Is the VPN **server name** correct?
+
+**Common VPN Issues:**
+🔹 **"Connection timed out"** - Try a different server location
+🔹 **Very slow** - Server might be overloaded, try another server
+🔹 **Keeps disconnecting** - Check your internet stability
+
+**For Work VPN:**
+1. ✅ Check with IT if there's a **VPN outage**
+2. ✅ Make sure your **password hasn't expired**
+3. ✅ Some VPNs require you to be on specific networks
+
+⚠️ For company VPN issues, it's best to contact your IT department or submit a ticket! 🎫"""
+    },
+
+    # =========================================================================
+    # PRINTER ISSUES
+    # =========================================================================
     'printer': {
-        'keywords': ['printer', 'print', 'printing', 'paper jam', 'not printing', 'jammed'],
+        'keywords': ['printer', 'print', 'printing', 'not printing', 'printer offline', 'printer error', 'print queue', 'print job'],
         'response': """Printer problems? Let's troubleshoot! 🖨️
 
-**Basic Checks:**
+**Step 1 - Basic Checks:**
 1. ✅ Is the printer **turned ON** with lights showing?
-2. ✅ **IMPORTANT - Paper Jams:** ⚠️ **TURN OFF THE PRINTER** before attempting to remove any jammed paper! Then open all covers and gently remove stuck paper.
-3. ✅ Make sure there's **paper loaded** correctly (not overfilled)
-4. ✅ Check **ink/toner levels**
-5. ✅ Try turning the printer **OFF and ON** again (power cycle)
+2. ✅ Is there **paper loaded** correctly?
+3. ✅ Check **ink/toner levels** - is it running low?
+4. ✅ Look for any **error lights** or messages on the printer
 
-**Connection issues:**
-- For USB: Unplug and replug the cable
-- For WiFi: Make sure printer is on the same network as your computer
+**Step 2 - The Magic Reset:**
+1. ✅ Turn **OFF** the printer
+2. ✅ Wait **30 seconds**
+3. ✅ Turn it back **ON**
+4. ✅ Try printing again
 
-⚠️ **Safety Tip:** Always turn off the printer before clearing paper jams to avoid injury or damage!
+**Step 3 - Connection Check:**
+🔹 **USB Printer:** Unplug and replug the USB cable
+🔹 **WiFi Printer:** Make sure it's on the **same network** as your computer
+🔹 **Network Printer:** Try pinging the printer's IP address
 
-Need more help? Create a ticket and include your printer model!"""
+**Step 4 - Print Queue:**
+1. ✅ Search "Printers" in Windows
+2. ✅ Right-click your printer → **See what's printing**
+3. ✅ **Cancel all documents** and try again
+
+**Printer Showing "Offline"?**
+1. ✅ Right-click printer → **See what's printing**
+2. ✅ Click **Printer** menu → Uncheck **"Use Printer Offline"**
+
+Need more help? Include your printer model in a ticket! 🎫"""
     },
+    
+    'paper jam': {
+        'keywords': ['paper jam', 'jammed paper', 'paper stuck', 'jam', 'jammed', 'paper feed', 'paper not feeding', 'multiple pages', 'grabbing multiple'],
+        'response': """Paper jam? ⚠️ **SAFETY FIRST!** 📄
+
+**🛑 IMPORTANT: TURN OFF THE PRINTER FIRST!**
+Always turn off the printer before removing jammed paper to avoid injury or damage!
+
+**Step-by-Step Paper Jam Removal:**
+1. ✅ **Turn OFF** the printer and unplug it
+2. ✅ Wait 30 seconds for it to cool down
+3. ✅ **Open all accessible doors and covers**
+4. ✅ Look for paper - check **front, back, and sides**
+5. ✅ **Pull paper SLOWLY and STRAIGHT** - don't yank!
+6. ✅ Remove **ALL torn pieces** - even small bits cause problems
+7. ✅ Close all covers and turn printer back on
+
+**After Clearing:**
+1. ✅ Let the printer do its startup routine
+2. ✅ Print a **test page** to confirm it's clear
+3. ✅ If error persists, there may be paper stuck deeper
+
+**Prevent Future Jams:**
+- ✅ Don't overfill the paper tray
+- ✅ Use the **correct paper size/type**
+- ✅ Fan paper before loading to prevent sticking
+- ✅ Store paper flat in a dry place
+
+**Still jammed?** Create a ticket with your printer model! 🎫"""
+    },
+    
+    'printer quality': {
+        'keywords': ['print quality', 'streaks', 'lines on paper', 'faded print', 'blurry print', 'smudged', 'light printing', 'dark spots', 'bands', 'banding'],
+        'response': """Print quality issues? Let's fix that! 🎨
+
+**For Faded/Light Prints:**
+1. ✅ Check **ink/toner levels** - probably running low
+2. ✅ Try **shaking the toner cartridge** gently (laser printers)
+3. ✅ Run a **cleaning cycle** from printer settings
+
+**For Streaks or Lines:**
+1. ✅ Run **Print Head Cleaning** (found in printer settings)
+2. ✅ Clean the **print heads** with a damp cloth if accessible
+3. ✅ For laser printers, the **drum** might need replacing
+
+**For Smudged Prints:**
+1. ✅ Let prints **dry completely** before touching
+2. ✅ Check if ink cartridge is **leaking**
+3. ✅ Clean **inside the printer** for toner buildup
+
+**How to Clean:**
+1. ✅ Open printer settings on your computer
+2. ✅ Find **Maintenance** or **Tools** section
+3. ✅ Run **"Clean Print Heads"** or **"Cleaning Cycle"**
+4. ✅ Print a test page
+
+**Quick Tip:** Print a test page weekly if you don't print often - prevents clogs!
+
+Need help identifying the issue? Take a photo and submit a ticket! 📸🎫"""
+    },
+
+    # =========================================================================
+    # COMPUTER PERFORMANCE
+    # =========================================================================
     'slow': {
-        'keywords': ['slow', 'running slow', 'too slow', 'sluggish', 'lagging', 'freezing', 'frozen'],
+        'keywords': ['slow', 'running slow', 'too slow', 'sluggish', 'lagging', 'laggy', 'takes forever', 'very slow', 'super slow', 'extremely slow'],
         'response': """Let's speed things up! 🚀
 
-**Quick Performance Tips:**
-1. ✅ **Restart** your device - this clears temporary files
-2. ✅ Close any **unused programs** or browser tabs
-3. ✅ Make sure your device isn't **overheating** (check vents)
-4. ✅ Check how much **storage space** is left (keep 10-20% free)
-5. ✅ Check for **updates** - they often fix performance issues
+**Immediate Fixes:**
+1. ✅ **Restart** your computer (seriously, this helps!)
+2. ✅ Close **unused programs** and browser tabs
+3. ✅ Check if something's **updating** in the background
 
-⚠️ **Note:** I can only help with basic tips. For deeper issues like startup programs, system optimization, or virus checks, please submit a ticket!"""
+**Check What's Using Resources:**
+1. ✅ Press **Ctrl+Shift+Esc** to open Task Manager
+2. ✅ Click **"More details"** if needed
+3. ✅ Sort by **CPU** or **Memory** - what's using the most?
+4. ✅ Close any programs using over 50% that you don't need
+
+**Free Up Space:**
+1. ✅ Check your **disk space** - keep at least 15-20% free
+2. ✅ Empty the **Recycle Bin**
+3. ✅ Delete old **downloads** you don't need
+4. ✅ Clear **browser cache** (Ctrl+Shift+Delete in browser)
+
+**Check for Issues:**
+1. ✅ Is the computer **hot**? Check vents for dust
+2. ✅ Run **Windows Update** - fixes often help
+3. ✅ Make sure **antivirus** isn't doing a full scan
+
+**Browser Slow?**
+- ✅ Too many **extensions**? Disable some
+- ✅ Too many **tabs**? (Each tab uses memory!)
+- ✅ Try a different browser to test
+
+Still slow? Submit a ticket for deeper troubleshooting! 🎫"""
     },
+    
+    'freezing': {
+        'keywords': ['freezing', 'frozen', 'froze', 'not responding', 'hung', 'hangs', 'unresponsive', 'stuck', 'locked up', 'wont respond'],
+        'response': """Computer frozen? Let's unfreeze it! 🥶
+
+**If It's Frozen RIGHT NOW:**
+1. ✅ **Wait 2-3 minutes** - it might be processing something heavy
+2. ✅ Press **Ctrl+Alt+Delete** - does anything happen?
+3. ✅ Try opening **Task Manager** (Ctrl+Shift+Esc)
+4. ✅ If Task Manager opens, end the **unresponsive program**
+
+**If Nothing Works:**
+1. ✅ **Hold the power button** for 10 seconds to force shutdown
+2. ✅ Wait 30 seconds
+3. ✅ Turn it back on
+
+**Prevent Future Freezes:**
+1. ✅ Don't run too many **programs at once**
+2. ✅ Keep **20% disk space free** minimum
+3. ✅ Check **temperatures** - overheating causes freezes
+4. ✅ Keep **Windows updated**
+
+**If It Freezes Often:**
+- ✅ Note **what you're doing** when it freezes
+- ✅ Is it always the **same program**?
+- ✅ Check if your **hard drive** is making clicking sounds (bad sign!)
+- ✅ Run a **virus scan**
+
+Freezing frequently? That needs investigation - submit a ticket! 🎫"""
+    },
+    
+    'overheating': {
+        'keywords': ['overheating', 'too hot', 'hot', 'fan loud', 'fans spinning', 'heat', 'thermal', 'getting hot', 'burning hot', 'fan noise', 'loud fan'],
+        'response': """Computer running hot? Let's cool it down! 🌡️
+
+**Immediate Actions:**
+1. ✅ **Save your work** and close unnecessary programs
+2. ✅ Make sure **vents aren't blocked** by blankets, papers, etc.
+3. ✅ If laptop, make sure it's on a **hard flat surface** (not bed/couch)
+4. ✅ Give it a **15-minute break** if possible
+
+**Check for Dust:**
+1. ✅ Look at the **vents** - are they dusty or blocked?
+2. ✅ **Gently vacuum** or use compressed air on vents
+3. ✅ Desktop? Check if fans are **spinning** inside
+
+**Reduce Heat Generation:**
+1. ✅ Close **heavy programs** (games, video editing, etc.)
+2. ✅ Reduce **browser tabs**
+3. ✅ Lower **screen brightness**
+4. ✅ Turn off **Bluetooth and WiFi** if not needed
+
+**Long-term Solutions:**
+- ✅ Use a **laptop cooling pad**
+- ✅ Keep in a **cool, ventilated area**
+- ✅ Clean vents **every few months**
+- ✅ Replace **thermal paste** (advanced - submit ticket!)
+
+**Warning Signs to Watch:**
+⚠️ Frequent shutdowns = overheating protection
+⚠️ Fan ALWAYS loud = possible failing fan
+⚠️ Very hot keyboard/bottom = needs cleaning or repair
+
+If it's constantly hot, submit a ticket for deeper cleaning! 🎫"""
+    },
+
+    # =========================================================================
+    # EMAIL ISSUES
+    # =========================================================================
+    'email': {
+        'keywords': ['email', 'outlook', 'mail', 'cant send email', "can't send email", 'email not working', 'inbox', 'cant receive email', 'email stuck', 'sending failed', 'email error'],
+        'response': """Email troubles? Let's fix that! 📧
+
+**Can't Send or Receive:**
+1. ✅ Check your **internet connection** first
+2. ✅ Try **refreshing** or pressing Send/Receive
+3. ✅ Check the **Outbox** - is email stuck there?
+4. ✅ Close and **reopen** your email application
+
+**Common Email Issues:**
+
+🔹 **"Message stuck in Outbox":**
+- Open Outbox, delete the stuck message
+- Check attachment size (usually max 25MB)
+- Recreate the email and try again
+
+🔹 **"Can't connect to server":**
+- Check internet connection
+- Verify email settings haven't changed
+- Try webmail (login via browser) to test
+
+🔹 **"Password incorrect":**
+- Caps Lock on?
+- Password recently changed?
+- Try "Forgot Password" option
+
+🔹 **"Mailbox full":**
+- Delete old emails
+- Empty Deleted Items/Trash folder
+- Archive old messages
+
+**Try Web Version:**
+1. ✅ Go to your email's website (gmail.com, outlook.com, etc.)
+2. ✅ If web works but app doesn't, it's an app issue
+3. ✅ Try removing and re-adding your account
+
+Need help with email settings? Submit a ticket! 🎫"""
+    },
+    
+    'outlook': {
+        'keywords': ['outlook not opening', 'outlook crash', 'outlook slow', 'pst file', 'outlook stuck', 'outlook error', 'outlook offline', 'send receive error'],
+        'response': """Outlook issues? Let's get you back on track! 📬
+
+**Outlook Won't Open:**
+1. ✅ **Force close** Outlook (Task Manager → End Task)
+2. ✅ Try starting in **Safe Mode**: Hold Ctrl while clicking Outlook
+3. ✅ Check for **Outlook updates**
+
+**Outlook is Slow:**
+1. ✅ Archive **old emails** (move to separate folder)
+2. ✅ Compact your mailbox (File → Account Settings → Data Files → Compact)
+3. ✅ Disable **unnecessary add-ins**
+4. ✅ Keep mailbox under 2GB if possible
+
+**Outlook Shows "Offline":**
+1. ✅ Look at bottom of Outlook - does it say "Working Offline"?
+2. ✅ Click **Send/Receive** tab → **Work Offline** to toggle
+3. ✅ Check your **internet connection**
+
+**Sync Issues:**
+1. ✅ Click **Send/Receive All Folders**
+2. ✅ Check **Send/Receive Progress** for errors
+3. ✅ Try removing and re-adding the email account
+
+**Profile Issues (Advanced):**
+1. ✅ Control Panel → Mail → Show Profiles
+2. ✅ Create a **new profile** and add your account
+3. ✅ Set new profile as default
+
+Outlook still acting up? Submit a ticket with the error message! 🎫"""
+    },
+
+    # =========================================================================
+    # PASSWORD & LOGIN ISSUES
+    # =========================================================================
     'password': {
-        'keywords': ['password', 'forgot password', 'reset password', 'cant login', "can't login", 'login problem', 'locked out'],
+        'keywords': ['password', 'forgot password', 'reset password', 'cant login', "can't login", 'login problem', 'locked out', 'account locked', 'wrong password', 'password expired', 'change password'],
         'response': """Account access issues? Let me help! 🔐
 
-**Password Problems:**
-1. ✅ Try the **"Forgot Password"** link on the login page
-2. ✅ Check your **email** (including spam folder) for reset link
-3. ✅ Make sure **Caps Lock** isn't on
-4. ✅ Try typing password in a **notepad** first to check for typos
+**"Forgot My Password":**
+1. ✅ Click **"Forgot Password"** on the login page
+2. ✅ Check your **email** (and spam folder!) for reset link
+3. ✅ Follow the link to create a **new password**
 
-⚠️ **Important:** For security reasons, I can't reset passwords directly. Please use the official password reset option or submit a ticket for account help!"""
+**"Password Not Working":**
+1. ✅ Check **Caps Lock** - passwords are case sensitive!
+2. ✅ Check **Num Lock** if using numbers
+3. ✅ Type password in **Notepad** first to see what you're typing
+4. ✅ Has your password **expired**? (Some systems require changes every 90 days)
+
+**"Account Locked":**
+1. ✅ Usually unlocks after **15-30 minutes** of waiting
+2. ✅ Or use **"Forgot Password"** to reset
+3. ✅ Contact IT if it stays locked
+
+**Creating Strong Passwords:**
+- ✅ At least **12 characters**
+- ✅ Mix of **uppercase, lowercase, numbers, symbols**
+- ✅ Use a **passphrase**: "Coffee@Morning#2024!"
+- ✅ Don't reuse passwords across sites!
+
+**Password Tips:**
+- ✅ Consider a **password manager** (like Bitwarden, LastPass)
+- ✅ Write down hints, not actual passwords
+- ✅ Set up **recovery options** (phone, backup email)
+
+⚠️ I can't reset passwords directly for security. Use official reset options or submit a ticket! 🎫"""
     },
-    'error message': {
-        'keywords': ['error', 'error message', 'error code', 'getting an error', 'shows error'],
-        'response': """I see you're getting an error! 🔍
+    
+    'two factor': {
+        'keywords': ['2fa', 'two factor', 'authenticator', 'verification code', 'mfa', 'multi factor', 'otp', 'one time password', 'cant get code', "can't get code", 'code not working'],
+        'response': """Two-factor authentication issues? Let's solve this! 🔐
 
-**To help you best:**
-1. ✅ Can you **take a screenshot** of the error? (Use the camera button!)
-2. ✅ Note down the **exact error message** or code
-3. ✅ What were you **doing** when it appeared?
+**Code Not Working:**
+1. ✅ Check the **time** on your phone - must be accurate!
+2. ✅ Make sure you're using code for the **right account**
+3. ✅ Codes change every **30 seconds** - enter quickly!
+4. ✅ Try the **next code** that appears
 
-**Quick try:** Sometimes just **restarting** the application or device fixes temporary errors!
+**Not Receiving SMS Codes:**
+1. ✅ Check **phone signal** strength
+2. ✅ Make sure phone number is **correct** in settings
+3. ✅ Check if SMS is **blocked** by your carrier
+4. ✅ Wait a few minutes and try **"Resend code"**
 
-Share the error details and I'll try to find a solution, or create a ticket for detailed help!"""
+**Lost Access to Authenticator App:**
+1. ✅ Use **backup codes** if you saved them
+2. ✅ Check if you set up a **backup phone**
+3. ✅ Contact support for the service to verify identity
+
+**Authenticator App on New Phone:**
+1. ✅ Set up new phone **BEFORE** wiping old one
+2. ✅ Export accounts from old app if possible
+3. ✅ Re-scan QR codes from account security settings
+
+**Prevent Future Lockouts:**
+- ✅ **Save backup codes** in a safe place!
+- ✅ Set up **multiple methods** (app + phone)
+- ✅ Write down **recovery options**
+
+Completely locked out? Submit a ticket - we'll verify your identity! 🎫"""
     },
-    'update': {
-        'keywords': ['update', 'updating', 'install update', 'software update', 'system update', 'upgrade'],
-        'response': """Updates can be tricky! 🔄
 
-**Basic Update Tips:**
-1. ✅ Make sure you have a **stable internet connection**
-2. ✅ Check you have enough **free space** for the update
-3. ✅ **Don't turn off** your device during updates
-4. ✅ Try **restarting** and attempting the update again
-
-⚠️ **Note:** I only help with basic issues. If an update failed or caused problems, please submit a ticket - our team can help safely!"""
-    },
-    'audio': {
-        'keywords': ['audio', 'sound', 'no sound', 'speakers', 'volume', 'microphone', 'mic', 'cant hear', "can't hear", 'muted'],
-        'response': """No sound? Let's fix that! 🔊
-
-**Quick Audio Checks:**
-1. ✅ Check the **volume isn't muted** (look for speaker icon)
-2. ✅ Make sure **speakers/headphones** are plugged in correctly
-3. ✅ Check the **correct output device** is selected
-4. ✅ Try **unplugging and replugging** headphones/speakers
-5. ✅ **Restart** the application or device
-
-**Microphone issues:**
-- Check mic isn't **muted** in your app
-- Give the app **permission** to use your microphone
-
-Need more help? Submit a ticket with details!"""
-    },
+    # =========================================================================
+    # DISPLAY & MONITOR ISSUES
+    # =========================================================================
     'display': {
-        'keywords': ['display', 'screen', 'monitor', 'black screen', 'blank screen', 'no display', 'flickering', 'resolution'],
+        'keywords': ['display', 'screen', 'monitor', 'black screen', 'blank screen', 'no display', 'flickering', 'resolution', 'screen not working', 'second monitor', 'external monitor', 'monitor not detected'],
         'response': """Display issues? Let's troubleshoot! 🖥️
 
-**Basic Checks:**
-1. ✅ Is the monitor **turned ON**? Check for power light
-2. ✅ Check the **cable connection** (HDMI, DisplayPort, VGA)
-3. ✅ Try a **different cable** if available
-4. ✅ Press keys to check if it's just **screen sleep mode**
-5. ✅ Try connecting to a **different monitor/TV** to test
+**No Display at All:**
+1. ✅ Is the monitor **powered on**? Check for power light
+2. ✅ Is the **correct input** selected? (HDMI, DisplayPort, etc.)
+3. ✅ Check **cable connections** at both ends
+4. ✅ Try a **different cable** if available
+5. ✅ Press a key to wake from **sleep mode**
 
-**Flickering/Resolution:**
-- Try adjusting **brightness/contrast**
-- Check **display settings** for correct resolution
+**Monitor Not Detected:**
+1. ✅ Unplug monitor, wait 30 seconds, plug back in
+2. ✅ Press **Win+P** and select display mode
+3. ✅ Right-click desktop → **Display Settings** → **Detect**
+4. ✅ Try a different **port** (HDMI, USB-C, etc.)
 
-Still having problems? Create a ticket with your monitor model!"""
+**Flickering Screen:**
+1. ✅ Check if cable is **loose**
+2. ✅ Adjust **refresh rate**: Settings → Display → Advanced → 60Hz
+3. ✅ Update **graphics drivers**
+4. ✅ Check for **electrical interference**
+
+**Wrong Resolution:**
+1. ✅ Right-click desktop → **Display Settings**
+2. ✅ Choose **recommended resolution**
+3. ✅ Adjust **scaling** if things are too small/big
+
+**Multiple Monitors:**
+1. ✅ **Win+P** to switch between display modes
+2. ✅ Extend, Duplicate, or Second screen only
+3. ✅ Drag monitors in Display Settings to match physical layout
+
+Still having issues? Describe what you see and submit a ticket! 🎫"""
+    },
+    
+    'screen broken': {
+        'keywords': ['cracked screen', 'broken screen', 'screen damage', 'lines on screen', 'dead pixels', 'bright spot', 'dark spot', 'bleeding', 'screen bleed'],
+        'response': """Screen damage? Let me help assess this! 📱💔
+
+**Types of Screen Issues:**
+
+🔹 **Physical Crack:**
+- Don't press on it - can spread
+- Use as-is if functional, or get repaired
+- Backup important data ASAP!
+
+🔹 **Lines/Bars on Screen:**
+- Horizontal/vertical lines = often cable or hardware issue
+- Try connecting to external monitor to test
+- If external works fine, it's the laptop screen
+
+🔹 **Dead Pixels:**
+- Small black dots that never light up
+- Try "pixel fixing" videos on YouTube (gentle flashing colors)
+- Usually permanent if software fix doesn't work
+
+🔹 **Bright/Dark Spots:**
+- Pressure damage or backlight issue
+- Usually requires screen replacement
+
+🔹 **Screen Bleeding (Light edges):**
+- Light leaking around edges, often on dark screens
+- Common on new screens, might reduce over time
+- Only fixable by replacement if severe
+
+**Immediate Steps:**
+1. ✅ **Backup your data** - screens can fail suddenly
+2. ✅ Connect to **external monitor** to keep working
+3. ✅ **Don't open the device** yourself
+
+⚠️ Screen repairs need professional help. Submit a ticket with a photo! 📸🎫"""
+    },
+
+    # =========================================================================
+    # AUDIO ISSUES
+    # =========================================================================
+    'audio': {
+        'keywords': ['audio', 'sound', 'no sound', 'speakers', 'volume', 'microphone', 'mic', 'cant hear', "can't hear", 'muted', 'headphones', 'earphones', 'sound not working', 'speaker not working'],
+        'response': """No sound? Let's fix that! 🔊
+
+**Check the Basics:**
+1. ✅ Is **volume up** and not muted? (Check speaker icon)
+2. ✅ Check **physical volume** on speakers/headphones
+3. ✅ Are headphones **plugged in correctly**?
+4. ✅ Is the correct **output device** selected?
+
+**Check Output Device:**
+1. ✅ Click the **speaker icon** in taskbar
+2. ✅ Click the **arrow** to see all devices
+3. ✅ Select the **correct speakers/headphones**
+
+**Sound Settings:**
+1. ✅ Right-click speaker icon → **Sound settings**
+2. ✅ Make sure correct **output device** is selected
+3. ✅ Click on the device → **Test** button
+
+**Audio Not Working:**
+1. ✅ **Restart** your computer
+2. ✅ Unplug headphones/speakers, plug back in
+3. ✅ Try a **different port** (front vs back, different USB)
+4. ✅ Test with **different headphones/speakers**
+
+**Microphone Issues:**
+1. ✅ Check mic isn't **muted** in the app
+2. ✅ Give the app **permission** to use microphone
+3. ✅ Settings → Privacy → Microphone → Allow apps
+4. ✅ Test in Sound settings
+
+**Still No Sound:**
+- ✅ Update **audio drivers**
+- ✅ Try Windows **audio troubleshooter**
+- ✅ Check Device Manager for issues
+
+Need help? Submit a ticket! 🎫"""
+    },
+    
+    'bluetooth audio': {
+        'keywords': ['bluetooth', 'bluetooth speaker', 'bluetooth headphones', 'airpods', 'wireless headphones', 'bluetooth not connecting', 'bluetooth audio', 'pair', 'pairing'],
+        'response': """Bluetooth audio troubles? Let's pair this up! 🎧
+
+**Pairing New Device:**
+1. ✅ Put your Bluetooth device in **pairing mode** (usually hold power button until light flashes)
+2. ✅ On computer: Settings → **Bluetooth & devices** → **Add device**
+3. ✅ Select your device from the list
+4. ✅ Wait for "Connected" message
+
+**Bluetooth Not Working:**
+1. ✅ Toggle **Bluetooth off and on** in settings
+2. ✅ **Restart** both computer and Bluetooth device
+3. ✅ Make sure device is **charged**
+4. ✅ Stay within **10 meters/30 feet**
+
+**Audio Not Coming Through:**
+1. ✅ Click speaker icon → select your **Bluetooth device**
+2. ✅ Make sure it shows as **"Connected - Audio"**
+3. ✅ Some devices need to be set as **default audio device**
+
+**Audio Cutting Out:**
+- ✅ Move **closer** to computer
+- ✅ Remove other Bluetooth devices
+- ✅ Check for **interference** (WiFi routers, microwaves)
+- ✅ Update Bluetooth drivers
+
+**Remove and Re-pair:**
+1. ✅ Settings → Bluetooth → Find device → **Remove**
+2. ✅ Restart computer
+3. ✅ Put device in pairing mode and add again
+
+Still having issues? Include your device model in a ticket! 🎫"""
+    },
+
+    # =========================================================================
+    # SOFTWARE & APPLICATIONS
+    # =========================================================================
+    'error message': {
+        'keywords': ['error', 'error message', 'error code', 'getting an error', 'shows error', 'error popup', 'error window', 'application error', 'program error'],
+        'response': """I see you're getting an error! 🔍
+
+**First Steps:**
+1. ✅ **Write down** the exact error message/code
+2. ✅ **Take a screenshot** (use camera button here!)
+3. ✅ Note what you were **doing** when it appeared
+
+**Quick Fixes:**
+1. ✅ Click **OK/Close** and try the action again
+2. ✅ **Restart** the application
+3. ✅ **Restart** your computer
+4. ✅ Check for **updates** for the software
+
+**Common Error Types:**
+
+🔹 **"Not enough memory/disk space":**
+- Close other programs
+- Free up disk space
+
+🔹 **"Access denied":**
+- Try running as Administrator
+- Check if file is open elsewhere
+
+🔹 **"File not found":**
+- Check if file was moved/deleted
+- Restore from backup
+
+🔹 **"Connection error":**
+- Check internet connection
+- Try again later
+
+🔹 **"Application has stopped working":**
+- Restart the application
+- Check for updates
+- Reinstall if it keeps happening
+
+**Pro Tip:** Search the exact error text online - often others have solved it!
+
+Share your error with me or submit a ticket with a screenshot! 📸🎫"""
+    },
+    
+    'program not opening': {
+        'keywords': ['program not opening', 'app wont open', "app won't open", 'software not starting', 'application not responding', 'click but nothing happens', 'program wont start', "program won't start", 'not launching'],
+        'response': """Program won't open? Let's fix that! 🚀
+
+**Quick Fixes:**
+1. ✅ **Wait a moment** - sometimes it takes time to load
+2. ✅ Check the **taskbar** - it might be minimized
+3. ✅ Look in **Task Manager** (Ctrl+Shift+Esc) - is it running?
+4. ✅ **End the process** in Task Manager and try again
+
+**If Still Won't Open:**
+1. ✅ **Restart** your computer
+2. ✅ Try running as **Administrator** (right-click → Run as Administrator)
+3. ✅ Check for **updates** for the program
+4. ✅ Check if your **computer meets requirements**
+
+**Check for Conflicts:**
+1. ✅ Temporarily disable **antivirus** and try
+2. ✅ Close **other programs** that might conflict
+3. ✅ Check if the program works in **Safe Mode**
+
+**Repair or Reinstall:**
+1. ✅ Settings → Apps → Find the program → **Repair** (if available)
+2. ✅ If repair fails, try **uninstalling and reinstalling**
+3. ✅ Download fresh installer from official website
+
+**Still Not Working?**
+- ✅ Note any error messages
+- ✅ Check Windows **Event Viewer** for errors
+- ✅ The program might be incompatible with your Windows version
+
+Submit a ticket with the program name and what happens! 🎫"""
+    },
+    
+    'install': {
+        'keywords': ['install', 'installation', 'how to install', 'installing', 'setup', 'cant install', "can't install", 'installation failed', 'installer', 'download and install'],
+        'response': """Need help installing software? Let's do it right! 📦
+
+**Safe Installation Steps:**
+1. ✅ **Download from official website** only
+2. ✅ Check for the **correct version** (Windows/Mac, 32/64-bit)
+3. ✅ **Temporarily disable antivirus** if it blocks installation
+4. ✅ **Run as Administrator** if needed
+
+**Installation Won't Start:**
+1. ✅ Right-click installer → **Run as Administrator**
+2. ✅ Check if download completed fully
+3. ✅ Try downloading again from official source
+4. ✅ Check **Windows Defender** didn't block it
+
+**Installation Failed:**
+1. ✅ Read the **error message** carefully
+2. ✅ Make sure you have **enough disk space**
+3. ✅ Close **all other programs**
+4. ✅ **Restart** computer and try again
+5. ✅ Check if program is **compatible** with your Windows version
+
+**"Missing Dependencies":**
+- ✅ Install **Visual C++ Redistributable** (search Microsoft website)
+- ✅ Install **.NET Framework** if required
+- ✅ Check program's requirements
+
+**After Installation:**
+1. ✅ **Restart** computer if prompted
+2. ✅ Check for **updates** immediately
+3. ✅ Enable antivirus again
+
+⚠️ Only install software from **trusted sources**!
+
+Having specific installation issues? Submit a ticket with the software name! 🎫"""
+    },
+    
+    'uninstall': {
+        'keywords': ['uninstall', 'remove program', 'delete program', 'remove software', 'uninstaller', 'how to remove', 'get rid of', 'remove app'],
+        'response': """Need to uninstall something? Here's how! 🗑️
+
+**Standard Uninstall (Windows):**
+1. ✅ Press **Win + I** to open Settings
+2. ✅ Click **Apps** → **Installed apps**
+3. ✅ Find the program, click **⋮** → **Uninstall**
+4. ✅ Follow the prompts
+
+**Alternative Method:**
+1. ✅ Type **"Add or remove programs"** in search
+2. ✅ Find the program in the list
+3. ✅ Click **Uninstall**
+
+**Program Not Listed:**
+1. ✅ Check program's folder for **Uninstall.exe**
+2. ✅ Usually in C:\\Program Files\\ or C:\\Program Files (x86)\\
+3. ✅ Run the uninstaller from there
+
+**Uninstall Won't Complete:**
+1. ✅ **Restart** computer and try again
+2. ✅ Boot into **Safe Mode** and try
+3. ✅ Use the program's **repair** option first, then uninstall
+
+**Leftover Files:**
+- ✅ Most programs leave some settings behind
+- ✅ Check **%appdata%** folder for leftover folders
+- ✅ Use **Disk Cleanup** to clear temp files
+
+**Stubborn Programs:**
+- ✅ Try the manufacturer's removal tool
+- ✅ Some security software needs special uninstallers
+
+Need help removing something specific? Submit a ticket! 🎫"""
+    },
+    
+    'update': {
+        'keywords': ['update', 'updating', 'install update', 'software update', 'system update', 'upgrade', 'windows update', 'update failed', 'update stuck', 'update error'],
+        'response': """Updates can be tricky! Let me help! 🔄
+
+**Windows Updates:**
+1. ✅ Settings → **Windows Update** → **Check for updates**
+2. ✅ Let it download and install
+3. ✅ **Restart** when prompted
+4. ✅ Be patient - some updates take 30+ minutes!
+
+**Update Stuck:**
+1. ✅ **Wait** - sometimes it seems stuck but is working
+2. ✅ Leave it for at least **1 hour** before acting
+3. ✅ If truly stuck, hold power to force shutdown
+4. ✅ Restart and let Windows repair itself
+
+**Update Failed:**
+1. ✅ Try **Check for updates** again
+2. ✅ Run **Windows Update Troubleshooter** (Settings → Troubleshoot)
+3. ✅ Restart and try again
+4. ✅ Free up **disk space** (need at least 20GB free)
+
+**Before Big Updates:**
+- ✅ **Backup important files** first!
+- ✅ Make sure laptop is **plugged in**
+- ✅ Have **stable internet**
+- ✅ Clear some **disk space**
+
+**Software Updates:**
+1. ✅ Check within the program's **settings/help menu**
+2. ✅ Or download from **official website**
+3. ✅ Install over existing version (usually keeps settings)
+
+**Don't:**
+- ❌ Turn off computer during updates
+- ❌ Unplug laptop during updates
+- ❌ Interrupt the process
+
+Having specific update errors? Screenshot the error and submit a ticket! 📸🎫"""
+    },
+
+    # =========================================================================
+    # STORAGE & FILES
+    # =========================================================================
+    'storage': {
+        'keywords': ['storage', 'disk space', 'no space', 'low storage', 'hard drive full', 'storage full', 'out of space', 'need space', 'free up space', 'disk full', 'c drive full'],
+        'response': """Running out of space? Let's free some up! 💾
+
+**Quick Wins:**
+1. ✅ **Empty Recycle Bin** - right-click → Empty
+2. ✅ Clear **Downloads folder** - delete old files
+3. ✅ Run **Disk Cleanup**: Search "Disk Cleanup" → Select drive → Clean
+
+**Disk Cleanup Options:**
+1. ✅ Temporary files
+2. ✅ Windows Update Cleanup (can be several GB!)
+3. ✅ Delivery Optimization Files
+4. ✅ Thumbnails
+
+**Find Large Files:**
+1. ✅ Settings → System → **Storage**
+2. ✅ Click on drive to see what's using space
+3. ✅ **Temporary files** - review and delete
+4. ✅ Check **Large or unused files**
+
+**More Space Savers:**
+- ✅ Uninstall **programs you don't use**
+- ✅ Move photos/videos to **external drive or cloud**
+- ✅ Clear **browser cache** (Ctrl+Shift+Delete)
+- ✅ Delete old **Windows.old** folder (if exists)
+
+**Browser Cache (often 1-5GB!):**
+1. ✅ Chrome: Settings → Privacy → Clear browsing data
+2. ✅ Select **Cached images and files**
+3. ✅ Time range: All time
+
+**Cloud Options:**
+- ✅ Use OneDrive/Google Drive/Dropbox
+- ✅ Enable "Files On-Demand" to save space
+
+Need help identifying what's taking space? Submit a ticket! 🎫"""
+    },
+    
+    'files missing': {
+        'keywords': ['file missing', 'files gone', 'lost file', 'file disappeared', 'cant find file', "can't find file", 'file deleted', 'accidentally deleted', 'recover file', 'where is my file'],
+        'response': """Lost a file? Let's find it! 🔍
+
+**Check These First:**
+1. ✅ **Recycle Bin** - open and look for your file
+2. ✅ **Downloads folder** - files often go here
+3. ✅ **Desktop** - might be hidden behind windows
+4. ✅ Check if it's in a **different folder**
+
+**Search for It:**
+1. ✅ Press **Win + S** to open search
+2. ✅ Type the **filename** (or part of it)
+3. ✅ Check results in Documents, Pictures, etc.
+4. ✅ Use **wildcards**: *.docx finds all Word docs
+
+**Recent Files:**
+1. ✅ File Explorer → **Quick access** → **Recent files**
+2. ✅ In the program (Word, Excel, etc.) → **File → Recent**
+3. ✅ Check the program's **recent documents**
+
+**Cloud Backup:**
+- ✅ **OneDrive:** Check onedrive.live.com → Recycle Bin
+- ✅ **Google Drive:** Check drive.google.com → Trash
+- ✅ **Dropbox:** Check Deleted files section
+
+**If Deleted:**
+1. ✅ Restore from **Recycle Bin**
+2. ✅ Check **File History** (if enabled)
+3. ✅ Restore from **backup** if you have one
+
+**Important Tips:**
+- ⚠️ Don't save new files to the same location
+- ⚠️ Stop using the drive if you need data recovery
+- ⚠️ Professional recovery might be needed for important files
+
+Can't find it anywhere? Submit a ticket with details! 🎫"""
+    },
+    
+    'usb': {
+        'keywords': ['usb', 'flash drive', 'thumb drive', 'usb drive', 'usb not recognized', 'usb not working', 'usb not showing', 'external drive', 'external hard drive', 'usb device'],
+        'response': """USB drive not working? Let's troubleshoot! 🔌
+
+**Quick Fixes:**
+1. ✅ Try a **different USB port**
+2. ✅ Try the **back ports** on desktop (more reliable)
+3. ✅ Unplug, wait 10 seconds, plug back in
+4. ✅ Try on a **different computer** to test the drive
+
+**Check if Detected:**
+1. ✅ Listen for the "device connected" **sound**
+2. ✅ Check **File Explorer** for new drive letter
+3. ✅ Search **"Disk Management"** - is it listed there?
+
+**If Detected but Can't Access:**
+1. ✅ The drive might need a **drive letter**:
+   - Disk Management → Right-click drive → Change Drive Letter
+2. ✅ Drive might need to be **formatted** (erases data!)
+3. ✅ File system might be incompatible
+
+**"USB Device Not Recognized":**
+1. ✅ Try different port
+2. ✅ Restart computer with USB unplugged
+3. ✅ Plug in after restart
+4. ✅ Update USB drivers (Device Manager)
+
+**Drive Shows But Won't Open:**
+- ✅ Might be **corrupted** - try chkdsk
+- ✅ Could be **encrypted** - need password
+- ✅ Try on different computer
+
+**Safely Remove:**
+- ✅ Always **eject** before unplugging!
+- ✅ Click the USB icon in system tray → Eject
+
+Important data on it? Submit a ticket before trying anything risky! 🎫"""
+    },
+
+    # =========================================================================
+    # KEYBOARD & MOUSE
+    # =========================================================================
+    'keyboard': {
+        'keywords': ['keyboard', 'keys not working', 'keyboard not working', 'key stuck', 'typing wrong', 'wrong characters', 'keyboard unresponsive', 'cant type', "can't type", 'keyboard layout'],
+        'response': """Keyboard issues? Let's fix that! ⌨️
+
+**No Response at All:**
+1. ✅ Check if keyboard is **plugged in** (for wired)
+2. ✅ Check **batteries** (for wireless)
+3. ✅ Try a **different USB port**
+4. ✅ **Restart** computer
+
+**Typing Wrong Characters:**
+1. ✅ Check **Num Lock** isn't making letters into numbers
+2. ✅ Check keyboard **language/layout**:
+   - Press **Win + Space** to switch layouts
+   - Settings → Time & Language → Language
+3. ✅ Look for "ENG" in taskbar - click to change
+
+**Keys Stuck or Sticky:**
+1. ✅ Gently **clean under the key** with compressed air
+2. ✅ Check for **debris** under the key
+3. ✅ For mechanical keyboards, the switch might be faulty
+
+**Wireless Keyboard:**
+1. ✅ Check/replace **batteries**
+2. ✅ Re-pair with the receiver
+3. ✅ Move **closer** to the receiver
+4. ✅ Try removing and reinserting USB receiver
+
+**On-Screen Keyboard (Emergency):**
+1. ✅ Search **"On-Screen Keyboard"**
+2. ✅ Or press **Win + Ctrl + O**
+3. ✅ Use mouse to type temporarily
+
+**Laptop Keyboard:**
+- ✅ Check if you accidentally disabled it
+- ✅ Check for **Fn key combinations**
+- ✅ Connect external keyboard to test
+
+Keys physically broken? That might need repair - submit a ticket! 🎫"""
+    },
+    
+    'mouse': {
+        'keywords': ['mouse', 'mouse not working', 'cursor not moving', 'mouse stuck', 'click not working', 'double click', 'mouse pointer', 'scroll not working', 'trackpad', 'touchpad'],
+        'response': """Mouse troubles? Let's get it moving! 🖱️
+
+**Mouse Not Working:**
+1. ✅ Check if it's **plugged in** (wired)
+2. ✅ Check/replace **batteries** (wireless)
+3. ✅ Try a **different USB port**
+4. ✅ Try a **different surface** (some surfaces confuse optical mice)
+
+**Wireless Mouse:**
+1. ✅ Check **batteries** - most common issue!
+2. ✅ Check USB receiver is **plugged in**
+3. ✅ Toggle **power switch** on mouse
+4. ✅ Try **re-pairing** with receiver
+
+**Cursor Moving Erratically:**
+1. ✅ Clean the **sensor** on the bottom
+2. ✅ Try a **different surface** or mouse pad
+3. ✅ Move **wireless receiver closer**
+4. ✅ Check for **interference**
+
+**Clicks Not Working:**
+1. ✅ Try **different applications** to test
+2. ✅ Clean around the **mouse buttons**
+3. ✅ Check mouse button settings in Windows
+4. ✅ Mouse might be wearing out
+
+**Touchpad (Laptop):**
+1. ✅ Check if **disabled** - look for touchpad key (often F5 or F7)
+2. ✅ Settings → Bluetooth & devices → **Touchpad** → Enable
+3. ✅ Check if a mouse is disabling touchpad
+4. ✅ **Restart** laptop
+
+**Scroll Wheel:**
+1. ✅ Clean around the wheel
+2. ✅ Try scrolling in different apps
+3. ✅ Check scroll settings in Windows
+
+Need a replacement? Submit a ticket! 🎫"""
+    },
+
+    # =========================================================================
+    # CAMERA & VIDEO
+    # =========================================================================
+    'camera': {
+        'keywords': ['camera', 'webcam', 'video call', 'camera not working', 'cant see camera', "can't see camera", 'black camera', 'camera black', 'zoom camera', 'teams camera', 'video not working'],
+        'response': """Camera not working? Let's fix that! 📷
+
+**Quick Checks:**
+1. ✅ Is the camera **physically covered**? (Check for privacy cover/slider!)
+2. ✅ Is another app **already using** the camera?
+3. ✅ Close other apps that might use camera (Zoom, Teams, etc.)
+
+**Enable Camera:**
+1. ✅ Settings → **Privacy & Security** → **Camera**
+2. ✅ Make sure **Camera access** is ON
+3. ✅ Check that your **app has permission** (list below)
+
+**Test the Camera:**
+1. ✅ Search for **"Camera"** app in Windows
+2. ✅ Open it to test if camera works at all
+3. ✅ If it works there, problem is app-specific
+
+**In Video Apps (Zoom, Teams, etc.):**
+1. ✅ Check app's **settings/preferences**
+2. ✅ Select the **correct camera** from dropdown
+3. ✅ Look for camera icon - is it muted/disabled?
+
+**External Webcam:**
+1. ✅ Unplug and **replug** the USB cable
+2. ✅ Try a **different USB port**
+3. ✅ Check if it needs **drivers** installed
+
+**Laptop Camera:**
+1. ✅ Check for **function key** to enable/disable (often F8 or F10 with camera icon)
+2. ✅ Check Device Manager for camera
+
+**Camera Shows Black:**
+- ✅ Check privacy **cover/slider**!
+- ✅ Restart the application
+- ✅ Restart computer
+- ✅ Check lighting - might be working but dark
+
+Still not working? Include your laptop/webcam model in a ticket! 🎫"""
+    },
+
+    # =========================================================================
+    # BROWSER ISSUES
+    # =========================================================================
+    'browser': {
+        'keywords': ['browser', 'chrome', 'firefox', 'edge', 'browser slow', 'page not loading', 'website not working', 'browser crash', 'browser not responding', 'cant access website', "can't access website"],
+        'response': """Browser troubles? Let's get you browsing again! 🌐
+
+**Page Won't Load:**
+1. ✅ Check your **internet connection** first
+2. ✅ Try a **different website** - is it just one site?
+3. ✅ Try a **different browser** to test
+4. ✅ **Refresh** with Ctrl+F5 (forces full reload)
+
+**Browser Running Slow:**
+1. ✅ **Close extra tabs** - each tab uses memory!
+2. ✅ Clear **cache and cookies** (Ctrl+Shift+Delete)
+3. ✅ Disable **extensions** you don't use
+4. ✅ **Restart** the browser
+
+**Clear Browser Data:**
+1. ✅ Press **Ctrl+Shift+Delete**
+2. ✅ Select **Cached images and files**
+3. ✅ Select **Cookies** (will log you out of sites)
+4. ✅ Time range: **All time**
+5. ✅ Click **Clear data**
+
+**Browser Crashing:**
+1. ✅ **Update** to latest version
+2. ✅ Disable **all extensions** and test
+3. ✅ Try **resetting** browser settings
+4. ✅ Reinstall the browser
+
+**"Can't reach this page":**
+- ✅ Check if site is down: downforeveryoneorjustme.com
+- ✅ Try clearing DNS: Open Command Prompt → type `ipconfig /flushdns`
+- ✅ Try a different browser
+
+**Extensions Causing Issues:**
+1. ✅ Menu → Extensions
+2. ✅ Disable all, then enable one by one
+3. ✅ Find and remove the problematic one
+
+Specific website not working? Submit a ticket with the URL! 🎫"""
+    },
+
+    # =========================================================================
+    # MOBILE DEVICE ISSUES
+    # =========================================================================
+    'phone': {
+        'keywords': ['phone', 'smartphone', 'mobile', 'iphone', 'android', 'phone slow', 'phone not charging', 'phone battery', 'phone storage', 'phone wont connect', 'phone wifi', 'company phone'],
+        'response': """Phone issues? Let me help! 📱
+
+**Phone Running Slow:**
+1. ✅ **Restart** your phone (fixes most issues!)
+2. ✅ Close **background apps**
+3. ✅ Check **storage** - keep 10-15% free
+4. ✅ Delete old **photos/videos** or move to cloud
+
+**Phone Won't Charge:**
+1. ✅ Try a **different cable**
+2. ✅ Try a **different charger**
+3. ✅ Clean the **charging port** gently (lint builds up!)
+4. ✅ Try a different **outlet**
+
+**WiFi Not Connecting:**
+1. ✅ Toggle **WiFi off and on**
+2. ✅ Forget network and **reconnect**
+3. ✅ **Restart** phone and router
+4. ✅ Check if other devices can connect
+
+**Company Email on Phone:**
+1. ✅ Check settings haven't changed
+2. ✅ Make sure **password is current**
+3. ✅ Try removing and re-adding account
+4. ✅ Check with IT for server settings
+
+**Battery Draining Fast:**
+- ✅ Check **battery usage** in settings
+- ✅ Reduce **screen brightness**
+- ✅ Turn off **location** when not needed
+- ✅ Close unused **background apps**
+- ✅ Check for app using too much power
+
+**Phone Frozen:**
+1. ✅ **Force restart** - varies by phone:
+   - iPhone: Volume up, volume down, then hold power
+   - Android: Hold power + volume down for 10 seconds
+
+For company phones, submit a ticket for support! 🎫"""
+    },
+
+    # =========================================================================
+    # BACKUP & RECOVERY
+    # =========================================================================
+    'backup': {
+        'keywords': ['backup', 'back up', 'save files', 'protect files', 'cloud backup', 'onedrive', 'google drive', 'file history', 'how to backup'],
+        'response': """Let's protect your files with backups! 💾
+
+**Quick Backup Options:**
+
+🔹 **OneDrive (Built into Windows):**
+1. ✅ Settings → Accounts → **Windows backup**
+2. ✅ Turn on **folder backup** for Desktop, Documents, Pictures
+3. ✅ Files auto-sync to cloud
+
+🔹 **Google Drive:**
+1. ✅ Download Google Drive desktop app
+2. ✅ Sign in with Google account
+3. ✅ Choose folders to sync
+
+🔹 **External Drive:**
+1. ✅ Plug in external USB drive
+2. ✅ Copy important folders to it
+3. ✅ Keep drive somewhere safe!
+
+**What to Backup:**
+- ✅ Documents
+- ✅ Photos and Videos
+- ✅ Desktop files
+- ✅ Email data (if local)
+- ✅ Browser bookmarks
+
+**Windows File History:**
+1. ✅ Settings → System → **Storage** → Advanced → **Backup options**
+2. ✅ Add an external drive
+3. ✅ Turn on automatic backup
+
+**3-2-1 Backup Rule:**
+- **3** copies of your data
+- **2** different types of storage
+- **1** copy offsite (cloud)
+
+**Regular Backup Schedule:**
+- ✅ Daily: Cloud sync (automatic)
+- ✅ Weekly: External drive
+- ✅ Monthly: Full system backup
+
+Need help setting up backups? Submit a ticket! 🎫"""
     }
 }
 
