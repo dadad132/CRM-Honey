@@ -9122,6 +9122,17 @@ async def web_tickets_report(
     
     ticket_ids = [t.id for t in all_tickets]
     
+    # Get ALL currently open tickets (regardless of date range) for the "Tickets Open" section
+    current_open_query = select(Ticket).where(
+        Ticket.workspace_id == user.workspace_id,
+        Ticket.status.in_(['open', 'in_progress', 'waiting'])
+    )
+    if selected_user_id:
+        current_open_query = current_open_query.where(Ticket.assigned_to_id == selected_user_id)
+    if selected_project_id:
+        current_open_query = current_open_query.where(Ticket.related_project_id == selected_project_id)
+    all_current_open_tickets = (await db.execute(current_open_query.order_by(Ticket.created_at.desc()))).scalars().all()
+    
     # Get all comments for these tickets
     all_comments = []
     if ticket_ids:
@@ -9391,7 +9402,8 @@ async def web_tickets_report(
     # Summary stats
     total_tickets = len(all_tickets)
     closed_count = sum(1 for t in all_tickets if t.status == 'closed')
-    open_count = sum(1 for t in all_tickets if t.status in ['open', 'in_progress', 'waiting'])
+    # Use the count from all_current_open_tickets for accurate open ticket count
+    current_open_count = len(all_current_open_tickets)
     resolution_rate = round((closed_count / total_tickets * 100) if total_tickets > 0 else 0)
     
     # Average resolution time using business hours
@@ -9408,7 +9420,7 @@ async def web_tickets_report(
     summary = {
         'total_tickets': total_tickets,
         'closed_tickets': closed_count,
-        'open_tickets': open_count,
+        'open_tickets': current_open_count,  # All currently open tickets
         'resolution_rate': resolution_rate,
         'avg_resolution_hours': avg_resolution,
         'total_comments': len(all_comments),
@@ -9438,29 +9450,28 @@ async def web_tickets_report(
             })
     assigned_tickets.sort(key=lambda x: x['created_at'], reverse=True)
     
-    # Build open tickets list (tickets with open, in_progress, waiting status)
+    # Build open tickets list - ALL currently open tickets (not limited to date range)
     open_tickets_list = []
-    for ticket in all_tickets:
-        if ticket.status in ['open', 'in_progress', 'waiting']:
-            assigned_user = users_dict.get(ticket.assigned_to_id) if ticket.assigned_to_id else None
-            project = projects_dict.get(ticket.related_project_id) if ticket.related_project_id else None
-            # Calculate time open in hours using business hours
-            time_open = calculate_business_hours(
-                ticket.created_at, datetime.now(),
-                biz_start, biz_end, biz_exclude_weekends
-            )
-            open_tickets_list.append({
-                'id': ticket.id,
-                'ticket_number': ticket.ticket_number,
-                'subject': ticket.subject,
-                'priority': ticket.priority,
-                'category': ticket.category,
-                'status': ticket.status,
-                'created_at': ticket.created_at,
-                'assigned_to_name': (assigned_user.full_name or assigned_user.username) if assigned_user else 'Unassigned',
-                'project_name': project.name if project else None,
-                'time_open_hours': time_open,
-            })
+    for ticket in all_current_open_tickets:
+        assigned_user = users_dict.get(ticket.assigned_to_id) if ticket.assigned_to_id else None
+        project = projects_dict.get(ticket.related_project_id) if ticket.related_project_id else None
+        # Calculate time open in hours using business hours
+        time_open = calculate_business_hours(
+            ticket.created_at, datetime.now(),
+            biz_start, biz_end, biz_exclude_weekends
+        )
+        open_tickets_list.append({
+            'id': ticket.id,
+            'ticket_number': ticket.ticket_number,
+            'subject': ticket.subject,
+            'priority': ticket.priority,
+            'category': ticket.category,
+            'status': ticket.status,
+            'created_at': ticket.created_at,
+            'assigned_to_name': (assigned_user.full_name or assigned_user.username) if assigned_user else 'Unassigned',
+            'project_name': project.name if project else None,
+            'time_open_hours': time_open,
+        })
     open_tickets_list.sort(key=lambda x: x['created_at'], reverse=True)
     
     # Build created tickets list (all tickets created in the period)
