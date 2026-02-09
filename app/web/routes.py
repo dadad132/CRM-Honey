@@ -9248,14 +9248,16 @@ async def web_tickets_report_pdf(
     request: Request,
     start_date: Optional[str] = Query(None),
     end_date: Optional[str] = Query(None),
+    user_id: Optional[str] = Query(None),
+    project_id: Optional[str] = Query(None),
     db: AsyncSession = Depends(get_session),
 ):
     """Generate PDF ticket report - admin only"""
-    user_id = request.session.get('user_id')
-    if not user_id:
+    current_user_id = request.session.get('user_id')
+    if not current_user_id:
         return RedirectResponse('/web/login', status_code=303)
     
-    user = (await db.execute(select(User).where(User.id == user_id))).scalar_one_or_none()
+    user = (await db.execute(select(User).where(User.id == current_user_id))).scalar_one_or_none()
     if not user or not user.is_active:
         request.session.clear()
         return RedirectResponse('/web/login', status_code=303)
@@ -9265,8 +9267,23 @@ async def web_tickets_report_pdf(
     
     from app.models.ticket import Ticket, TicketComment, TicketHistory
     
+    # Parse user_id and project_id filters
+    user_id_int = None
+    if user_id and user_id.strip():
+        try:
+            user_id_int = int(user_id)
+        except ValueError:
+            pass
+    
+    project_id_int = None
+    if project_id and project_id.strip():
+        try:
+            project_id_int = int(project_id)
+        except ValueError:
+            pass
+    
     # Get workspace for business hours settings
-    workspace = await get_workspace_for_user(user_id, db)
+    workspace = await get_workspace_for_user(current_user_id, db)
     
     # Parse date range
     if start_date:
@@ -9279,24 +9296,32 @@ async def web_tickets_report_pdf(
     else:
         end_dt = datetime.now() + timedelta(days=1)
     
-    # Get all tickets in period
-    all_tickets = (await db.execute(
-        select(Ticket)
-        .where(Ticket.workspace_id == user.workspace_id)
-        .where(Ticket.created_at >= start_dt)
-        .where(Ticket.created_at < end_dt)
-        .order_by(Ticket.created_at.desc())
-    )).scalars().all()
+    # Build ticket query with filters
+    ticket_query = select(Ticket).where(
+        Ticket.workspace_id == user.workspace_id,
+        Ticket.created_at >= start_dt,
+        Ticket.created_at < end_dt
+    )
+    
+    if user_id_int:
+        ticket_query = ticket_query.where(
+            (Ticket.assigned_to_id == user_id_int) | (Ticket.closed_by_id == user_id_int)
+        )
+    
+    if project_id_int:
+        ticket_query = ticket_query.where(Ticket.related_project_id == project_id_int)
+    
+    all_tickets = (await db.execute(ticket_query.order_by(Ticket.created_at.desc()))).scalars().all()
     
     ticket_ids = [t.id for t in all_tickets]
     
-    # Get all comments
+    # Get all comments (filtered by user if specified)
     all_comments = []
     if ticket_ids:
-        all_comments = (await db.execute(
-            select(TicketComment)
-            .where(TicketComment.ticket_id.in_(ticket_ids))
-        )).scalars().all()
+        comment_query = select(TicketComment).where(TicketComment.ticket_id.in_(ticket_ids))
+        if user_id_int:
+            comment_query = comment_query.where(TicketComment.user_id == user_id_int)
+        all_comments = (await db.execute(comment_query)).scalars().all()
     
     # Get all users for lookups
     users_result = (await db.execute(
@@ -9400,7 +9425,7 @@ async def web_tickets_report_pdf(
         if stats['tickets_assigned'] > 0 or stats['tickets_closed'] > 0 or stats['comments_made'] > 0:
             close_rate = round((stats['tickets_closed'] / stats['tickets_assigned'] * 100) if stats['tickets_assigned'] > 0 else 0)
             agent_data.append([
-                stats['name'][:25],
+                Paragraph(stats['name'], styles['Normal']),
                 str(stats['tickets_assigned']),
                 str(stats['tickets_closed']),
                 f'{close_rate}%',
@@ -9437,14 +9462,14 @@ async def web_tickets_report_pdf(
             )
             closed_data.append([
                 ticket.ticket_number,
-                ticket.subject[:30],
-                (closed_by.full_name or closed_by.username)[:15] if closed_by else 'Unknown',
+                Paragraph(ticket.subject, styles['Normal']),
+                Paragraph((closed_by.full_name or closed_by.username) if closed_by else 'Unknown', styles['Normal']),
                 ticket.priority.title(),
                 f'{resolution_hours}h',
             ])
     
     if len(closed_data) > 1:
-        closed_table = Table(closed_data[:26], colWidths=[1.2*inch, 2*inch, 1.3*inch, 0.9*inch, 0.9*inch])
+        closed_table = Table(closed_data, colWidths=[1.2*inch, 2*inch, 1.3*inch, 0.9*inch, 0.9*inch])
         closed_table.setStyle(TableStyle([
             ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#10B981')),
             ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
@@ -9468,6 +9493,328 @@ async def web_tickets_report_pdf(
     return StreamingResponse(
         buffer,
         media_type='application/pdf',
+        headers={'Content-Disposition': f'attachment; filename="{filename}"'}
+    )
+
+
+@router.get('/tickets/report/excel')
+async def web_tickets_report_excel(
+    request: Request,
+    start_date: Optional[str] = Query(None),
+    end_date: Optional[str] = Query(None),
+    user_id: Optional[str] = Query(None),
+    project_id: Optional[str] = Query(None),
+    db: AsyncSession = Depends(get_session),
+):
+    """Generate Excel ticket report - admin only"""
+    current_user_id = request.session.get('user_id')
+    if not current_user_id:
+        return RedirectResponse('/web/login', status_code=303)
+    
+    user = (await db.execute(select(User).where(User.id == current_user_id))).scalar_one_or_none()
+    if not user or not user.is_active:
+        request.session.clear()
+        return RedirectResponse('/web/login', status_code=303)
+    
+    if not user.is_admin:
+        raise HTTPException(status_code=403, detail="Admin access required")
+    
+    from app.models.ticket import Ticket, TicketComment, TicketHistory
+    
+    # Parse user_id and project_id filters
+    user_id_int = None
+    if user_id and user_id.strip():
+        try:
+            user_id_int = int(user_id)
+        except ValueError:
+            pass
+    
+    project_id_int = None
+    if project_id and project_id.strip():
+        try:
+            project_id_int = int(project_id)
+        except ValueError:
+            pass
+    
+    # Get workspace for business hours settings
+    workspace = await get_workspace_for_user(current_user_id, db)
+    
+    # Parse date range
+    if start_date:
+        start_dt = datetime.strptime(start_date, '%Y-%m-%d')
+    else:
+        start_dt = datetime.now() - timedelta(days=30)
+    
+    if end_date:
+        end_dt = datetime.strptime(end_date, '%Y-%m-%d') + timedelta(days=1)
+    else:
+        end_dt = datetime.now() + timedelta(days=1)
+    
+    # Build ticket query with filters
+    ticket_query = select(Ticket).where(
+        Ticket.workspace_id == user.workspace_id,
+        Ticket.created_at >= start_dt,
+        Ticket.created_at < end_dt
+    )
+    
+    if user_id_int:
+        ticket_query = ticket_query.where(
+            (Ticket.assigned_to_id == user_id_int) | (Ticket.closed_by_id == user_id_int)
+        )
+    
+    if project_id_int:
+        ticket_query = ticket_query.where(Ticket.related_project_id == project_id_int)
+    
+    all_tickets = (await db.execute(ticket_query.order_by(Ticket.created_at.desc()))).scalars().all()
+    
+    ticket_ids = [t.id for t in all_tickets]
+    
+    # Get all comments (filtered by user if specified)
+    all_comments = []
+    if ticket_ids:
+        comment_query = select(TicketComment).where(TicketComment.ticket_id.in_(ticket_ids))
+        if user_id_int:
+            comment_query = comment_query.where(TicketComment.user_id == user_id_int)
+        all_comments = (await db.execute(comment_query.order_by(TicketComment.created_at.desc()))).scalars().all()
+    
+    # Get ticket history (filtered by user if specified)
+    all_history = []
+    if ticket_ids:
+        history_query = select(TicketHistory).where(TicketHistory.ticket_id.in_(ticket_ids))
+        if user_id_int:
+            history_query = history_query.where(TicketHistory.user_id == user_id_int)
+        all_history = (await db.execute(history_query.order_by(TicketHistory.created_at.desc()))).scalars().all()
+    
+    # Get all users for lookups
+    users_result = (await db.execute(
+        select(User).where(User.workspace_id == user.workspace_id)
+    )).scalars().all()
+    users_dict = {u.id: u for u in users_result}
+    
+    # Get projects for lookups
+    projects_result = (await db.execute(
+        select(Project).where(Project.workspace_id == user.workspace_id)
+    )).scalars().all()
+    projects_dict = {p.id: p for p in projects_result}
+    
+    # Get business hours settings
+    from app.core.business_hours import calculate_business_hours
+    biz_start = workspace.business_hours_start if workspace and hasattr(workspace, 'business_hours_start') else "07:30"
+    biz_end = workspace.business_hours_end if workspace and hasattr(workspace, 'business_hours_end') else "16:00"
+    biz_exclude_weekends = workspace.business_hours_exclude_weekends if workspace and hasattr(workspace, 'business_hours_exclude_weekends') else True
+    
+    # Calculate agent performance
+    agent_stats = {}
+    for usr in users_result:
+        agent_stats[usr.id] = {
+            'name': usr.full_name or usr.username,
+            'email': usr.email,
+            'tickets_assigned': 0,
+            'tickets_closed': 0,
+            'comments_made': 0,
+            'resolution_times': [],
+        }
+    
+    for ticket in all_tickets:
+        if ticket.assigned_to_id and ticket.assigned_to_id in agent_stats:
+            agent_stats[ticket.assigned_to_id]['tickets_assigned'] += 1
+        if ticket.closed_by_id and ticket.closed_by_id in agent_stats:
+            agent_stats[ticket.closed_by_id]['tickets_closed'] += 1
+            if ticket.closed_at:
+                resolution_hours = calculate_business_hours(
+                    ticket.created_at, ticket.closed_at,
+                    biz_start, biz_end, biz_exclude_weekends
+                )
+                agent_stats[ticket.closed_by_id]['resolution_times'].append(resolution_hours)
+    
+    for comment in all_comments:
+        if comment.user_id and comment.user_id in agent_stats:
+            agent_stats[comment.user_id]['comments_made'] += 1
+    
+    # Generate Excel file
+    from openpyxl import Workbook
+    from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+    from openpyxl.utils import get_column_letter
+    import io
+    
+    wb = Workbook()
+    
+    # Style helpers
+    header_font = Font(bold=True, color="FFFFFF")
+    header_fill = PatternFill(start_color="6366F1", end_color="6366F1", fill_type="solid")
+    header_alignment = Alignment(horizontal="center", vertical="center")
+    thin_border = Border(
+        left=Side(style='thin'),
+        right=Side(style='thin'),
+        top=Side(style='thin'),
+        bottom=Side(style='thin')
+    )
+    
+    def style_header_row(ws, row_num, col_count):
+        for col in range(1, col_count + 1):
+            cell = ws.cell(row=row_num, column=col)
+            cell.font = header_font
+            cell.fill = header_fill
+            cell.alignment = header_alignment
+            cell.border = thin_border
+    
+    def auto_width(ws):
+        for column_cells in ws.columns:
+            max_length = 0
+            column = column_cells[0].column_letter
+            for cell in column_cells:
+                try:
+                    if cell.value:
+                        max_length = max(max_length, len(str(cell.value)))
+                except:
+                    pass
+            adjusted_width = min(max_length + 2, 60)
+            ws.column_dimensions[column].width = adjusted_width
+    
+    # Sheet 1: Summary
+    ws_summary = wb.active
+    ws_summary.title = "Summary"
+    ws_summary.append(["Ticket Report"])
+    ws_summary.append([f"Period: {start_dt.strftime('%Y-%m-%d')} to {(end_dt - timedelta(days=1)).strftime('%Y-%m-%d')}"])
+    ws_summary.append([f"Generated: {datetime.now().strftime('%Y-%m-%d %H:%M')}"])
+    if user_id_int:
+        filter_user = users_dict.get(user_id_int)
+        ws_summary.append([f"Filtered by User: {filter_user.full_name or filter_user.username if filter_user else 'Unknown'}"])
+    if project_id_int:
+        filter_project = projects_dict.get(project_id_int)
+        ws_summary.append([f"Filtered by Project: {filter_project.name if filter_project else 'Unknown'}"])
+    ws_summary.append([])
+    
+    total_tickets = len(all_tickets)
+    closed_count = sum(1 for t in all_tickets if t.status == 'closed')
+    open_count = sum(1 for t in all_tickets if t.status in ['open', 'in_progress', 'waiting'])
+    resolution_rate = round((closed_count / total_tickets * 100) if total_tickets > 0 else 0)
+    
+    ws_summary.append(["Metric", "Value"])
+    style_header_row(ws_summary, ws_summary.max_row, 2)
+    ws_summary.append(["Total Tickets", total_tickets])
+    ws_summary.append(["Closed Tickets", closed_count])
+    ws_summary.append(["Open Tickets", open_count])
+    ws_summary.append(["Resolution Rate", f"{resolution_rate}%"])
+    ws_summary.append(["Total Comments", len(all_comments)])
+    ws_summary.append(["Business Hours", f"{biz_start} - {biz_end}"])
+    auto_width(ws_summary)
+    
+    # Sheet 2: All Tickets
+    ws_tickets = wb.create_sheet("All Tickets")
+    ws_tickets.append(["Ticket #", "Subject", "Status", "Priority", "Category", "Assigned To", "Created", "Closed", "Resolution (hrs)", "Project"])
+    style_header_row(ws_tickets, 1, 10)
+    for ticket in all_tickets:
+        assigned_to = users_dict.get(ticket.assigned_to_id)
+        project = projects_dict.get(ticket.related_project_id)
+        resolution_hrs = ''
+        if ticket.status == 'closed' and ticket.closed_at:
+            resolution_hrs = calculate_business_hours(
+                ticket.created_at, ticket.closed_at,
+                biz_start, biz_end, biz_exclude_weekends
+            )
+        ws_tickets.append([
+            ticket.ticket_number,
+            ticket.subject,
+            ticket.status,
+            ticket.priority,
+            ticket.category or '',
+            (assigned_to.full_name or assigned_to.username) if assigned_to else '',
+            ticket.created_at.strftime('%Y-%m-%d %H:%M'),
+            ticket.closed_at.strftime('%Y-%m-%d %H:%M') if ticket.closed_at else '',
+            resolution_hrs,
+            project.name if project else '',
+        ])
+    auto_width(ws_tickets)
+    
+    # Sheet 3: Agent Performance
+    ws_agents = wb.create_sheet("Agent Performance")
+    ws_agents.append(["Agent", "Email", "Tickets Assigned", "Tickets Closed", "Close Rate", "Comments Made", "Avg Resolution (hrs)"])
+    style_header_row(ws_agents, 1, 7)
+    for uid, stats in sorted(agent_stats.items(), key=lambda x: x[1]['tickets_closed'], reverse=True):
+        if stats['tickets_assigned'] > 0 or stats['tickets_closed'] > 0 or stats['comments_made'] > 0:
+            close_rate = round((stats['tickets_closed'] / stats['tickets_assigned'] * 100) if stats['tickets_assigned'] > 0 else 0)
+            avg_resolution = round(sum(stats['resolution_times']) / len(stats['resolution_times']), 1) if stats['resolution_times'] else 0
+            ws_agents.append([
+                stats['name'],
+                stats['email'],
+                stats['tickets_assigned'],
+                stats['tickets_closed'],
+                f"{close_rate}%",
+                stats['comments_made'],
+                avg_resolution,
+            ])
+    auto_width(ws_agents)
+    
+    # Sheet 4: Closed Tickets
+    ws_closed = wb.create_sheet("Closed Tickets")
+    ws_closed.append(["Ticket #", "Subject", "Priority", "Category", "Closed By", "Created", "Closed", "Resolution (hrs)"])
+    style_header_row(ws_closed, 1, 8)
+    for ticket in all_tickets:
+        if ticket.status == 'closed' and ticket.closed_at:
+            closed_by = users_dict.get(ticket.closed_by_id)
+            resolution_hours = calculate_business_hours(
+                ticket.created_at, ticket.closed_at,
+                biz_start, biz_end, biz_exclude_weekends
+            )
+            ws_closed.append([
+                ticket.ticket_number,
+                ticket.subject,
+                ticket.priority,
+                ticket.category or '',
+                (closed_by.full_name or closed_by.username) if closed_by else 'Unknown',
+                ticket.created_at.strftime('%Y-%m-%d %H:%M'),
+                ticket.closed_at.strftime('%Y-%m-%d %H:%M'),
+                resolution_hours,
+            ])
+    auto_width(ws_closed)
+    
+    # Sheet 5: Comments
+    ws_comments = wb.create_sheet("Comments")
+    ws_comments.append(["Date", "Ticket #", "Author", "Comment", "Internal"])
+    style_header_row(ws_comments, 1, 5)
+    tickets_dict = {t.id: t for t in all_tickets}
+    for comment in all_comments:
+        author = users_dict.get(comment.user_id)
+        ticket = tickets_dict.get(comment.ticket_id)
+        ws_comments.append([
+            comment.created_at.strftime('%Y-%m-%d %H:%M'),
+            ticket.ticket_number if ticket else '',
+            (author.full_name or author.username) if author else 'Guest',
+            comment.content,
+            'Yes' if comment.is_internal else 'No',
+        ])
+    auto_width(ws_comments)
+    
+    # Sheet 6: Activity History
+    ws_history = wb.create_sheet("Activity History")
+    ws_history.append(["Date", "Ticket #", "User", "Action", "Details"])
+    style_header_row(ws_history, 1, 5)
+    for history in all_history:
+        usr = users_dict.get(history.user_id)
+        ticket = tickets_dict.get(history.ticket_id)
+        details = ''
+        if history.new_value:
+            details = history.new_value
+        ws_history.append([
+            history.created_at.strftime('%Y-%m-%d %H:%M'),
+            ticket.ticket_number if ticket else '',
+            (usr.full_name or usr.username) if usr else 'System',
+            history.action.replace('_', ' ').title(),
+            details,
+        ])
+    auto_width(ws_history)
+    
+    # Save to buffer
+    buffer = io.BytesIO()
+    wb.save(buffer)
+    buffer.seek(0)
+    
+    from fastapi.responses import StreamingResponse
+    filename = f"ticket_report_{start_dt.strftime('%Y%m%d')}_{end_dt.strftime('%Y%m%d')}.xlsx"
+    return StreamingResponse(
+        buffer,
+        media_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
         headers={'Content-Disposition': f'attachment; filename="{filename}"'}
     )
 
