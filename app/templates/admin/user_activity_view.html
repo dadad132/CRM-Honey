@@ -283,7 +283,7 @@
                     </tr>
                 </thead>
                 <tbody class="divide-y divide-gray-200">
-                    {% for task in tasks_created[:30] %}
+                    {% for task in tasks_created %}
                     <tr class="hover:bg-gray-50">
                         <td class="px-6 py-4">
                             <a href="/web/tasks/{{ task.id }}" class="font-medium text-gray-900 hover:text-indigo-600">
@@ -339,7 +339,7 @@
                     </tr>
                 </thead>
                 <tbody class="divide-y divide-gray-200">
-                    {% for task in task_assignments[:30] %}
+                    {% for task in task_assignments %}
                     <tr class="hover:bg-gray-50">
                         <td class="px-6 py-4">
                             <a href="/web/tasks/{{ task.id }}" class="font-medium text-gray-900 hover:text-indigo-600">
@@ -377,7 +377,7 @@
         <div class="p-6">
             <div class="flow-root">
                 <ul class="-mb-8">
-                    {% for activity in recent_activity[:25] %}
+                    {% for activity in recent_activity %}
                     <li>
                         <div class="relative pb-8">
                             {% if not loop.last %}
@@ -497,7 +497,7 @@
                         </tr>
                     </thead>
                     <tbody class="divide-y divide-gray-200">
-                        {% for ticket in tickets_closed[:15] %}
+                        {% for ticket in tickets_closed %}
                         <tr class="hover:bg-gray-50">
                             <td class="px-4 py-3">
                                 <span class="font-medium text-gray-900 text-sm">{{ ticket.ticket_number }}</span>

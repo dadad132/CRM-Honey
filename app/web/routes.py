@@ -2824,7 +2824,7 @@ async def web_admin_generate_user_activity_pdf(
     if overdue_tasks:
         elements.append(Paragraph("⚠️ OVERDUE TASKS", heading_style))
         overdue_data = [['Task Title', 'Due Date', 'Days Overdue', 'Priority', 'Status']]
-        for task in sorted(overdue_tasks, key=lambda t: t.due_date if isinstance(t.due_date, date_type) else t.due_date.date())[:15]:
+        for task in sorted(overdue_tasks, key=lambda t: t.due_date if isinstance(t.due_date, date_type) else t.due_date.date()):
             task_due_date = task.due_date if isinstance(task.due_date, date_type) else task.due_date.date()
             days_overdue = (now_date - task_due_date).days
             overdue_data.append([
@@ -2853,7 +2853,7 @@ async def web_admin_generate_user_activity_pdf(
     elements.append(Paragraph("Tasks Created", heading_style))
     if tasks_created:
         task_data = [['Date Created', 'Title', 'Due Date', 'Priority', 'Status']]
-        for task in tasks_created[:25]:
+        for task in tasks_created:
             due_str = task.due_date.strftime('%Y-%m-%d') if task.due_date else 'No due date'
             if task.due_date and is_overdue(task.due_date) and task.status.value not in ['done', 'completed', 'archived']:
                 due_str += ' (OVERDUE)'
@@ -2885,7 +2885,7 @@ async def web_admin_generate_user_activity_pdf(
     elements.append(Paragraph("Task Assignments Received", heading_style))
     if task_assignments:
         assignment_data = [['Date', 'Title', 'Assigned By', 'Due Date', 'Status']]
-        for task, assignment in task_assignments[:20]:
+        for task, assignment in task_assignments:
             # Task creator is the one who assigned it
             assigner = (await db.execute(select(User).where(User.id == task.creator_id))).scalar_one_or_none()
             assigner_name = assigner.full_name or assigner.username if assigner else 'Unknown'
@@ -2920,7 +2920,7 @@ async def web_admin_generate_user_activity_pdf(
     elements.append(Paragraph("Recent Task Edits", heading_style))
     if task_edits:
         edit_data = [['Date', 'Task ID', 'Field Changed', 'Old Value', 'New Value']]
-        for edit in task_edits[:15]:  # Limit to first 15
+        for edit in task_edits:
             edit_data.append([
                 edit.created_at.strftime('%Y-%m-%d %H:%M'),
                 str(edit.task_id),
@@ -2949,7 +2949,7 @@ async def web_admin_generate_user_activity_pdf(
     elements.append(Paragraph("Recent Comments", heading_style))
     if comments:
         comment_data = [['Date', 'Task ID', 'Comment']]
-        for comment in comments[:10]:  # Limit to first 10
+        for comment in comments:
             # comment is a tuple: (id, task_id, author_id, content, created_at)
             comment_id, task_id, author_id, content, created_at = comment
             comment_data.append([
@@ -2979,7 +2979,7 @@ async def web_admin_generate_user_activity_pdf(
     if projects_created:
         from app.models.project_member import ProjectMember
         project_data = [['Date', 'Project Name', 'Status', 'Members']]
-        for project in projects_created[:15]:
+        for project in projects_created:
             member_count = (await db.execute(
                 select(ProjectMember).where(ProjectMember.project_id == project.id)
             )).scalars().all()
@@ -3010,7 +3010,7 @@ async def web_admin_generate_user_activity_pdf(
     elements.append(Paragraph("Activities Logged (Calls, Emails, Meetings, Notes)", heading_style))
     if activities:
         activity_data = [['Date', 'Type', 'Subject', 'Related To']]
-        for activity in activities[:15]:
+        for activity in activities:
             related = ''
             if activity.project_id:
                 proj = (await db.execute(select(Project).where(Project.id == activity.project_id))).scalar_one_or_none()
@@ -3045,7 +3045,7 @@ async def web_admin_generate_user_activity_pdf(
     elements.append(Paragraph("Ticket Comments Posted", heading_style))
     if ticket_comments:
         tcomment_data = [['Date', 'Ticket ID', 'Comment Preview', 'Internal']]
-        for tc in ticket_comments[:15]:
+        for tc in ticket_comments:
             # tc is a tuple: (id, ticket_id, user_id, content, is_internal, created_at)
             tc_id, ticket_id, user_id, content, is_internal, created_at = tc
             tcomment_data.append([
@@ -3104,7 +3104,7 @@ async def web_admin_generate_user_activity_pdf(
     elements.append(Paragraph("Tickets Closed", heading_style))
     if tickets_closed:
         ticket_data = [['Date Closed', 'Ticket #', 'Subject', 'Priority']]
-        for ticket in tickets_closed[:20]:  # Limit to first 20
+        for ticket in tickets_closed:
             ticket_data.append([
                 ticket.closed_at.strftime('%Y-%m-%d %H:%M'),
                 ticket.ticket_number,
