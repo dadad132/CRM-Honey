@@ -10261,6 +10261,13 @@ async def web_tickets_create(
     assigned_to_id = form_data.get('assigned_to_id') or None
     scheduled_date = form_data.get('scheduled_date') or None
     ticket_working_days_list = form_data.getlist('ticket_working_days')
+    # Customer information (optional)
+    customer_name = form_data.get('customer_name') or None
+    customer_surname = form_data.get('customer_surname') or None
+    customer_email = form_data.get('customer_email') or None
+    customer_phone = form_data.get('customer_phone') or None
+    customer_company = form_data.get('customer_company') or None
+    customer_branch = form_data.get('customer_branch') or None
     
     user_id = request.session.get('user_id')
     if not user_id:
@@ -10322,7 +10329,14 @@ async def web_tickets_create(
         created_by_id=user_id,
         workspace_id=user.workspace_id,
         scheduled_date=scheduled_datetime,
-        working_days=working_days_str
+        working_days=working_days_str,
+        # Customer information - use guest_* fields
+        guest_name=customer_name,
+        guest_surname=customer_surname,
+        guest_email=customer_email,
+        guest_phone=customer_phone,
+        guest_company=customer_company,
+        guest_branch=customer_branch
     )
     db.add(ticket)
     await db.flush()

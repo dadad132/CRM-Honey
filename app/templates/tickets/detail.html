@@ -68,8 +68,57 @@
     <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <!-- Main Content -->
         <div class="lg:col-span-2 space-y-6 min-w-0">
-            <!-- Guest Information -->
-            {% if ticket.is_guest %}
+            <!-- Customer Information -->
+            {% if ticket.guest_name or ticket.guest_surname or ticket.guest_email or ticket.guest_phone or ticket.guest_company or ticket.guest_branch %}
+            <div class="bg-emerald-50 border border-emerald-200 rounded-lg p-6">
+                <h2 class="text-lg font-semibold text-emerald-900 mb-3 flex items-center">
+                    <i class="fas fa-user-circle mr-2"></i>
+                    Customer Information
+                    {% if ticket.is_guest %}
+                    <span class="ml-2 text-xs bg-emerald-200 text-emerald-800 px-2 py-0.5 rounded">Guest Submission</span>
+                    {% endif %}
+                </h2>
+                <div class="grid grid-cols-2 gap-4 text-sm">
+                    {% if ticket.guest_name or ticket.guest_surname %}
+                    <div>
+                        <span class="text-emerald-600 font-medium">Name:</span>
+                        <span class="text-emerald-900">{{ ticket.guest_name or '' }} {{ ticket.guest_surname or '' }}</span>
+                    </div>
+                    {% endif %}
+                    {% if ticket.guest_email %}
+                    <div>
+                        <span class="text-emerald-600 font-medium">Email:</span>
+                        <a href="mailto:{{ ticket.guest_email }}" class="text-emerald-900 hover:text-emerald-700 underline">{{ ticket.guest_email }}</a>
+                    </div>
+                    {% endif %}
+                    {% if ticket.guest_phone %}
+                    <div>
+                        <span class="text-emerald-600 font-medium">Phone:</span>
+                        <a href="tel:{{ ticket.guest_phone }}" class="text-emerald-900 hover:text-emerald-700 underline">{{ ticket.guest_phone }}</a>
+                    </div>
+                    {% endif %}
+                    {% if ticket.guest_company %}
+                    <div>
+                        <span class="text-emerald-600 font-medium">Company:</span>
+                        <span class="text-emerald-900">{{ ticket.guest_company }}</span>
+                    </div>
+                    {% endif %}
+                    {% if ticket.guest_office_number %}
+                    <div>
+                        <span class="text-emerald-600 font-medium">Office Number:</span>
+                        <span class="text-emerald-900">{{ ticket.guest_office_number }}</span>
+                    </div>
+                    {% endif %}
+                    {% if ticket.guest_branch %}
+                    <div>
+                        <span class="text-emerald-600 font-medium">Branch:</span>
+                        <span class="text-emerald-900">{{ ticket.guest_branch }}</span>
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+            {% elif ticket.is_guest %}
+            <!-- Legacy guest display for older tickets without info -->
             <div class="bg-indigo-50 border border-indigo-200 rounded-lg p-6">
                 <h2 class="text-lg font-semibold text-indigo-900 mb-3 flex items-center">
                     <i class="fas fa-user-circle mr-2"></i>

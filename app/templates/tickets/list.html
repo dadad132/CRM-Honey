@@ -601,6 +601,52 @@
                 </div>
             </div>
 
+            <!-- Customer Information Section -->
+            <div class="border-t border-gray-200 pt-4 mt-2">
+                <div class="flex items-center gap-2 mb-3">
+                    <i class="fas fa-user text-blue-500"></i>
+                    <span class="text-sm font-medium text-gray-700">Customer Information (Optional)</span>
+                </div>
+                <div class="grid grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-xs font-medium text-gray-600 mb-1">Customer Name</label>
+                        <input type="text" name="customer_name"
+                               class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+                               placeholder="First name">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-medium text-gray-600 mb-1">Customer Surname</label>
+                        <input type="text" name="customer_surname"
+                               class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+                               placeholder="Last name">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-medium text-gray-600 mb-1">Customer Email</label>
+                        <input type="email" name="customer_email"
+                               class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+                               placeholder="email@example.com">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-medium text-gray-600 mb-1">Customer Phone</label>
+                        <input type="tel" name="customer_phone"
+                               class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+                               placeholder="+27...">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-medium text-gray-600 mb-1">Company</label>
+                        <input type="text" name="customer_company"
+                               class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+                               placeholder="Company name">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-medium text-gray-600 mb-1">Branch / Office</label>
+                        <input type="text" name="customer_branch"
+                               class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+                               placeholder="Branch or office location">
+                    </div>
+                </div>
+            </div>
+
             <div class="flex justify-end gap-3 pt-4">
                 <button type="button"
                         onclick="document.getElementById('createTicketModal').classList.add('hidden')"
