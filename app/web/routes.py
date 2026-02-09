@@ -2645,11 +2645,11 @@ async def web_admin_generate_user_activity_pdf(
         .order_by(Activity.created_at.desc())
     )).scalars().all()
     
-    # 7. Tickets closed
+    # 7. Tickets closed - Include archived tickets as well
     from app.models.ticket import Ticket, TicketComment
     tickets_closed = (await db.execute(
         select(Ticket)
-        .where(Ticket.workspace_id == user.workspace_id)
+        .where(Ticket.workspace_id == target_user.workspace_id)
         .where(Ticket.closed_by_id == target_user_id)
         .where(Ticket.closed_at >= start_dt)
         .where(Ticket.closed_at < end_dt)
@@ -2674,10 +2674,10 @@ async def web_admin_generate_user_activity_pdf(
         logger.error(f"Error fetching ticket comments: {e}")
         ticket_comments = []
     
-    # 9. Tickets assigned
+    # 9. Tickets assigned - Include archived tickets as well
     tickets_assigned = (await db.execute(
         select(Ticket)
-        .where(Ticket.workspace_id == user.workspace_id)
+        .where(Ticket.workspace_id == target_user.workspace_id)
         .where(Ticket.assigned_to_id == target_user_id)
         .where(Ticket.created_at >= start_dt)
         .where(Ticket.created_at < end_dt)
@@ -3277,19 +3277,23 @@ async def web_admin_user_activity_view(
         .order_by(Activity.created_at.desc())
     )).scalars().all()
     
-    # 7. Tickets
+    # 7. Tickets - Include archived tickets as well
     tickets_closed = (await db.execute(
         select(Ticket)
-        .where(Ticket.workspace_id == user.workspace_id)
+        .where(Ticket.workspace_id == target_user.workspace_id)
         .where(Ticket.closed_by_id == target_user_id)
         .where(Ticket.closed_at >= start_dt)
         .where(Ticket.closed_at < end_dt)
         .order_by(Ticket.closed_at.desc())
     )).scalars().all()
 
+    # Tickets assigned to this user (includes archived)
     tickets_assigned = (await db.execute(
         select(Ticket)
-        .where(Ticket.workspace_id == user.workspace_id)
+        .where(Ticket.workspace_id == target_user.workspace_id)
+        .where(Ticket.assigned_to_id == target_user_id)
+        .where(Ticket.created_at >= start_dt)
+        .where(Ticket.created_at < end_dt)
         .order_by(Ticket.created_at.desc())
     )).scalars().all()
     
