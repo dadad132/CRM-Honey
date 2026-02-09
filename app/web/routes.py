@@ -9505,7 +9505,7 @@ async def web_tickets_report(
             'category': ticket.category,
             'status': ticket.status,
             'created_at': ticket.created_at,
-            'created_by_name': (created_by_user.full_name or created_by_user.username) if created_by_user else (ticket.customer_name or 'Guest'),
+            'created_by_name': (created_by_user.full_name or created_by_user.username) if created_by_user else (ticket.guest_name or 'Guest'),
             'assigned_to_name': (assigned_user.full_name or assigned_user.username) if assigned_user else 'Unassigned',
             'project_name': project.name if project else None,
         })
