@@ -2865,7 +2865,7 @@ async def web_admin_generate_user_activity_pdf(
             task_due_date = task.due_date if isinstance(task.due_date, date_type) else task.due_date.date()
             days_overdue = (now_date - task_due_date).days
             overdue_data.append([
-                task.title[:40],
+                Paragraph(task.title, styles['Normal']),
                 task_due_date.strftime('%Y-%m-%d'),
                 str(days_overdue),
                 task.priority.value.title(),
@@ -2931,8 +2931,8 @@ async def web_admin_generate_user_activity_pdf(
                 due_str += ' (LATE)'
             assignment_data.append([
                 task.created_at.strftime('%Y-%m-%d'),
-                task.title[:30],
-                assigner_name[:15],
+                Paragraph(task.title, styles['Normal']),
+                Paragraph(assigner_name, styles['Normal']),
                 due_str,
                 task.status.value.replace('_', ' ').title(),
             ])
@@ -2962,8 +2962,8 @@ async def web_admin_generate_user_activity_pdf(
                 edit.created_at.strftime('%Y-%m-%d %H:%M'),
                 str(edit.task_id),
                 edit.field.replace('_', ' ').title(),
-                (edit.old_value or 'None')[:20],
-                (edit.new_value or 'None')[:20],
+                Paragraph(edit.old_value or 'None', styles['Normal']),
+                Paragraph(edit.new_value or 'None', styles['Normal']),
             ])
         
         edit_table = Table(edit_data, colWidths=[1.3*inch, 0.7*inch, 1.2*inch, 1.5*inch, 1.5*inch])
@@ -2992,7 +2992,7 @@ async def web_admin_generate_user_activity_pdf(
             comment_data.append([
                 created_at.strftime('%Y-%m-%d %H:%M') if isinstance(created_at, datetime) else str(created_at)[:16],
                 str(task_id),
-                (content or '')[:60],
+                Paragraph(content or '', styles['Normal']),
             ])
         
         comment_table = Table(comment_data, colWidths=[1.5*inch, 0.8*inch, 4*inch])
@@ -3022,7 +3022,7 @@ async def web_admin_generate_user_activity_pdf(
             )).scalars().all()
             project_data.append([
                 project.created_at.strftime('%Y-%m-%d'),
-                project.name[:40],
+                Paragraph(project.name, styles['Normal']),
                 project.status.value.title(),
                 str(len(member_count)),
             ])
@@ -3058,8 +3058,8 @@ async def web_admin_generate_user_activity_pdf(
             activity_data.append([
                 activity.created_at.strftime('%Y-%m-%d'),
                 activity.activity_type.replace('_', ' ').title(),
-                (activity.subject or '')[:35],
-                related[:25],
+                Paragraph(activity.subject or '', styles['Normal']),
+                Paragraph(related, styles['Normal']),
             ])
         
         activity_table = Table(activity_data, colWidths=[1*inch, 1.1*inch, 2.5*inch, 1.7*inch])
@@ -3088,7 +3088,7 @@ async def web_admin_generate_user_activity_pdf(
             tcomment_data.append([
                 created_at.strftime('%Y-%m-%d') if isinstance(created_at, datetime) else str(created_at)[:10],
                 str(ticket_id),
-                (content or '')[:45],
+                Paragraph(content or '', styles['Normal']),
                 'Yes' if is_internal else 'No',
             ])
         
@@ -3116,7 +3116,7 @@ async def web_admin_generate_user_activity_pdf(
             tassigned_data.append([
                 ticket.created_at.strftime('%Y-%m-%d'),
                 ticket.ticket_number,
-                ticket.subject[:35],
+                Paragraph(ticket.subject, styles['Normal']),
                 ticket.priority.title(),
                 ticket.status.title(),
             ])
@@ -3145,7 +3145,7 @@ async def web_admin_generate_user_activity_pdf(
             ticket_data.append([
                 ticket.closed_at.strftime('%Y-%m-%d %H:%M'),
                 ticket.ticket_number,
-                ticket.subject[:40],
+                Paragraph(ticket.subject, styles['Normal']),
                 ticket.priority.title(),
             ])
         
@@ -3175,6 +3175,386 @@ async def web_admin_generate_user_activity_pdf(
     return StreamingResponse(
         buffer,
         media_type='application/pdf',
+        headers={'Content-Disposition': f'attachment; filename="{filename}"'}
+    )
+
+
+@router.get('/admin/reports/user-activity/{target_user_id}/excel')
+async def web_admin_generate_user_activity_excel(
+    request: Request,
+    target_user_id: int,
+    start_date: Optional[str] = Query(None),
+    end_date: Optional[str] = Query(None),
+    db: AsyncSession = Depends(get_session),
+):
+    """Generate Excel report of user activity"""
+    user_id = request.session.get('user_id')
+    if not user_id:
+        return RedirectResponse('/web/login', status_code=303)
+    
+    user = (await db.execute(select(User).where(User.id == user_id))).scalar_one_or_none()
+    if not user or not user.is_active:
+        request.session.clear()
+        return RedirectResponse('/web/login', status_code=303)
+    
+    if not user.is_admin:
+        raise HTTPException(status_code=403, detail="Admin access required")
+    
+    # Get target user
+    target_user = (await db.execute(select(User).where(User.id == target_user_id))).scalar_one_or_none()
+    if not target_user or target_user.workspace_id != user.workspace_id:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    # Parse date range
+    if start_date:
+        start_dt = datetime.strptime(start_date, '%Y-%m-%d')
+    else:
+        start_dt = datetime.now() - timedelta(days=30)
+    
+    if end_date:
+        end_dt = datetime.strptime(end_date, '%Y-%m-%d') + timedelta(days=1)
+    else:
+        end_dt = datetime.now() + timedelta(days=1)
+    
+    from sqlalchemy import text
+    
+    # Gather all the same data as PDF
+    # 1. Tasks created
+    tasks_created = (await db.execute(
+        select(Task)
+        .join(Project, Task.project_id == Project.id)
+        .where(Project.workspace_id == target_user.workspace_id)
+        .where(Task.creator_id == target_user_id)
+        .where(Task.created_at >= start_dt)
+        .where(Task.created_at < end_dt)
+        .order_by(Task.created_at.desc())
+    )).scalars().all()
+    
+    # 2. Task assignments
+    task_assignments = (await db.execute(
+        select(Task, Assignment)
+        .join(Assignment, Task.id == Assignment.task_id)
+        .join(Project, Task.project_id == Project.id)
+        .where(Project.workspace_id == target_user.workspace_id)
+        .where(Assignment.assignee_id == target_user_id)
+        .where(Task.created_at >= start_dt)
+        .where(Task.created_at < end_dt)
+        .order_by(Task.created_at.desc())
+    )).all()
+    
+    # 3. Task edits
+    try:
+        task_edits_result = await db.execute(
+            text("""
+                SELECT th.id, th.task_id, th.editor_id, th.field, th.old_value, th.new_value, th.created_at
+                FROM taskhistory th
+                JOIN task t ON th.task_id = t.id
+                JOIN project p ON t.project_id = p.id
+                WHERE th.editor_id = :user_id
+                AND p.workspace_id = :workspace_id
+                AND th.created_at >= :start_dt
+                AND th.created_at < :end_dt
+                ORDER BY th.created_at DESC
+            """),
+            {"user_id": target_user_id, "workspace_id": target_user.workspace_id, "start_dt": start_dt, "end_dt": end_dt}
+        )
+        task_edits = task_edits_result.fetchall()
+    except Exception:
+        task_edits = []
+    
+    # 4. Comments
+    try:
+        comments_result = await db.execute(
+            text("""
+                SELECT c.id, c.task_id, c.author_id, c.content, c.created_at 
+                FROM comment c
+                JOIN task t ON c.task_id = t.id
+                JOIN project p ON t.project_id = p.id
+                WHERE c.author_id = :user_id 
+                AND p.workspace_id = :workspace_id
+                AND c.created_at >= :start_dt 
+                AND c.created_at < :end_dt 
+                ORDER BY c.created_at DESC
+            """),
+            {"user_id": target_user_id, "workspace_id": target_user.workspace_id, "start_dt": start_dt, "end_dt": end_dt}
+        )
+        comments = comments_result.fetchall()
+    except Exception:
+        comments = []
+    
+    # 5. Projects created
+    projects_created = (await db.execute(
+        select(Project)
+        .where(Project.workspace_id == target_user.workspace_id)
+        .where(Project.owner_id == target_user_id)
+        .where(Project.created_at >= start_dt)
+        .where(Project.created_at < end_dt)
+        .order_by(Project.created_at.desc())
+    )).scalars().all()
+    
+    # 6. Activities
+    activities = (await db.execute(
+        select(Activity)
+        .where(Activity.workspace_id == target_user.workspace_id)
+        .where(Activity.created_by == target_user_id)
+        .where(Activity.created_at >= start_dt)
+        .where(Activity.created_at < end_dt)
+        .order_by(Activity.created_at.desc())
+    )).scalars().all()
+    
+    # 7. Tickets
+    from app.models.ticket import Ticket, TicketComment, TicketHistory
+    tickets_closed = (await db.execute(
+        select(Ticket)
+        .where(Ticket.workspace_id == target_user.workspace_id)
+        .where(Ticket.closed_by_id == target_user_id)
+        .where(Ticket.closed_at >= start_dt)
+        .where(Ticket.closed_at < end_dt)
+        .order_by(Ticket.closed_at.desc())
+    )).scalars().all()
+    
+    # 8. Ticket comments
+    try:
+        ticket_comments_result = await db.execute(
+            text("""
+                SELECT tc.id, tc.ticket_id, tc.user_id, tc.content, tc.is_internal, tc.created_at 
+                FROM ticketcomment tc
+                JOIN ticket t ON tc.ticket_id = t.id
+                WHERE tc.user_id = :user_id
+                AND t.workspace_id = :workspace_id
+                AND tc.created_at >= :start_dt 
+                AND tc.created_at < :end_dt 
+                ORDER BY tc.created_at DESC
+            """),
+            {"user_id": target_user_id, "workspace_id": target_user.workspace_id, "start_dt": start_dt, "end_dt": end_dt}
+        )
+        ticket_comments = ticket_comments_result.fetchall()
+    except Exception:
+        ticket_comments = []
+    
+    # 9. Tickets assigned
+    try:
+        tickets_assigned_result = await db.execute(
+            text("""
+                SELECT DISTINCT t.id
+                FROM ticket t
+                INNER JOIN tickethistory th ON th.ticket_id = t.id AND th.user_id = :user_id
+                WHERE t.assigned_to_id = :user_id
+                AND t.workspace_id = :workspace_id
+                AND t.created_at >= :start_dt
+                AND t.created_at < :end_dt
+            """),
+            {"user_id": target_user_id, "start_dt": start_dt, "end_dt": end_dt, "workspace_id": target_user.workspace_id}
+        )
+        assigned_ticket_ids = [row[0] for row in tickets_assigned_result.fetchall()]
+        
+        if assigned_ticket_ids:
+            tickets_assigned = (await db.execute(
+                select(Ticket)
+                .where(Ticket.id.in_(assigned_ticket_ids))
+                .order_by(Ticket.created_at.desc())
+            )).scalars().all()
+        else:
+            tickets_assigned = []
+    except Exception:
+        tickets_assigned = []
+    
+    # Generate Excel file
+    from openpyxl import Workbook
+    from openpyxl.styles import Font, Fill, PatternFill, Alignment, Border, Side
+    from openpyxl.utils import get_column_letter
+    import io
+    
+    wb = Workbook()
+    
+    # Style definitions
+    header_font = Font(bold=True, color="FFFFFF")
+    header_fill = PatternFill(start_color="3B82F6", end_color="3B82F6", fill_type="solid")
+    header_alignment = Alignment(horizontal="center", vertical="center")
+    thin_border = Border(
+        left=Side(style='thin'),
+        right=Side(style='thin'),
+        top=Side(style='thin'),
+        bottom=Side(style='thin')
+    )
+    
+    def style_header_row(ws, row_num, num_cols):
+        for col in range(1, num_cols + 1):
+            cell = ws.cell(row=row_num, column=col)
+            cell.font = header_font
+            cell.fill = header_fill
+            cell.alignment = header_alignment
+            cell.border = thin_border
+    
+    def auto_width(ws):
+        for column_cells in ws.columns:
+            length = max(len(str(cell.value) if cell.value else "") for cell in column_cells)
+            ws.column_dimensions[get_column_letter(column_cells[0].column)].width = min(length + 2, 50)
+    
+    # Sheet 1: Summary
+    ws_summary = wb.active
+    ws_summary.title = "Summary"
+    ws_summary.append(["User Activity Report"])
+    ws_summary.append([f"User: {target_user.full_name or target_user.username}"])
+    ws_summary.append([f"Period: {start_dt.strftime('%Y-%m-%d')} to {end_dt.strftime('%Y-%m-%d')}"])
+    ws_summary.append([f"Generated: {datetime.now().strftime('%Y-%m-%d %H:%M')}"])
+    ws_summary.append([])
+    ws_summary.append(["Activity Type", "Count"])
+    style_header_row(ws_summary, 6, 2)
+    ws_summary.append(["Tasks Created", len(tasks_created)])
+    ws_summary.append(["Task Assignments Received", len(task_assignments)])
+    ws_summary.append(["Task Edits Made", len(task_edits)])
+    ws_summary.append(["Task Comments Posted", len(comments)])
+    ws_summary.append(["Projects Created", len(projects_created)])
+    ws_summary.append(["Activities Logged", len(activities)])
+    ws_summary.append(["Tickets Assigned", len(tickets_assigned)])
+    ws_summary.append(["Ticket Comments Posted", len(ticket_comments)])
+    ws_summary.append(["Tickets Closed", len(tickets_closed)])
+    auto_width(ws_summary)
+    
+    # Sheet 2: Tasks Created
+    ws_tasks = wb.create_sheet("Tasks Created")
+    ws_tasks.append(["Date Created", "Title", "Due Date", "Priority", "Status"])
+    style_header_row(ws_tasks, 1, 5)
+    for task in tasks_created:
+        ws_tasks.append([
+            task.created_at.strftime('%Y-%m-%d'),
+            task.title,
+            task.due_date.strftime('%Y-%m-%d') if task.due_date else '',
+            task.priority.value,
+            task.status.value,
+        ])
+    auto_width(ws_tasks)
+    
+    # Sheet 3: Task Assignments
+    ws_assignments = wb.create_sheet("Task Assignments")
+    ws_assignments.append(["Date", "Title", "Due Date", "Status"])
+    style_header_row(ws_assignments, 1, 4)
+    for task, assignment in task_assignments:
+        ws_assignments.append([
+            task.created_at.strftime('%Y-%m-%d'),
+            task.title,
+            task.due_date.strftime('%Y-%m-%d') if task.due_date else '',
+            task.status.value,
+        ])
+    auto_width(ws_assignments)
+    
+    # Sheet 4: Task Edits
+    ws_edits = wb.create_sheet("Task Edits")
+    ws_edits.append(["Date", "Task ID", "Field Changed", "Old Value", "New Value"])
+    style_header_row(ws_edits, 1, 5)
+    for edit in task_edits:
+        created_at = edit[6] if len(edit) > 6 else ''
+        if isinstance(created_at, str):
+            date_str = created_at[:19] if created_at else ''
+        else:
+            date_str = created_at.strftime('%Y-%m-%d %H:%M') if created_at else ''
+        ws_edits.append([
+            date_str,
+            edit[1],  # task_id
+            edit[3],  # field
+            edit[4] or '',  # old_value
+            edit[5] or '',  # new_value
+        ])
+    auto_width(ws_edits)
+    
+    # Sheet 5: Task Comments
+    ws_comments = wb.create_sheet("Task Comments")
+    ws_comments.append(["Date", "Task ID", "Comment"])
+    style_header_row(ws_comments, 1, 3)
+    for comment in comments:
+        created_at = comment[4] if len(comment) > 4 else ''
+        if isinstance(created_at, str):
+            date_str = created_at[:19] if created_at else ''
+        else:
+            date_str = created_at.strftime('%Y-%m-%d %H:%M') if created_at else ''
+        ws_comments.append([
+            date_str,
+            comment[1],  # task_id
+            comment[3] or '',  # content
+        ])
+    auto_width(ws_comments)
+    
+    # Sheet 6: Projects
+    ws_projects = wb.create_sheet("Projects Created")
+    ws_projects.append(["Date", "Project Name", "Status"])
+    style_header_row(ws_projects, 1, 3)
+    for project in projects_created:
+        ws_projects.append([
+            project.created_at.strftime('%Y-%m-%d'),
+            project.name,
+            project.status.value,
+        ])
+    auto_width(ws_projects)
+    
+    # Sheet 7: Activities
+    ws_activities = wb.create_sheet("Activities")
+    ws_activities.append(["Date", "Type", "Subject"])
+    style_header_row(ws_activities, 1, 3)
+    for activity in activities:
+        ws_activities.append([
+            activity.created_at.strftime('%Y-%m-%d'),
+            activity.activity_type,
+            activity.subject or '',
+        ])
+    auto_width(ws_activities)
+    
+    # Sheet 8: Tickets Assigned
+    ws_tickets_assigned = wb.create_sheet("Tickets Assigned")
+    ws_tickets_assigned.append(["Date", "Ticket #", "Subject", "Priority", "Status"])
+    style_header_row(ws_tickets_assigned, 1, 5)
+    for ticket in tickets_assigned:
+        ws_tickets_assigned.append([
+            ticket.created_at.strftime('%Y-%m-%d'),
+            ticket.ticket_number,
+            ticket.subject,
+            ticket.priority,
+            ticket.status,
+        ])
+    auto_width(ws_tickets_assigned)
+    
+    # Sheet 9: Ticket Comments
+    ws_ticket_comments = wb.create_sheet("Ticket Comments")
+    ws_ticket_comments.append(["Date", "Ticket ID", "Comment", "Internal"])
+    style_header_row(ws_ticket_comments, 1, 4)
+    for tc in ticket_comments:
+        created_at = tc[5] if len(tc) > 5 else ''
+        if isinstance(created_at, str):
+            date_str = created_at[:10] if created_at else ''
+        else:
+            date_str = created_at.strftime('%Y-%m-%d') if created_at else ''
+        ws_ticket_comments.append([
+            date_str,
+            tc[1],  # ticket_id
+            tc[3] or '',  # content
+            'Yes' if tc[4] else 'No',  # is_internal
+        ])
+    auto_width(ws_ticket_comments)
+    
+    # Sheet 10: Tickets Closed
+    ws_tickets_closed = wb.create_sheet("Tickets Closed")
+    ws_tickets_closed.append(["Date Closed", "Ticket #", "Subject", "Priority"])
+    style_header_row(ws_tickets_closed, 1, 4)
+    for ticket in tickets_closed:
+        ws_tickets_closed.append([
+            ticket.closed_at.strftime('%Y-%m-%d %H:%M') if ticket.closed_at else '',
+            ticket.ticket_number,
+            ticket.subject,
+            ticket.priority,
+        ])
+    auto_width(ws_tickets_closed)
+    
+    # Save to buffer
+    buffer = io.BytesIO()
+    wb.save(buffer)
+    buffer.seek(0)
+    
+    # Return Excel file
+    from fastapi.responses import StreamingResponse
+    filename = f"user_activity_{target_user.username}_{start_dt.strftime('%Y%m%d')}_{end_dt.strftime('%Y%m%d')}.xlsx"
+    return StreamingResponse(
+        buffer,
+        media_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
         headers={'Content-Disposition': f'attachment; filename="{filename}"'}
     )
 
