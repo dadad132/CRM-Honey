@@ -7597,6 +7597,145 @@ async def web_task_update(
     return RedirectResponse(f'/web/tasks/{task_id}', status_code=303)
 
 
+@router.post('/tasks/{task_id}/complete-with-details')
+async def web_task_complete_with_details(
+    request: Request,
+    task_id: int,
+    billable_traveling: Optional[str] = Form(None),
+    billable_labour_onsite: Optional[str] = Form(None),
+    billable_remote_labour: Optional[str] = Form(None),
+    billable_equipment_used: Optional[str] = Form(None),
+    non_billable_traveling: Optional[str] = Form(None),
+    non_billable_labour_onsite: Optional[str] = Form(None),
+    non_billable_remote_labour: Optional[str] = Form(None),
+    non_billable_equipment_used: Optional[str] = Form(None),
+    completion_notes: Optional[str] = Form(None),
+    db: AsyncSession = Depends(get_session)
+):
+    """Complete task with optional billing/work details"""
+    user_id = request.session.get('user_id')
+    if not user_id:
+        return RedirectResponse('/web/login', status_code=303)
+    
+    user = (await db.execute(select(User).where(User.id == user_id))).scalar_one_or_none()
+    if not user:
+        return RedirectResponse('/web/login', status_code=303)
+    
+    # Get task and verify access
+    stmt = select(Task).join(Project, Task.project_id == Project.id).where(
+        Task.id == task_id,
+        Project.workspace_id == user.workspace_id
+    )
+    task = (await db.execute(stmt)).scalar_one_or_none()
+    
+    if not task:
+        return RedirectResponse('/web/projects', status_code=303)
+    
+    # Record old status for history
+    old_status = task.status.value
+    
+    # Update task to done
+    task.status = TaskStatus.done
+    task.updated_at = datetime.utcnow()
+    task.is_archived = True
+    task.archived_at = datetime.utcnow()
+    
+    # Save billing details
+    task.billable_traveling = billable_traveling.strip() if billable_traveling and billable_traveling.strip() else None
+    task.billable_labour_onsite = billable_labour_onsite.strip() if billable_labour_onsite and billable_labour_onsite.strip() else None
+    task.billable_remote_labour = billable_remote_labour.strip() if billable_remote_labour and billable_remote_labour.strip() else None
+    task.billable_equipment_used = billable_equipment_used.strip() if billable_equipment_used and billable_equipment_used.strip() else None
+    task.non_billable_traveling = non_billable_traveling.strip() if non_billable_traveling and non_billable_traveling.strip() else None
+    task.non_billable_labour_onsite = non_billable_labour_onsite.strip() if non_billable_labour_onsite and non_billable_labour_onsite.strip() else None
+    task.non_billable_remote_labour = non_billable_remote_labour.strip() if non_billable_remote_labour and non_billable_remote_labour.strip() else None
+    task.non_billable_equipment_used = non_billable_equipment_used.strip() if non_billable_equipment_used and non_billable_equipment_used.strip() else None
+    task.completion_notes = completion_notes.strip() if completion_notes and completion_notes.strip() else None
+    
+    # Add history
+    history_entry = TaskHistory(
+        task_id=task_id,
+        editor_id=user_id,
+        field='status',
+        old_value=old_status,
+        new_value='done'
+    )
+    db.add(history_entry)
+    
+    await db.commit()
+    
+    # Build billing details string for email
+    billing_details = []
+    
+    # Billable items
+    billable_items = []
+    if task.billable_traveling:
+        billable_items.append(f"  - Traveling: {task.billable_traveling}")
+    if task.billable_labour_onsite:
+        billable_items.append(f"  - Labour Onsite: {task.billable_labour_onsite}")
+    if task.billable_remote_labour:
+        billable_items.append(f"  - Remote Labour: {task.billable_remote_labour}")
+    if task.billable_equipment_used:
+        billable_items.append(f"  - Equipment Used: {task.billable_equipment_used}")
+    
+    if billable_items:
+        billing_details.append("BILLABLE:")
+        billing_details.extend(billable_items)
+    
+    # Non-billable items
+    non_billable_items = []
+    if task.non_billable_traveling:
+        non_billable_items.append(f"  - Traveling: {task.non_billable_traveling}")
+    if task.non_billable_labour_onsite:
+        non_billable_items.append(f"  - Labour Onsite: {task.non_billable_labour_onsite}")
+    if task.non_billable_remote_labour:
+        non_billable_items.append(f"  - Remote Labour: {task.non_billable_remote_labour}")
+    if task.non_billable_equipment_used:
+        non_billable_items.append(f"  - Equipment Used: {task.non_billable_equipment_used}")
+    
+    if non_billable_items:
+        if billing_details:
+            billing_details.append("")  # Empty line separator
+        billing_details.append("NON-BILLABLE:")
+        billing_details.extend(non_billable_items)
+    
+    # Completion notes
+    if task.completion_notes:
+        if billing_details:
+            billing_details.append("")  # Empty line separator
+        billing_details.append(f"COMPLETION NOTES:\n{task.completion_notes}")
+    
+    # Build additional details for email
+    project = (await db.execute(select(Project).where(Project.id == task.project_id))).scalar_one_or_none()
+    additional_details_parts = []
+    if project:
+        additional_details_parts.append(f"Project: {project.name}")
+    if billing_details:
+        additional_details_parts.append("\n" + "\n".join(billing_details))
+    
+    additional_details = "\n".join(additional_details_parts)
+    
+    # Send completion notification email
+    try:
+        await send_completion_notification_email(
+            db=db,
+            workspace_id=user.workspace_id,
+            notification_type='task',
+            item_id=str(task_id),
+            title=task.title,
+            status='Done',
+            priority=task.priority.value.title(),
+            completed_by_name=user.full_name or user.username,
+            created_at=task.created_at,
+            completed_at=task.archived_at,
+            additional_details=additional_details
+        )
+    except Exception as e:
+        logger.error(f"Failed to send task completion notification: {e}")
+    
+    request.session['success_message'] = f'Task "{task.title}" has been completed.'
+    return RedirectResponse(f'/web/tasks/{task_id}', status_code=303)
+
+
 @router.post('/tasks/{task_id}/subtasks')
 async def web_task_add_subtasks(
     request: Request,
