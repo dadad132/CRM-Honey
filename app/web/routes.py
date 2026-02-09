@@ -13754,6 +13754,155 @@ async def web_tickets_update_status(
     return RedirectResponse(f'/web/tickets/{ticket_id}', status_code=303)
 
 
+@router.post('/tickets/{ticket_id}/close-with-details')
+async def web_tickets_close_with_details(
+    request: Request,
+    ticket_id: int,
+    billable_traveling: Optional[str] = Form(None),
+    billable_labour_onsite: Optional[str] = Form(None),
+    billable_remote_labour: Optional[str] = Form(None),
+    billable_equipment_used: Optional[str] = Form(None),
+    non_billable_traveling: Optional[str] = Form(None),
+    non_billable_labour_onsite: Optional[str] = Form(None),
+    non_billable_remote_labour: Optional[str] = Form(None),
+    non_billable_equipment_used: Optional[str] = Form(None),
+    closing_notes: Optional[str] = Form(None),
+    db: AsyncSession = Depends(get_session)
+):
+    """Close ticket with optional billing/work details"""
+    user_id = request.session.get('user_id')
+    if not user_id:
+        return RedirectResponse('/web/login', status_code=303)
+    
+    user = (await db.execute(select(User).where(User.id == user_id))).scalar_one_or_none()
+    if not user:
+        return RedirectResponse('/web/login', status_code=303)
+    
+    from app.models.ticket import Ticket, TicketHistory
+    from datetime import datetime
+    
+    ticket = (await db.execute(select(Ticket).where(Ticket.id == ticket_id))).scalar_one_or_none()
+    if not ticket:
+        return RedirectResponse('/web/tickets', status_code=303)
+    
+    old_status = ticket.status
+    
+    # Update status to closed
+    ticket.status = 'closed'
+    ticket.updated_at = datetime.utcnow()
+    ticket.closed_at = datetime.utcnow()
+    ticket.closed_by_id = user_id
+    ticket.is_archived = True
+    ticket.archived_at = datetime.utcnow()
+    
+    # Save billing details (strip whitespace, store None if empty)
+    ticket.billable_traveling = billable_traveling.strip() if billable_traveling and billable_traveling.strip() else None
+    ticket.billable_labour_onsite = billable_labour_onsite.strip() if billable_labour_onsite and billable_labour_onsite.strip() else None
+    ticket.billable_remote_labour = billable_remote_labour.strip() if billable_remote_labour and billable_remote_labour.strip() else None
+    ticket.billable_equipment_used = billable_equipment_used.strip() if billable_equipment_used and billable_equipment_used.strip() else None
+    ticket.non_billable_traveling = non_billable_traveling.strip() if non_billable_traveling and non_billable_traveling.strip() else None
+    ticket.non_billable_labour_onsite = non_billable_labour_onsite.strip() if non_billable_labour_onsite and non_billable_labour_onsite.strip() else None
+    ticket.non_billable_remote_labour = non_billable_remote_labour.strip() if non_billable_remote_labour and non_billable_remote_labour.strip() else None
+    ticket.non_billable_equipment_used = non_billable_equipment_used.strip() if non_billable_equipment_used and non_billable_equipment_used.strip() else None
+    ticket.closing_notes = closing_notes.strip() if closing_notes and closing_notes.strip() else None
+    
+    # Add history
+    history = TicketHistory(
+        ticket_id=ticket_id,
+        user_id=user_id,
+        action='status_changed',
+        old_value=old_status,
+        new_value='closed'
+    )
+    db.add(history)
+    
+    # Notify assigned user
+    if ticket.assigned_to_id and ticket.assigned_to_id != user_id:
+        assigned_user = (await db.execute(select(User).where(User.id == ticket.assigned_to_id))).scalar_one_or_none()
+        if assigned_user and not getattr(assigned_user, 'mute_ticket_notifications', False):
+            notification = Notification(
+                user_id=ticket.assigned_to_id,
+                type='ticket',
+                message=f'{user.full_name or user.username} closed ticket #{ticket.ticket_number}',
+                url=f'/web/tickets/{ticket_id}',
+                related_id=ticket_id
+            )
+            db.add(notification)
+    
+    await db.commit()
+    
+    # Build billing details string for email
+    billing_details = []
+    
+    # Billable items
+    billable_items = []
+    if ticket.billable_traveling:
+        billable_items.append(f"  - Traveling: {ticket.billable_traveling}")
+    if ticket.billable_labour_onsite:
+        billable_items.append(f"  - Labour Onsite: {ticket.billable_labour_onsite}")
+    if ticket.billable_remote_labour:
+        billable_items.append(f"  - Remote Labour: {ticket.billable_remote_labour}")
+    if ticket.billable_equipment_used:
+        billable_items.append(f"  - Equipment Used: {ticket.billable_equipment_used}")
+    
+    if billable_items:
+        billing_details.append("BILLABLE:")
+        billing_details.extend(billable_items)
+    
+    # Non-billable items
+    non_billable_items = []
+    if ticket.non_billable_traveling:
+        non_billable_items.append(f"  - Traveling: {ticket.non_billable_traveling}")
+    if ticket.non_billable_labour_onsite:
+        non_billable_items.append(f"  - Labour Onsite: {ticket.non_billable_labour_onsite}")
+    if ticket.non_billable_remote_labour:
+        non_billable_items.append(f"  - Remote Labour: {ticket.non_billable_remote_labour}")
+    if ticket.non_billable_equipment_used:
+        non_billable_items.append(f"  - Equipment Used: {ticket.non_billable_equipment_used}")
+    
+    if non_billable_items:
+        if billing_details:
+            billing_details.append("")  # Empty line separator
+        billing_details.append("NON-BILLABLE:")
+        billing_details.extend(non_billable_items)
+    
+    # Closing notes
+    if ticket.closing_notes:
+        if billing_details:
+            billing_details.append("")  # Empty line separator
+        billing_details.append(f"CLOSING NOTES:\n{ticket.closing_notes}")
+    
+    # Build additional details for email
+    additional_details_parts = []
+    if ticket.category:
+        additional_details_parts.append(f"Category: {ticket.category}")
+    if billing_details:
+        additional_details_parts.append("\n" + "\n".join(billing_details))
+    
+    additional_details = "\n".join(additional_details_parts)
+    
+    # Send completion notification email
+    try:
+        await send_completion_notification_email(
+            db=db,
+            workspace_id=ticket.workspace_id,
+            notification_type='ticket',
+            item_id=ticket.ticket_number,
+            title=ticket.subject,
+            status='Closed',
+            priority=ticket.priority.title() if ticket.priority else 'Normal',
+            completed_by_name=user.full_name or user.username,
+            created_at=ticket.created_at,
+            completed_at=ticket.closed_at,
+            additional_details=additional_details
+        )
+    except Exception as e:
+        logger.error(f"Failed to send ticket completion notification: {e}")
+    
+    request.session['success_message'] = f'Ticket #{ticket.ticket_number} has been closed.'
+    return RedirectResponse(f'/web/tickets/{ticket_id}', status_code=303)
+
+
 @router.post('/tickets/{ticket_id}/archive')
 async def web_tickets_archive(
     request: Request,

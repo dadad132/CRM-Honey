@@ -49,6 +49,20 @@ class TicketBase(SQLModel):
     # Archive support
     is_archived: bool = False
     archived_at: Optional[datetime] = None
+    
+    # Closing/Billing details (optional, filled when closing ticket)
+    # Billable items
+    billable_traveling: Optional[str] = None
+    billable_labour_onsite: Optional[str] = None
+    billable_remote_labour: Optional[str] = None
+    billable_equipment_used: Optional[str] = None
+    # Non-billable items
+    non_billable_traveling: Optional[str] = None
+    non_billable_labour_onsite: Optional[str] = None
+    non_billable_remote_labour: Optional[str] = None
+    non_billable_equipment_used: Optional[str] = None
+    # Closing notes
+    closing_notes: Optional[str] = None
 
 
 class Ticket(TicketBase, table=True):
