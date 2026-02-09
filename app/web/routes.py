@@ -7732,6 +7732,16 @@ async def web_task_complete_with_details(
     except Exception as e:
         logger.error(f"Failed to send task completion notification: {e}")
     
+    # Check if this is an AJAX request
+    if request.headers.get('accept', '').find('application/json') != -1 or request.headers.get('x-requested-with') == 'XMLHttpRequest':
+        from fastapi.responses import JSONResponse
+        return JSONResponse({
+            'success': True, 
+            'task_id': task_id,
+            'title': task.title,
+            'status': 'done'
+        })
+    
     request.session['success_message'] = f'Task "{task.title}" has been completed.'
     return RedirectResponse(f'/web/tasks/{task_id}', status_code=303)
 
