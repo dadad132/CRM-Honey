@@ -3075,7 +3075,7 @@ async def web_admin_generate_user_activity_pdf(
     elements.append(Paragraph("Tickets Assigned", heading_style))
     if tickets_assigned:
         tassigned_data = [['Date Assigned', 'Ticket #', 'Subject', 'Priority', 'Status']]
-        for ticket in tickets_assigned[:15]:
+        for ticket in tickets_assigned:
             tassigned_data.append([
                 ticket.created_at.strftime('%Y-%m-%d'),
                 ticket.ticket_number,

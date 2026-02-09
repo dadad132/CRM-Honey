@@ -455,7 +455,7 @@
                         </tr>
                     </thead>
                     <tbody class="divide-y divide-gray-200">
-                        {% for ticket in tickets_assigned[:15] %}
+                        {% for ticket in tickets_assigned %}
                         <tr class="hover:bg-gray-50">
                             <td class="px-4 py-3">
                                 <a href="/web/tickets/{{ ticket.id }}" class="font-medium text-gray-900 hover:text-indigo-600 text-sm">
