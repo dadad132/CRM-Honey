@@ -2659,9 +2659,9 @@ async def web_admin_generate_user_activity_pdf(
     try:
         ticket_comments_result = await db.execute(
             text("""
-                SELECT id, ticket_id, author_id, user_id, content, is_internal, created_at 
+                SELECT id, ticket_id, user_id, content, is_internal, created_at 
                 FROM ticketcomment 
-                WHERE (author_id = :user_id OR user_id = :user_id)
+                WHERE user_id = :user_id
                 AND created_at >= :start_dt 
                 AND created_at < :end_dt 
                 ORDER BY created_at DESC
@@ -3296,9 +3296,9 @@ async def web_admin_user_activity_view(
     try:
         ticket_comments_result = await db.execute(
             text("""
-                SELECT id, ticket_id, author_id, user_id, content, is_internal, created_at 
+                SELECT id, ticket_id, user_id, content, is_internal, created_at 
                 FROM ticketcomment 
-                WHERE (author_id = :user_id OR user_id = :user_id)
+                WHERE user_id = :user_id
                 AND created_at >= :start_dt 
                 AND created_at < :end_dt 
                 ORDER BY created_at DESC
