@@ -4583,6 +4583,142 @@ async def web_admin_update_rollback(
 
 
 # --------------------------
+# Task/Ticket Completion Email Helper
+# --------------------------
+async def send_completion_notification_email(
+    db: AsyncSession,
+    workspace_id: int,
+    notification_type: str,  # 'task' or 'ticket'
+    item_id: str,  # Task ID or Ticket Number
+    title: str,
+    status: str,
+    priority: str,
+    completed_by_name: str,
+    created_at: datetime,
+    completed_at: datetime,
+    additional_details: str = ""
+):
+    """Send completion notification email for tasks or tickets"""
+    from app.models.email_settings import EmailSettings
+    import smtplib
+    from email.mime.text import MIMEText
+    from email.mime.multipart import MIMEMultipart
+    
+    try:
+        # Get email settings
+        settings = (await db.execute(
+            select(EmailSettings).where(EmailSettings.workspace_id == workspace_id)
+        )).scalar_one_or_none()
+        
+        if not settings:
+            logger.warning(f"No email settings for workspace {workspace_id}, skipping completion notification")
+            return False
+        
+        if not settings.completion_notify_enabled:
+            logger.debug(f"Completion notifications disabled for workspace {workspace_id}")
+            return False
+        
+        if not settings.completion_notify_email:
+            logger.warning(f"No completion notify email set for workspace {workspace_id}")
+            return False
+        
+        # Check if we should notify for this type
+        if notification_type == 'task' and not settings.completion_notify_task:
+            return False
+        if notification_type == 'ticket' and not settings.completion_notify_ticket:
+            return False
+        
+        # Calculate time to complete
+        time_diff = completed_at - created_at
+        days = time_diff.days
+        hours, remainder = divmod(time_diff.seconds, 3600)
+        minutes, _ = divmod(remainder, 60)
+        
+        if days > 0:
+            time_to_complete = f"{days} day(s), {hours} hour(s), {minutes} minute(s)"
+        elif hours > 0:
+            time_to_complete = f"{hours} hour(s), {minutes} minute(s)"
+        else:
+            time_to_complete = f"{minutes} minute(s)"
+        
+        # Prepare variables
+        type_display = "Task" if notification_type == 'task' else "Ticket"
+        type_id_label = "Task ID" if notification_type == 'task' else "Ticket Number"
+        
+        # Build email subject
+        subject = (settings.completion_email_subject or "{type} Completed - {title}").format(
+            type=type_display,
+            title=title,
+            type_id=item_id
+        )
+        
+        # Build email body
+        default_body = """Good day,
+
+Please see the {type} that has been completed:
+
+{type} Details:
+--------------
+{type_id_label}: {type_id}
+Title/Subject: {title}
+Status: {status}
+Priority: {priority}
+Completed By: {completed_by}
+Completed At: {completed_at}
+
+Time to Complete: {time_to_complete}
+Created At: {created_at}
+
+{additional_details}
+
+Best regards,
+{company_name}
+
+---
+This is an automated notification from your CRM system."""
+        
+        body_template = settings.completion_email_body or default_body
+        body = body_template.format(
+            type=type_display,
+            type_id=item_id,
+            type_id_label=type_id_label,
+            title=title,
+            status=status,
+            priority=priority,
+            completed_by=completed_by_name,
+            completed_at=completed_at.strftime('%Y-%m-%d %H:%M'),
+            time_to_complete=time_to_complete,
+            created_at=created_at.strftime('%Y-%m-%d %H:%M'),
+            additional_details=additional_details,
+            company_name=settings.company_name or "Support Team"
+        )
+        
+        # Send email
+        msg = MIMEMultipart()
+        msg['From'] = f"{settings.smtp_from_name} <{settings.smtp_from_email}>"
+        msg['To'] = settings.completion_notify_email
+        msg['Subject'] = subject
+        msg.attach(MIMEText(body, 'plain'))
+        
+        if settings.smtp_use_tls:
+            server = smtplib.SMTP(settings.smtp_host, settings.smtp_port)
+            server.starttls()
+        else:
+            server = smtplib.SMTP_SSL(settings.smtp_host, settings.smtp_port)
+        
+        server.login(settings.smtp_username, settings.smtp_password)
+        server.sendmail(settings.smtp_from_email, settings.completion_notify_email, msg.as_string())
+        server.quit()
+        
+        logger.info(f"Sent {notification_type} completion notification for {item_id} to {settings.completion_notify_email}")
+        return True
+        
+    except Exception as e:
+        logger.error(f"Failed to send completion notification: {e}")
+        return False
+
+
+# --------------------------
 # Admin - Email Settings
 # --------------------------
 @router.get('/admin/email-settings', response_class=HTMLResponse)
@@ -4623,12 +4759,37 @@ Best regards,
 
 ---
 This is an automated message. Please do not reply to this email."""
+
+    default_completion_body = """Good day,
+
+Please see the {type} that has been completed:
+
+{type} Details:
+--------------
+{type_id_label}: {type_id}
+Title/Subject: {title}
+Status: {status}
+Priority: {priority}
+Completed By: {completed_by}
+Completed At: {completed_at}
+
+Time to Complete: {time_to_complete}
+Created At: {created_at}
+
+{additional_details}
+
+Best regards,
+{company_name}
+
+---
+This is an automated notification from your CRM system."""
     
     return templates.TemplateResponse('admin/email_settings.html', {
         'request': request,
         'user': user,
         'settings': settings,
-        'default_body': default_body
+        'default_body': default_body,
+        'default_completion_body': default_completion_body
     })
 
 
@@ -4653,6 +4814,12 @@ async def web_admin_email_settings_save(
     confirmation_body: str = Form(...),
     company_name: str = Form(...),
     auto_reply_enabled: Optional[str] = Form(None),
+    completion_notify_enabled: Optional[str] = Form(None),
+    completion_notify_email: Optional[str] = Form(None),
+    completion_notify_task: Optional[str] = Form(None),
+    completion_notify_ticket: Optional[str] = Form(None),
+    completion_email_subject: Optional[str] = Form("{type} Completed - {title}"),
+    completion_email_body: Optional[str] = Form(None),
     db: AsyncSession = Depends(get_session)
 ):
     """Save email settings"""
@@ -4693,6 +4860,13 @@ async def web_admin_email_settings_save(
             settings.confirmation_body = confirmation_body
             settings.company_name = company_name
             settings.auto_reply_enabled = auto_reply_enabled == 'true'
+            # Completion notification settings
+            settings.completion_notify_enabled = completion_notify_enabled == 'true'
+            settings.completion_notify_email = completion_notify_email
+            settings.completion_notify_task = completion_notify_task == 'true'
+            settings.completion_notify_ticket = completion_notify_ticket == 'true'
+            settings.completion_email_subject = completion_email_subject or "{type} Completed - {title}"
+            settings.completion_email_body = completion_email_body
             settings.updated_at = datetime.utcnow()
         else:
             # Create new
@@ -4715,7 +4889,13 @@ async def web_admin_email_settings_save(
                 confirmation_subject=confirmation_subject,
                 confirmation_body=confirmation_body,
                 company_name=company_name,
-                auto_reply_enabled=auto_reply_enabled == 'true'
+                auto_reply_enabled=auto_reply_enabled == 'true',
+                completion_notify_enabled=completion_notify_enabled == 'true',
+                completion_notify_email=completion_notify_email,
+                completion_notify_task=completion_notify_task == 'true',
+                completion_notify_ticket=completion_notify_ticket == 'true',
+                completion_email_subject=completion_email_subject or "{type} Completed - {title}",
+                completion_email_body=completion_email_body
             )
             db.add(settings)
         
@@ -7320,6 +7500,7 @@ async def web_task_update(
         task.description = description
     
     new_status = TaskStatus(status)
+    task_just_completed = False
     if task.status != new_status:
         changes.append(('status', task.status.value, new_status.value))
         old_status_value = task.status.value
@@ -7329,6 +7510,7 @@ async def web_task_update(
         if new_status.value == 'done':
             task.is_archived = True
             task.archived_at = datetime.utcnow()
+            task_just_completed = True  # Flag to send completion notification
         elif old_status_value == 'done' and new_status.value != 'done':
             # Unarchive if moved out of done
             task.is_archived = False
@@ -7371,6 +7553,30 @@ async def web_task_update(
         db.add(history_entry)
     
     await db.commit()
+    
+    # Send completion notification email if task was just marked as done
+    if task_just_completed:
+        try:
+            # Get project for additional details
+            project = (await db.execute(select(Project).where(Project.id == task.project_id))).scalar_one_or_none()
+            additional_details = f"Project: {project.name}" if project else ""
+            
+            await send_completion_notification_email(
+                db=db,
+                workspace_id=user.workspace_id,
+                notification_type='task',
+                item_id=str(task_id),
+                title=task.title,
+                status='Done',
+                priority=task.priority.value.title(),
+                completed_by_name=user.full_name or user.username,
+                created_at=task.created_at,
+                completed_at=task.archived_at or datetime.utcnow(),
+                additional_details=additional_details
+            )
+        except Exception as e:
+            logger.error(f"Failed to send task completion notification: {e}")
+    
     return RedirectResponse(f'/web/tasks/{task_id}', status_code=303)
 
 
@@ -13250,12 +13456,15 @@ async def web_tickets_update_status(
     ticket.status = status
     ticket.updated_at = datetime.utcnow()
     
+    ticket_just_closed = False
+    
     # Set resolved/closed timestamps and track who closed it
     if status == 'resolved' and not ticket.resolved_at:
         ticket.resolved_at = datetime.utcnow()
     elif status == 'closed':
         if not ticket.closed_at:
             ticket.closed_at = datetime.utcnow()
+            ticket_just_closed = True  # Flag to send completion notification
         ticket.closed_by_id = user_id  # Track who closed the ticket
         # Auto-archive when closed
         ticket.is_archived = True
@@ -13285,6 +13494,27 @@ async def web_tickets_update_status(
             db.add(notification)
     
     await db.commit()
+    
+    # Send completion notification email if ticket was just closed
+    if ticket_just_closed:
+        try:
+            additional_details = f"Category: {ticket.category}" if ticket.category else ""
+            
+            await send_completion_notification_email(
+                db=db,
+                workspace_id=ticket.workspace_id,
+                notification_type='ticket',
+                item_id=ticket.ticket_number,
+                title=ticket.subject,
+                status='Closed',
+                priority=ticket.priority.title() if ticket.priority else 'Normal',
+                completed_by_name=user.full_name or user.username,
+                created_at=ticket.created_at,
+                completed_at=ticket.closed_at or datetime.utcnow(),
+                additional_details=additional_details
+            )
+        except Exception as e:
+            logger.error(f"Failed to send ticket completion notification: {e}")
     
     # Return JSON for AJAX requests
     if request.headers.get('X-Requested-With') == 'XMLHttpRequest':

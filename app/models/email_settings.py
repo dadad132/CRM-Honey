@@ -56,6 +56,36 @@ Best regards,
 ---
 This is an automated message. Please do not reply to this email.""")
     
+    # Task/Ticket Completion Notification Settings
+    completion_notify_enabled: bool = Field(default=False)
+    completion_notify_email: Optional[str] = Field(default=None)
+    completion_notify_task: bool = Field(default=True)  # Notify on task completion
+    completion_notify_ticket: bool = Field(default=True)  # Notify on ticket close
+    completion_email_subject: str = Field(default="{type} Completed - {title}")
+    completion_email_body: str = Field(default="""Good day,
+
+Please see the {type} that has been completed:
+
+{type} Details:
+--------------
+{type_id_label}: {type_id}
+Title/Subject: {title}
+Status: {status}
+Priority: {priority}
+Completed By: {completed_by}
+Completed At: {completed_at}
+
+Time to Complete: {time_to_complete}
+Created At: {created_at}
+
+{additional_details}
+
+Best regards,
+{company_name}
+
+---
+This is an automated notification from your CRM system.""")
+    
     # Additional Settings
     company_name: str = Field(default="Support Team")
     auto_reply_enabled: bool = Field(default=True)
