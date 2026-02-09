@@ -2625,7 +2625,15 @@ async def web_admin_generate_user_activity_pdf(
         # Convert to objects with attributes for compatibility
         class TaskEditRow:
             def __init__(self, row):
-                self.id, self.task_id, self.editor_id, self.field, self.old_value, self.new_value, self.created_at = row
+                self.id, self.task_id, self.editor_id, self.field, self.old_value, self.new_value, created_at_val = row
+                # Parse created_at if it's a string
+                if isinstance(created_at_val, str):
+                    try:
+                        self.created_at = datetime.fromisoformat(created_at_val.replace('Z', '+00:00'))
+                    except:
+                        self.created_at = datetime.now()
+                else:
+                    self.created_at = created_at_val
         task_edits = [TaskEditRow(row) for row in task_edits_raw]
     except Exception as e:
         logger.error(f"Error fetching task edits: {e}")
@@ -3312,7 +3320,15 @@ async def web_admin_user_activity_view(
         task_edits_raw = task_edits_result.fetchall()
         class TaskEditRow:
             def __init__(self, row):
-                self.id, self.task_id, self.editor_id, self.field, self.old_value, self.new_value, self.created_at = row
+                self.id, self.task_id, self.editor_id, self.field, self.old_value, self.new_value, created_at_val = row
+                # Parse created_at if it's a string
+                if isinstance(created_at_val, str):
+                    try:
+                        self.created_at = datetime.fromisoformat(created_at_val.replace('Z', '+00:00'))
+                    except:
+                        self.created_at = datetime.now()
+                else:
+                    self.created_at = created_at_val
         task_edits = [TaskEditRow(row) for row in task_edits_raw]
     except Exception as e:
         logger.error(f"Error fetching task edits: {e}")
