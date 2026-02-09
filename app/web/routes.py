@@ -2649,6 +2649,7 @@ async def web_admin_generate_user_activity_pdf(
     from app.models.ticket import Ticket, TicketComment
     tickets_closed = (await db.execute(
         select(Ticket)
+        .where(Ticket.workspace_id == user.workspace_id)
         .where(Ticket.closed_by_id == target_user_id)
         .where(Ticket.closed_at >= start_dt)
         .where(Ticket.closed_at < end_dt)
@@ -2676,6 +2677,7 @@ async def web_admin_generate_user_activity_pdf(
     # 9. Tickets assigned
     tickets_assigned = (await db.execute(
         select(Ticket)
+        .where(Ticket.workspace_id == user.workspace_id)
         .where(Ticket.assigned_to_id == target_user_id)
         .where(Ticket.created_at >= start_dt)
         .where(Ticket.created_at < end_dt)
@@ -3278,17 +3280,16 @@ async def web_admin_user_activity_view(
     # 7. Tickets
     tickets_closed = (await db.execute(
         select(Ticket)
+        .where(Ticket.workspace_id == user.workspace_id)
         .where(Ticket.closed_by_id == target_user_id)
         .where(Ticket.closed_at >= start_dt)
         .where(Ticket.closed_at < end_dt)
         .order_by(Ticket.closed_at.desc())
     )).scalars().all()
-    
+
     tickets_assigned = (await db.execute(
         select(Ticket)
-        .where(Ticket.assigned_to_id == target_user_id)
-        .where(Ticket.created_at >= start_dt)
-        .where(Ticket.created_at < end_dt)
+        .where(Ticket.workspace_id == user.workspace_id)
         .order_by(Ticket.created_at.desc())
     )).scalars().all()
     
