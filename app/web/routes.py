@@ -2580,65 +2580,92 @@ async def web_admin_generate_user_activity_pdf(
         end_dt = datetime.now() + timedelta(days=1)
     
     # Gather activity data
-    # 1. Tasks created
+    from sqlalchemy import text
+    
+    # 1. Tasks created - filter by workspace through project
     tasks_created = (await db.execute(
         select(Task)
+        .join(Project, Task.project_id == Project.id)
+        .where(Project.workspace_id == target_user.workspace_id)
         .where(Task.creator_id == target_user_id)
         .where(Task.created_at >= start_dt)
         .where(Task.created_at < end_dt)
         .order_by(Task.created_at.desc())
     )).scalars().all()
     
-    # 2. Task assignments
+    # 2. Task assignments - filter by workspace through project
     task_assignments = (await db.execute(
         select(Task, Assignment)
         .join(Assignment, Task.id == Assignment.task_id)
+        .join(Project, Task.project_id == Project.id)
+        .where(Project.workspace_id == target_user.workspace_id)
         .where(Assignment.assignee_id == target_user_id)
         .where(Task.created_at >= start_dt)
         .where(Task.created_at < end_dt)
         .order_by(Task.created_at.desc())
     )).all()
     
-    # 3. Task edits
-    task_edits = (await db.execute(
-        select(TaskHistory)
-        .where(TaskHistory.editor_id == target_user_id)
-        .where(TaskHistory.created_at >= start_dt)
-        .where(TaskHistory.created_at < end_dt)
-        .order_by(TaskHistory.created_at.desc())
-    )).scalars().all()
+    # 3. Task edits - filter by workspace through task->project
+    try:
+        task_edits_result = await db.execute(
+            text("""
+                SELECT th.id, th.task_id, th.editor_id, th.field, th.old_value, th.new_value, th.created_at
+                FROM taskhistory th
+                JOIN task t ON th.task_id = t.id
+                JOIN project p ON t.project_id = p.id
+                WHERE th.editor_id = :user_id
+                AND p.workspace_id = :workspace_id
+                AND th.created_at >= :start_dt
+                AND th.created_at < :end_dt
+                ORDER BY th.created_at DESC
+            """),
+            {"user_id": target_user_id, "workspace_id": target_user.workspace_id, "start_dt": start_dt, "end_dt": end_dt}
+        )
+        task_edits_raw = task_edits_result.fetchall()
+        # Convert to objects with attributes for compatibility
+        class TaskEditRow:
+            def __init__(self, row):
+                self.id, self.task_id, self.editor_id, self.field, self.old_value, self.new_value, self.created_at = row
+        task_edits = [TaskEditRow(row) for row in task_edits_raw]
+    except Exception as e:
+        logger.error(f"Error fetching task edits: {e}")
+        task_edits = []
     
-    # 4. Comments - Using text() to avoid Pydantic attribute access issues
-    from sqlalchemy import text
+    # 4. Comments - filter by workspace through task->project
     try:
         comments_result = await db.execute(
             text("""
-                SELECT id, task_id, author_id, content, created_at 
-                FROM comment 
-                WHERE author_id = :user_id 
-                AND created_at >= :start_dt 
-                AND created_at < :end_dt 
-                ORDER BY created_at DESC
+                SELECT c.id, c.task_id, c.author_id, c.content, c.created_at 
+                FROM comment c
+                JOIN task t ON c.task_id = t.id
+                JOIN project p ON t.project_id = p.id
+                WHERE c.author_id = :user_id 
+                AND p.workspace_id = :workspace_id
+                AND c.created_at >= :start_dt 
+                AND c.created_at < :end_dt 
+                ORDER BY c.created_at DESC
             """),
-            {"user_id": target_user_id, "start_dt": start_dt, "end_dt": end_dt}
+            {"user_id": target_user_id, "workspace_id": target_user.workspace_id, "start_dt": start_dt, "end_dt": end_dt}
         )
         comments = comments_result.fetchall()
     except Exception as e:
         logger.error(f"Error fetching comments: {e}")
         comments = []
     
-    # 5. Projects created
+    # 5. Projects created - filter by workspace
     projects_created = (await db.execute(
         select(Project)
+        .where(Project.workspace_id == target_user.workspace_id)
         .where(Project.owner_id == target_user_id)
         .where(Project.created_at >= start_dt)
         .where(Project.created_at < end_dt)
         .order_by(Project.created_at.desc())
     )).scalars().all()
     
-    # 6. Activities logged
+    # 6. Activities logged - filter by workspace
     activities = (await db.execute(
         select(Activity)
+        .where(Activity.workspace_id == target_user.workspace_id)
         .where(Activity.created_by == target_user_id)
         .where(Activity.created_at >= start_dt)
         .where(Activity.created_at < end_dt)
@@ -2656,18 +2683,20 @@ async def web_admin_generate_user_activity_pdf(
         .order_by(Ticket.closed_at.desc())
     )).scalars().all()
     
-    # 8. Ticket comments - Using raw SQL to avoid Pydantic issues
+    # 8. Ticket comments - filter by workspace through ticket
     try:
         ticket_comments_result = await db.execute(
             text("""
-                SELECT id, ticket_id, user_id, content, is_internal, created_at 
-                FROM ticketcomment 
-                WHERE user_id = :user_id
-                AND created_at >= :start_dt 
-                AND created_at < :end_dt 
-                ORDER BY created_at DESC
+                SELECT tc.id, tc.ticket_id, tc.user_id, tc.content, tc.is_internal, tc.created_at 
+                FROM ticketcomment tc
+                JOIN ticket t ON tc.ticket_id = t.id
+                WHERE tc.user_id = :user_id
+                AND t.workspace_id = :workspace_id
+                AND tc.created_at >= :start_dt 
+                AND tc.created_at < :end_dt 
+                ORDER BY tc.created_at DESC
             """),
-            {"user_id": target_user_id, "start_dt": start_dt, "end_dt": end_dt}
+            {"user_id": target_user_id, "workspace_id": target_user.workspace_id, "start_dt": start_dt, "end_dt": end_dt}
         )
         ticket_comments = ticket_comments_result.fetchall()
     except Exception as e:
@@ -3199,9 +3228,11 @@ async def web_admin_user_activity_view(
         return due_date < now_date
     
     # Gather activity data
-    # 1. Tasks created
+    # 1. Tasks created - filter by workspace through project
     tasks_created = (await db.execute(
         select(Task)
+        .join(Project, Task.project_id == Project.id)
+        .where(Project.workspace_id == target_user.workspace_id)
         .where(Task.creator_id == target_user_id)
         .where(Task.created_at >= start_dt)
         .where(Task.created_at < end_dt)
@@ -3224,10 +3255,12 @@ async def web_admin_user_activity_view(
             'status': task.status.value,
         })
     
-    # 2. Task assignments with details
+    # 2. Task assignments with details - filter by workspace through project
     task_assignments_raw = (await db.execute(
         select(Task, Assignment)
         .join(Assignment, Task.id == Assignment.task_id)
+        .join(Project, Task.project_id == Project.id)
+        .where(Project.workspace_id == target_user.workspace_id)
         .where(Assignment.assignee_id == target_user_id)
         .where(Task.created_at >= start_dt)
         .where(Task.created_at < end_dt)
@@ -3260,45 +3293,66 @@ async def web_admin_user_activity_view(
             'time_spent_hours': round(time_spent, 1) if time_spent else None,
         })
     
-    # 3. Task edits
-    task_edits = (await db.execute(
-        select(TaskHistory)
-        .where(TaskHistory.editor_id == target_user_id)
-        .where(TaskHistory.created_at >= start_dt)
-        .where(TaskHistory.created_at < end_dt)
-        .order_by(TaskHistory.created_at.desc())
-    )).scalars().all()
+    # 3. Task edits - filter by workspace through task->project
+    try:
+        task_edits_result = await db.execute(
+            text("""
+                SELECT th.id, th.task_id, th.editor_id, th.field, th.old_value, th.new_value, th.created_at
+                FROM taskhistory th
+                JOIN task t ON th.task_id = t.id
+                JOIN project p ON t.project_id = p.id
+                WHERE th.editor_id = :user_id
+                AND p.workspace_id = :workspace_id
+                AND th.created_at >= :start_dt
+                AND th.created_at < :end_dt
+                ORDER BY th.created_at DESC
+            """),
+            {"user_id": target_user_id, "workspace_id": target_user.workspace_id, "start_dt": start_dt, "end_dt": end_dt}
+        )
+        task_edits_raw = task_edits_result.fetchall()
+        class TaskEditRow:
+            def __init__(self, row):
+                self.id, self.task_id, self.editor_id, self.field, self.old_value, self.new_value, self.created_at = row
+        task_edits = [TaskEditRow(row) for row in task_edits_raw]
+    except Exception as e:
+        logger.error(f"Error fetching task edits: {e}")
+        task_edits = []
     
-    # 4. Comments
+    # 4. Comments - filter by workspace through task->project
     try:
         comments_result = await db.execute(
             text("""
-                SELECT id, task_id, author_id, content, created_at 
-                FROM comment 
-                WHERE author_id = :user_id 
-                AND created_at >= :start_dt 
-                AND created_at < :end_dt 
-                ORDER BY created_at DESC
+                SELECT c.id, c.task_id, c.author_id, c.content, c.created_at 
+                FROM comment c
+                JOIN task t ON c.task_id = t.id
+                JOIN project p ON t.project_id = p.id
+                WHERE c.author_id = :user_id 
+                AND p.workspace_id = :workspace_id
+                AND c.created_at >= :start_dt 
+                AND c.created_at < :end_dt 
+                ORDER BY c.created_at DESC
             """),
-            {"user_id": target_user_id, "start_dt": start_dt, "end_dt": end_dt}
+            {"user_id": target_user_id, "workspace_id": target_user.workspace_id, "start_dt": start_dt, "end_dt": end_dt}
         )
         comments = comments_result.fetchall()
     except Exception as e:
         logger.error(f"Error fetching comments: {e}")
         comments = []
     
-    # 5. Projects created
+    # 5. Projects created - filter by workspace
     projects_created = (await db.execute(
         select(Project)
+        .where(Project.workspace_id == target_user.workspace_id)
         .where(Project.owner_id == target_user_id)
         .where(Project.created_at >= start_dt)
         .where(Project.created_at < end_dt)
         .order_by(Project.created_at.desc())
     )).scalars().all()
     
-    # 6. Activities logged
+    # 6. Activities logged - filter by workspace
     activities = (await db.execute(
         select(Activity)
+        .where(Activity.workspace_id == target_user.workspace_id)
         .where(Activity.created_by == target_user_id)
         .where(Activity.created_at >= start_dt)
         .where(Activity.created_at < end_dt)
@@ -3353,18 +3407,20 @@ async def web_admin_user_activity_view(
             .order_by(Ticket.created_at.desc())
         )).scalars().all()
     
-    # 8. Ticket comments
+    # 8. Ticket comments - filter by workspace through ticket
     try:
         ticket_comments_result = await db.execute(
             text("""
-                SELECT id, ticket_id, user_id, content, is_internal, created_at 
-                FROM ticketcomment 
-                WHERE user_id = :user_id
-                AND created_at >= :start_dt 
-                AND created_at < :end_dt 
-                ORDER BY created_at DESC
+                SELECT tc.id, tc.ticket_id, tc.user_id, tc.content, tc.is_internal, tc.created_at 
+                FROM ticketcomment tc
+                JOIN ticket t ON tc.ticket_id = t.id
+                WHERE tc.user_id = :user_id
+                AND t.workspace_id = :workspace_id
+                AND tc.created_at >= :start_dt 
+                AND tc.created_at < :end_dt 
+                ORDER BY tc.created_at DESC
             """),
-            {"user_id": target_user_id, "start_dt": start_dt, "end_dt": end_dt}
+            {"user_id": target_user_id, "workspace_id": target_user.workspace_id, "start_dt": start_dt, "end_dt": end_dt}
         )
         ticket_comments = ticket_comments_result.fetchall()
     except Exception as e:
