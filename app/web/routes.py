@@ -9494,7 +9494,7 @@ async def web_tickets_report(
     # Build created tickets list (all tickets created in the period)
     created_tickets = []
     for ticket in all_tickets:
-        created_by_user = users_dict.get(ticket.created_by_user_id) if ticket.created_by_user_id else None
+        created_by_user = users_dict.get(ticket.created_by_id) if ticket.created_by_id else None
         assigned_user = users_dict.get(ticket.assigned_to_id) if ticket.assigned_to_id else None
         project = projects_dict.get(ticket.related_project_id) if ticket.related_project_id else None
         created_tickets.append({
