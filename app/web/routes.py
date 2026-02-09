@@ -1085,6 +1085,10 @@ async def web_dashboard_quick_task(
     project_id: int = Form(...),
     priority: str = Form('medium'),
     due_date: Optional[date] = Form(None),
+    customer_name: Optional[str] = Form(None),
+    customer_surname: Optional[str] = Form(None),
+    customer_email: Optional[str] = Form(None),
+    customer_phone: Optional[str] = Form(None),
     db: AsyncSession = Depends(get_session)
 ):
     """Quick add task from dashboard"""
@@ -1111,7 +1115,11 @@ async def web_dashboard_quick_task(
         project_id=project_id,
         creator_id=user_id,
         priority=TaskPriority(priority),
-        due_date=due_date
+        due_date=due_date,
+        customer_name=customer_name or None,
+        customer_surname=customer_surname or None,
+        customer_email=customer_email or None,
+        customer_phone=customer_phone or None
     )
     db.add(task)
     await db.flush()
@@ -7066,6 +7074,11 @@ async def web_task_create(request: Request, db: AsyncSession = Depends(get_sessi
     due_date_value = form_data.get('due_date_value') or None
     due_time_value = form_data.get('due_time_value') or None
     working_days_list = form_data.getlist('working_days')
+    # Customer info (optional)
+    customer_name = form_data.get('customer_name') or None
+    customer_surname = form_data.get('customer_surname') or None
+    customer_email = form_data.get('customer_email') or None
+    customer_phone = form_data.get('customer_phone') or None
     
     user_id = request.session.get('user_id')
     if not user_id:
@@ -7118,7 +7131,11 @@ async def web_task_create(request: Request, db: AsyncSession = Depends(get_sessi
         start_time=start_time_obj,
         due_date=due_date,
         due_time=due_time_obj,
-        working_days=working_days_str
+        working_days=working_days_str,
+        customer_name=customer_name,
+        customer_surname=customer_surname,
+        customer_email=customer_email,
+        customer_phone=customer_phone
     )
     db.add(task)
     await db.commit()

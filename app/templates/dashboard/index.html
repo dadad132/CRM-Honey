@@ -930,6 +930,28 @@
                  class="w-full rounded-lg border border-slate-300 px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent">
         </div>
       </div>
+      <!-- Customer Info (Optional) -->
+      <div class="border-t border-slate-200 pt-3 mt-1">
+        <p class="text-xs font-medium text-slate-500 mb-2">📋 Customer Info (optional)</p>
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <input type="text" name="customer_name" placeholder="Customer name"
+                   class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+          </div>
+          <div>
+            <input type="text" name="customer_surname" placeholder="Customer surname"
+                   class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+          </div>
+          <div>
+            <input type="email" name="customer_email" placeholder="Customer email"
+                   class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+          </div>
+          <div>
+            <input type="tel" name="customer_phone" placeholder="Customer phone"
+                   class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+          </div>
+        </div>
+      </div>
     </div>
     <div class="mt-6 flex justify-end gap-3">
       <button type="button" onclick="document.getElementById('quickTaskModal').close()"

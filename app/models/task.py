@@ -28,6 +28,11 @@ class TaskBase(SQLModel):
     archived_at: Optional[datetime] = None
     # Tags for flexible categorization
     tags: Optional[str] = None  # Comma-separated tags
+    # Customer info (optional - for tasks related to specific customers)
+    customer_name: Optional[str] = None
+    customer_surname: Optional[str] = None
+    customer_email: Optional[str] = None
+    customer_phone: Optional[str] = None
     created_at: datetime = Field(default_factory=datetime.utcnow)
     updated_at: datetime = Field(default_factory=datetime.utcnow)
 
@@ -50,6 +55,10 @@ class TaskCreate(SQLModel):
     due_date: Optional[date] = None
     due_time: Optional[time] = None
     project_id: int
+    customer_name: Optional[str] = None
+    customer_surname: Optional[str] = None
+    customer_email: Optional[str] = None
+    customer_phone: Optional[str] = None
 
 
 class TaskRead(TaskBase):
@@ -66,3 +75,7 @@ class TaskUpdate(SQLModel):
     start_time: Optional[time] = None
     due_date: Optional[date] = None
     due_time: Optional[time] = None
+    customer_name: Optional[str] = None
+    customer_surname: Optional[str] = None
+    customer_email: Optional[str] = None
+    customer_phone: Optional[str] = None

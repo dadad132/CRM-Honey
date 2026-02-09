@@ -94,6 +94,28 @@
       <label class="block text-xs mb-1">Subtasks (optional - one per line)</label>
       <textarea class="w-full rounded border border-slate-300 px-3 py-2 text-sm" name="subtasks" rows="3" placeholder="Bug fix login page&#10;Update documentation&#10;Add unit tests"></textarea>
     </div>
+    <!-- Customer Info Section (Optional) -->
+    <div class="lg:col-span-6 border-t border-slate-200 pt-3 mt-2">
+      <p class="text-xs font-medium text-slate-600 mb-2">📋 Customer Information (optional)</p>
+      <div class="grid grid-cols-2 lg:grid-cols-4 gap-2">
+        <div>
+          <label class="block text-xs mb-1">Customer Name</label>
+          <input class="w-full rounded border border-slate-300 px-3 py-2 text-sm" type="text" name="customer_name" placeholder="First name" />
+        </div>
+        <div>
+          <label class="block text-xs mb-1">Customer Surname</label>
+          <input class="w-full rounded border border-slate-300 px-3 py-2 text-sm" type="text" name="customer_surname" placeholder="Last name" />
+        </div>
+        <div>
+          <label class="block text-xs mb-1">Customer Email</label>
+          <input class="w-full rounded border border-slate-300 px-3 py-2 text-sm" type="email" name="customer_email" placeholder="email@example.com" />
+        </div>
+        <div>
+          <label class="block text-xs mb-1">Customer Phone</label>
+          <input class="w-full rounded border border-slate-300 px-3 py-2 text-sm" type="tel" name="customer_phone" placeholder="+27..." />
+        </div>
+      </div>
+    </div>
     <div>
       <label class="block text-xs mb-1">Priority</label>
       <select name="priority" x-model="selectedPriority" class="w-full rounded border border-slate-300 px-3 py-2 text-sm" required>

@@ -101,6 +101,25 @@
         {% endif %}
       </div>
 
+      {% if task.customer_name or task.customer_surname or task.customer_email or task.customer_phone %}
+      <!-- Customer Information -->
+      <div style="background: #f0fdf4; border: 1px solid #86efac; padding: 1rem; border-radius: 0.5rem; margin-bottom: 1rem;">
+        <div style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.5rem;">
+          <i class="fas fa-user" style="color: #16a34a;"></i>
+          <strong style="color: #166534;">Customer Information</strong>
+        </div>
+        {% if task.customer_name or task.customer_surname %}
+        <p><strong>Name:</strong> {{ task.customer_name or '' }} {{ task.customer_surname or '' }}</p>
+        {% endif %}
+        {% if task.customer_email %}
+        <p><strong>Email:</strong> <a href="mailto:{{ task.customer_email }}" style="color: #2563eb;">{{ task.customer_email }}</a></p>
+        {% endif %}
+        {% if task.customer_phone %}
+        <p><strong>Phone:</strong> <a href="tel:{{ task.customer_phone }}" style="color: #2563eb;">{{ task.customer_phone }}</a></p>
+        {% endif %}
+      </div>
+      {% endif %}
+
       {% if task.description %}
       <div style="margin-bottom: 1rem;">
         <h3>Description</h3>
