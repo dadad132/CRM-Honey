@@ -2674,35 +2674,35 @@ async def web_admin_generate_user_activity_pdf(
         logger.error(f"Error fetching ticket comments: {e}")
         ticket_comments = []
     
-    # 9. Tickets user worked on - Only tickets where user made changes (via TicketHistory)
-    # This includes: status changes, priority changes, assignments, comments, etc.
+    # 9. Tickets assigned to user AND where user made changes
+    # Double verification: ticket is assigned to user + user has activity in tickethistory
     try:
-        # Get distinct ticket IDs where this user made changes
-        tickets_worked_result = await db.execute(
+        # Get tickets that are assigned to user AND have history entries by this user
+        tickets_assigned_result = await db.execute(
             text("""
-                SELECT DISTINCT th.ticket_id
-                FROM tickethistory th
-                JOIN ticket t ON t.id = th.ticket_id
-                WHERE th.user_id = :user_id
-                AND th.created_at >= :start_dt
-                AND th.created_at < :end_dt
+                SELECT DISTINCT t.id
+                FROM ticket t
+                INNER JOIN tickethistory th ON th.ticket_id = t.id AND th.user_id = :user_id
+                WHERE t.assigned_to_id = :user_id
                 AND t.workspace_id = :workspace_id
+                AND t.created_at >= :start_dt
+                AND t.created_at < :end_dt
             """),
             {"user_id": target_user_id, "start_dt": start_dt, "end_dt": end_dt, "workspace_id": target_user.workspace_id}
         )
-        worked_ticket_ids = [row[0] for row in tickets_worked_result.fetchall()]
+        assigned_ticket_ids = [row[0] for row in tickets_assigned_result.fetchall()]
         
-        if worked_ticket_ids:
+        if assigned_ticket_ids:
             tickets_assigned = (await db.execute(
                 select(Ticket)
-                .where(Ticket.id.in_(worked_ticket_ids))
+                .where(Ticket.id.in_(assigned_ticket_ids))
                 .order_by(Ticket.created_at.desc())
             )).scalars().all()
         else:
             tickets_assigned = []
     except Exception as e:
-        logger.error(f"Error fetching tickets worked on: {e}")
-        # Fallback to old query
+        logger.error(f"Error fetching tickets assigned with activity: {e}")
+        # Fallback to just assigned query
         tickets_assigned = (await db.execute(
             select(Ticket)
             .where(Ticket.workspace_id == target_user.workspace_id)
@@ -2779,7 +2779,7 @@ async def web_admin_generate_user_activity_pdf(
         ['Task Comments Posted', str(len(comments))],
         ['Projects Created', str(len(projects_created))],
         ['Activities Logged (Calls/Emails/Meetings)', str(len(activities))],
-        ['Tickets Worked On', str(len(tickets_assigned))],
+        ['Tickets Assigned', str(len(tickets_assigned))],
         ['Ticket Comments Posted', str(len(ticket_comments))],
         ['Tickets Closed', str(len(tickets_closed))],
     ]
@@ -3071,8 +3071,8 @@ async def web_admin_generate_user_activity_pdf(
         elements.append(Paragraph("No ticket comments posted during this period.", styles['Normal']))
     elements.append(Spacer(1, 0.2*inch))
     
-    # Tickets Worked On (user made changes via TicketHistory)
-    elements.append(Paragraph("Tickets Worked On", heading_style))
+    # Tickets Assigned (verified via TicketHistory that user actually worked on them)
+    elements.append(Paragraph("Tickets Assigned", heading_style))
     if tickets_assigned:
         tassigned_data = [['Date Assigned', 'Ticket #', 'Subject', 'Priority', 'Status']]
         for ticket in tickets_assigned[:15]:
@@ -3097,7 +3097,7 @@ async def web_admin_generate_user_activity_pdf(
         ]))
         elements.append(tassigned_table)
     else:
-        elements.append(Paragraph("No tickets worked on by this user during this period.", styles['Normal']))
+        elements.append(Paragraph("No tickets assigned to this user during this period.", styles['Normal']))
     elements.append(Spacer(1, 0.2*inch))
     
     # Tickets Closed
@@ -3316,35 +3316,34 @@ async def web_admin_user_activity_view(
         .order_by(Ticket.closed_at.desc())
     )).scalars().all()
 
-    # Tickets user worked on - Only tickets where user made changes (via TicketHistory)
-    # This includes: status changes, priority changes, assignments, comments, etc.
+    # Tickets assigned to user AND where user made changes (double verification)
     try:
-        # Get distinct ticket IDs where this user made changes
-        tickets_worked_result = await db.execute(
+        # Get tickets that are assigned to user AND have history entries by this user
+        tickets_assigned_result = await db.execute(
             text("""
-                SELECT DISTINCT th.ticket_id
-                FROM tickethistory th
-                JOIN ticket t ON t.id = th.ticket_id
-                WHERE th.user_id = :user_id
-                AND th.created_at >= :start_dt
-                AND th.created_at < :end_dt
+                SELECT DISTINCT t.id
+                FROM ticket t
+                INNER JOIN tickethistory th ON th.ticket_id = t.id AND th.user_id = :user_id
+                WHERE t.assigned_to_id = :user_id
                 AND t.workspace_id = :workspace_id
+                AND t.created_at >= :start_dt
+                AND t.created_at < :end_dt
             """),
             {"user_id": target_user_id, "start_dt": start_dt, "end_dt": end_dt, "workspace_id": target_user.workspace_id}
         )
-        worked_ticket_ids = [row[0] for row in tickets_worked_result.fetchall()]
+        assigned_ticket_ids = [row[0] for row in tickets_assigned_result.fetchall()]
         
-        if worked_ticket_ids:
+        if assigned_ticket_ids:
             tickets_assigned = (await db.execute(
                 select(Ticket)
-                .where(Ticket.id.in_(worked_ticket_ids))
+                .where(Ticket.id.in_(assigned_ticket_ids))
                 .order_by(Ticket.created_at.desc())
             )).scalars().all()
         else:
             tickets_assigned = []
     except Exception as e:
-        logger.error(f"Error fetching tickets worked on: {e}")
-        # Fallback to assigned query
+        logger.error(f"Error fetching tickets assigned with activity: {e}")
+        # Fallback to just assigned query
         tickets_assigned = (await db.execute(
             select(Ticket)
             .where(Ticket.workspace_id == target_user.workspace_id)
