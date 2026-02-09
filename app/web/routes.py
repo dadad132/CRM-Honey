@@ -3016,8 +3016,8 @@ async def web_admin_generate_user_activity_pdf(
     if ticket_comments:
         tcomment_data = [['Date', 'Ticket ID', 'Comment Preview', 'Internal']]
         for tc in ticket_comments[:15]:
-            # tc is a tuple: (id, ticket_id, author_id, user_id, content, is_internal, created_at)
-            tc_id, ticket_id, author_id, user_id, content, is_internal, created_at = tc
+            # tc is a tuple: (id, ticket_id, user_id, content, is_internal, created_at)
+            tc_id, ticket_id, user_id, content, is_internal, created_at = tc
             tcomment_data.append([
                 created_at.strftime('%Y-%m-%d') if isinstance(created_at, datetime) else str(created_at)[:10],
                 str(ticket_id),
