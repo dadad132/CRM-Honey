@@ -9419,6 +9419,70 @@ async def web_tickets_report(
     # Count tickets for selected project
     project_ticket_count = len(all_tickets) if selected_project_id else 0
     
+    # Build assigned tickets list (tickets that have been assigned to someone)
+    assigned_tickets = []
+    for ticket in all_tickets:
+        if ticket.assigned_to_id:
+            assigned_user = users_dict.get(ticket.assigned_to_id)
+            project = projects_dict.get(ticket.related_project_id) if ticket.related_project_id else None
+            assigned_tickets.append({
+                'id': ticket.id,
+                'ticket_number': ticket.ticket_number,
+                'subject': ticket.subject,
+                'priority': ticket.priority,
+                'category': ticket.category,
+                'status': ticket.status,
+                'created_at': ticket.created_at,
+                'assigned_to_name': (assigned_user.full_name or assigned_user.username) if assigned_user else 'Unknown',
+                'project_name': project.name if project else None,
+            })
+    assigned_tickets.sort(key=lambda x: x['created_at'], reverse=True)
+    
+    # Build open tickets list (tickets with open, in_progress, waiting status)
+    open_tickets_list = []
+    for ticket in all_tickets:
+        if ticket.status in ['open', 'in_progress', 'waiting']:
+            assigned_user = users_dict.get(ticket.assigned_to_id) if ticket.assigned_to_id else None
+            project = projects_dict.get(ticket.related_project_id) if ticket.related_project_id else None
+            # Calculate time open in hours using business hours
+            time_open = calculate_business_hours(
+                ticket.created_at, datetime.now(),
+                biz_start, biz_end, biz_exclude_weekends
+            )
+            open_tickets_list.append({
+                'id': ticket.id,
+                'ticket_number': ticket.ticket_number,
+                'subject': ticket.subject,
+                'priority': ticket.priority,
+                'category': ticket.category,
+                'status': ticket.status,
+                'created_at': ticket.created_at,
+                'assigned_to_name': (assigned_user.full_name or assigned_user.username) if assigned_user else 'Unassigned',
+                'project_name': project.name if project else None,
+                'time_open_hours': time_open,
+            })
+    open_tickets_list.sort(key=lambda x: x['created_at'], reverse=True)
+    
+    # Build created tickets list (all tickets created in the period)
+    created_tickets = []
+    for ticket in all_tickets:
+        created_by_user = users_dict.get(ticket.created_by_user_id) if ticket.created_by_user_id else None
+        assigned_user = users_dict.get(ticket.assigned_to_id) if ticket.assigned_to_id else None
+        project = projects_dict.get(ticket.related_project_id) if ticket.related_project_id else None
+        created_tickets.append({
+            'id': ticket.id,
+            'ticket_number': ticket.ticket_number,
+            'subject': ticket.subject,
+            'priority': ticket.priority,
+            'category': ticket.category,
+            'status': ticket.status,
+            'created_at': ticket.created_at,
+            'created_by_name': (created_by_user.full_name or created_by_user.username) if created_by_user else (ticket.customer_name or 'Guest'),
+            'assigned_to_name': (assigned_user.full_name or assigned_user.username) if assigned_user else 'Unassigned',
+            'project_name': project.name if project else None,
+        })
+    created_tickets.sort(key=lambda x: x['created_at'], reverse=True)
+    
     return templates.TemplateResponse(
         'tickets/report.html',
         {
@@ -9434,6 +9498,9 @@ async def web_tickets_report(
             'category_distribution': category_distribution,
             'priority_distribution': priority_distribution,
             'closed_tickets': closed_tickets,
+            'assigned_tickets': assigned_tickets,
+            'open_tickets_list': open_tickets_list,
+            'created_tickets': created_tickets,
             'comment_stats': comment_stats,
             'recent_comments': recent_comments,
             'activities': activities,
