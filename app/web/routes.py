@@ -9616,13 +9616,27 @@ async def web_tickets_report_pdf(
     
     ticket_ids = [t.id for t in all_tickets]
     
+    # Query ALL currently open tickets (regardless of date range) - same as HTML report
+    current_open_query = select(Ticket).where(
+        Ticket.workspace_id == user.workspace_id,
+        Ticket.status.in_(['open', 'in_progress', 'waiting']),
+        Ticket.is_archived == False
+    )
+    if user_id_int:
+        current_open_query = current_open_query.where(
+            (Ticket.assigned_to_id == user_id_int) | (Ticket.created_by_id == user_id_int)
+        )
+    if project_id_int:
+        current_open_query = current_open_query.where(Ticket.related_project_id == project_id_int)
+    all_current_open_tickets = (await db.execute(current_open_query.order_by(Ticket.created_at.desc()))).scalars().all()
+    
     # Get all comments (filtered by user if specified)
     all_comments = []
     if ticket_ids:
         comment_query = select(TicketComment).where(TicketComment.ticket_id.in_(ticket_ids))
         if user_id_int:
             comment_query = comment_query.where(TicketComment.user_id == user_id_int)
-        all_comments = (await db.execute(comment_query)).scalars().all()
+        all_comments = (await db.execute(comment_query.order_by(TicketComment.created_at.desc()))).scalars().all()
     
     # Get all users for lookups
     users_result = (await db.execute(
@@ -9692,15 +9706,16 @@ async def web_tickets_report_pdf(
     # Summary
     total_tickets = len(all_tickets)
     closed_count = sum(1 for t in all_tickets if t.status == 'closed')
-    open_count = sum(1 for t in all_tickets if t.status in ['open', 'in_progress', 'waiting'])
+    # Use all_current_open_tickets count (ALL currently open, regardless of date range)
+    current_open_count = len(all_current_open_tickets)
     resolution_rate = round((closed_count / total_tickets * 100) if total_tickets > 0 else 0)
     
     elements.append(Paragraph("Summary", heading_style))
     summary_data = [
         ['Metric', 'Value'],
-        ['Total Tickets', str(total_tickets)],
+        ['Total Tickets (in period)', str(total_tickets)],
         ['Closed Tickets', str(closed_count)],
-        ['Open Tickets', str(open_count)],
+        ['Currently Open Tickets', str(current_open_count)],
         ['Resolution Rate', f'{resolution_rate}%'],
         ['Total Comments', str(len(all_comments))],
     ]
@@ -9784,6 +9799,71 @@ async def web_tickets_report_pdf(
         elements.append(closed_table)
     else:
         elements.append(Paragraph("No tickets closed during this period.", styles['Normal']))
+    elements.append(Spacer(1, 0.3*inch))
+    
+    # Open Tickets (ALL currently open, regardless of date range)
+    elements.append(Paragraph("Open Tickets", heading_style))
+    elements.append(Paragraph("All tickets currently open (regardless of date range)", subheading_style))
+    open_data = [['Ticket #', 'Subject', 'Assigned To', 'Priority', 'Status', 'Days Open']]
+    for ticket in all_current_open_tickets:
+        assigned_to = users_dict.get(ticket.assigned_to_id)
+        days_open = (datetime.now() - ticket.created_at).days
+        open_data.append([
+            ticket.ticket_number,
+            Paragraph(ticket.subject[:50] + ('...' if len(ticket.subject) > 50 else ''), styles['Normal']),
+            Paragraph((assigned_to.full_name or assigned_to.username) if assigned_to else 'Unassigned', styles['Normal']),
+            ticket.priority.title(),
+            ticket.status.replace('_', ' ').title(),
+            f'{days_open}d',
+        ])
+    
+    if len(open_data) > 1:
+        open_table = Table(open_data, colWidths=[1.2*inch, 2*inch, 1.3*inch, 0.8*inch, 0.9*inch, 0.6*inch])
+        open_table.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#F59E0B')),
+            ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+            ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+            ('FONTSIZE', (0, 0), (-1, -1), 8),
+            ('BOTTOMPADDING', (0, 0), (-1, 0), 8),
+            ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
+            ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.lightgrey]),
+        ]))
+        elements.append(open_table)
+    else:
+        elements.append(Paragraph("No tickets currently open.", styles['Normal']))
+    elements.append(Spacer(1, 0.3*inch))
+    
+    # Recent Comments
+    elements.append(Paragraph("Recent Comments", heading_style))
+    tickets_dict = {t.id: t for t in all_tickets}
+    comment_data = [['Date', 'Ticket #', 'Author', 'Comment']]
+    for comment in all_comments[:30]:  # Limit to 30 most recent
+        author = users_dict.get(comment.user_id)
+        ticket = tickets_dict.get(comment.ticket_id)
+        comment_text = comment.content[:80] + ('...' if len(comment.content) > 80 else '')
+        comment_data.append([
+            comment.created_at.strftime('%m/%d %H:%M'),
+            ticket.ticket_number if ticket else 'N/A',
+            Paragraph((author.full_name or author.username) if author else 'Guest', styles['Normal']),
+            Paragraph(comment_text, styles['Normal']),
+        ])
+    
+    if len(comment_data) > 1:
+        comment_table = Table(comment_data, colWidths=[1*inch, 1*inch, 1.3*inch, 3.2*inch])
+        comment_table.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#3B82F6')),
+            ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+            ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+            ('FONTSIZE', (0, 0), (-1, -1), 8),
+            ('BOTTOMPADDING', (0, 0), (-1, 0), 8),
+            ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
+            ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.lightgrey]),
+        ]))
+        elements.append(comment_table)
+    else:
+        elements.append(Paragraph("No comments during this period.", styles['Normal']))
     
     # Build PDF
     doc.build(elements)
@@ -9869,6 +9949,20 @@ async def web_tickets_report_excel(
     all_tickets = (await db.execute(ticket_query.order_by(Ticket.created_at.desc()))).scalars().all()
     
     ticket_ids = [t.id for t in all_tickets]
+    
+    # Query ALL currently open tickets (regardless of date range) - same as HTML and PDF report
+    current_open_query = select(Ticket).where(
+        Ticket.workspace_id == user.workspace_id,
+        Ticket.status.in_(['open', 'in_progress', 'waiting']),
+        Ticket.is_archived == False
+    )
+    if user_id_int:
+        current_open_query = current_open_query.where(
+            (Ticket.assigned_to_id == user_id_int) | (Ticket.created_by_id == user_id_int)
+        )
+    if project_id_int:
+        current_open_query = current_open_query.where(Ticket.related_project_id == project_id_int)
+    all_current_open_tickets = (await db.execute(current_open_query.order_by(Ticket.created_at.desc()))).scalars().all()
     
     # Get all comments (filtered by user if specified)
     all_comments = []
@@ -9988,14 +10082,15 @@ async def web_tickets_report_excel(
     
     total_tickets = len(all_tickets)
     closed_count = sum(1 for t in all_tickets if t.status == 'closed')
-    open_count = sum(1 for t in all_tickets if t.status in ['open', 'in_progress', 'waiting'])
+    # Use all_current_open_tickets count (ALL currently open, regardless of date range)
+    current_open_count = len(all_current_open_tickets)
     resolution_rate = round((closed_count / total_tickets * 100) if total_tickets > 0 else 0)
     
     ws_summary.append(["Metric", "Value"])
     style_header_row(ws_summary, ws_summary.max_row, 2)
-    ws_summary.append(["Total Tickets", total_tickets])
+    ws_summary.append(["Total Tickets (in period)", total_tickets])
     ws_summary.append(["Closed Tickets", closed_count])
-    ws_summary.append(["Open Tickets", open_count])
+    ws_summary.append(["Currently Open Tickets", current_open_count])
     ws_summary.append(["Resolution Rate", f"{resolution_rate}%"])
     ws_summary.append(["Total Comments", len(all_comments)])
     ws_summary.append(["Business Hours", f"{biz_start} - {biz_end}"])
@@ -10070,7 +10165,28 @@ async def web_tickets_report_excel(
             ])
     auto_width(ws_closed)
     
-    # Sheet 5: Comments
+    # Sheet 5: Open Tickets (ALL currently open, regardless of date range)
+    ws_open = wb.create_sheet("Open Tickets")
+    ws_open.append(["Ticket #", "Subject", "Status", "Priority", "Category", "Assigned To", "Created", "Days Open", "Project"])
+    style_header_row(ws_open, 1, 9)
+    for ticket in all_current_open_tickets:
+        assigned_to = users_dict.get(ticket.assigned_to_id)
+        project = projects_dict.get(ticket.related_project_id)
+        days_open = (datetime.now() - ticket.created_at).days
+        ws_open.append([
+            ticket.ticket_number,
+            ticket.subject,
+            ticket.status.replace('_', ' ').title(),
+            ticket.priority,
+            ticket.category or '',
+            (assigned_to.full_name or assigned_to.username) if assigned_to else 'Unassigned',
+            ticket.created_at.strftime('%Y-%m-%d %H:%M'),
+            days_open,
+            project.name if project else '',
+        ])
+    auto_width(ws_open)
+    
+    # Sheet 6: Comments
     ws_comments = wb.create_sheet("Comments")
     ws_comments.append(["Date", "Ticket #", "Author", "Comment", "Internal"])
     style_header_row(ws_comments, 1, 5)
@@ -10087,7 +10203,7 @@ async def web_tickets_report_excel(
         ])
     auto_width(ws_comments)
     
-    # Sheet 6: Activity History
+    # Sheet 7: Activity History
     ws_history = wb.create_sheet("Activity History")
     ws_history.append(["Date", "Ticket #", "User", "Action", "Details"])
     style_header_row(ws_history, 1, 5)
