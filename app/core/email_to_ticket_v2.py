@@ -239,23 +239,49 @@ class EmailToTicketService:
         return name, email_addr.lower()
     
     def clean_email_body(self, body: str) -> str:
-        """Clean email body (remove signatures, quoted replies)"""
+        """Clean email body (format nicely but preserve signature content)"""
+        import re
+        
         lines = body.split('\n')
         cleaned_lines = []
+        in_quoted_reply = False
         
-        signature_markers = [
-            '-- ', '___________', 'Sent from', 'Get Outlook',
-            'Sent from my iPhone', 'Sent from my Android'
+        # Markers that indicate start of quoted reply (not signature)
+        quote_markers = [
+            'On ', 'From:', '-----Original Message-----',
+            '> On ', '> From:', 'wrote:'
         ]
         
         for line in lines:
-            if any(line.strip().startswith(marker) for marker in signature_markers):
-                break
-            if line.strip().startswith('>'):
+            stripped = line.strip()
+            
+            # Detect start of quoted reply section (usually previous email thread)
+            if any(stripped.startswith(marker) for marker in quote_markers):
+                # Check if this looks like a quote header
+                if 'wrote:' in stripped or stripped.startswith('From:') or stripped.startswith('-----'):
+                    in_quoted_reply = True
+                    continue
+            
+            # Skip lines that are clearly quoted text (start with >)
+            if stripped.startswith('>'):
                 continue
+            
+            # If we're in a quoted reply section, skip until we see a non-quoted line
+            if in_quoted_reply and stripped:
+                # Still in quote section
+                continue
+            elif in_quoted_reply and not stripped:
+                # Empty line might end quote section, but be careful
+                pass
+            
             cleaned_lines.append(line)
         
-        return '\n'.join(cleaned_lines).strip()
+        result = '\n'.join(cleaned_lines).strip()
+        
+        # Clean up excessive whitespace 
+        result = re.sub(r'\n{4,}', '\n\n\n', result)  # Max 3 consecutive newlines
+        
+        return result
     
     def determine_priority(self, subject: str, body: str) -> str:
         """Auto-detect priority from content"""
@@ -319,7 +345,7 @@ class EmailToTicketService:
         return self.clean_email_body(body)
     
     def html_to_text(self, html: str) -> str:
-        """Convert HTML email to plain text"""
+        """Convert HTML email to plain text, preserving signature formatting"""
         from html.parser import HTMLParser
         import re
         
@@ -328,35 +354,66 @@ class EmailToTicketService:
                 super().__init__()
                 self.text = []
                 self.skip = False
+                self.current_href = None
                 
             def handle_starttag(self, tag, attrs):
+                attrs_dict = dict(attrs)
                 if tag in ['script', 'style', 'head']:
                     self.skip = True
                 elif tag == 'br':
                     self.text.append('\n')
                 elif tag == 'p':
                     self.text.append('\n\n')
+                elif tag == 'div':
+                    self.text.append('\n')
                 elif tag in ['li']:
                     self.text.append('\n• ')
+                elif tag == 'a':
+                    # Save href for appending after link text
+                    self.current_href = attrs_dict.get('href', '')
+                elif tag == 'hr':
+                    self.text.append('\n' + '-' * 40 + '\n')
+                elif tag == 'td':
+                    self.text.append(' | ')
+                elif tag == 'th':
+                    self.text.append(' | ')
                     
             def handle_endtag(self, tag):
                 if tag in ['script', 'style', 'head']:
                     self.skip = False
-                elif tag in ['p', 'div', 'tr']:
+                elif tag == 'a':
+                    # Append URL after link text if it's different
+                    if self.current_href and self.current_href.startswith(('http://', 'https://', 'mailto:')):
+                        # Clean up mailto links
+                        if self.current_href.startswith('mailto:'):
+                            email = self.current_href.replace('mailto:', '').split('?')[0]
+                            self.text.append(f' <{email}>')
+                        else:
+                            self.text.append(f' ({self.current_href})')
+                    self.current_href = None
+                elif tag in ['p', 'div']:
+                    self.text.append('\n')
+                elif tag == 'tr':
+                    self.text.append('\n')
+                elif tag in ['table']:
                     self.text.append('\n')
                     
             def handle_data(self, data):
                 if not self.skip:
-                    self.text.append(data)
+                    # Clean up whitespace but preserve meaningful content
+                    cleaned = data.strip()
+                    if cleaned:
+                        self.text.append(data)
         
         try:
             parser = HTMLToText()
             parser.feed(html)
             text = ''.join(parser.text)
             
-            # Clean up extra whitespace
-            text = re.sub(r'\n\s*\n\s*\n', '\n\n', text)  # Max 2 consecutive newlines
-            text = re.sub(r' +', ' ', text)  # Multiple spaces to single space
+            # Clean up extra whitespace but preserve signature formatting
+            text = re.sub(r'\n{4,}', '\n\n\n', text)  # Max 3 consecutive newlines
+            text = re.sub(r' {3,}', '  ', text)  # Max 2 consecutive spaces
+            text = re.sub(r'\t+', ' ', text)  # Tabs to space
             text = text.strip()
             
             return text

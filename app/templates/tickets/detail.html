@@ -161,8 +161,25 @@
             {% if ticket.description %}
             <div class="bg-white rounded-lg shadow-sm p-6 overflow-hidden">
                 <h2 class="text-lg font-semibold text-gray-900 mb-3">Description</h2>
-                <div class="text-gray-700 whitespace-pre-wrap break-words overflow-wrap-anywhere" style="word-break: break-word; overflow-wrap: anywhere;">{{ ticket.description }}</div>
+                <div id="ticket-description" class="text-gray-700 whitespace-pre-wrap break-words overflow-wrap-anywhere" style="word-break: break-word; overflow-wrap: anywhere;">{{ ticket.description }}</div>
             </div>
+            <script>
+            // Make URLs clickable in description
+            (function() {
+                const desc = document.getElementById('ticket-description');
+                if (desc) {
+                    const urlRegex = /(https?:\/\/[^\s<]+)/g;
+                    const emailRegex = /([a-zA-Z0-9._-]+@[a-zA-Z0-9._-]+\.[a-zA-Z0-9._-]+)/g;
+                    const phoneRegex = /(\+?[\d\s\-()]{10,})/g;
+                    
+                    let html = desc.innerHTML;
+                    // Escape HTML but preserve existing structure
+                    html = html.replace(urlRegex, '<a href="$1" target="_blank" class="text-blue-600 hover:underline">$1</a>');
+                    html = html.replace(emailRegex, '<a href="mailto:$1" class="text-blue-600 hover:underline">$1</a>');
+                    desc.innerHTML = html;
+                }
+            })();
+            </script>
             {% endif %}
 
             <!-- Attachments -->
@@ -269,13 +286,25 @@
                                     {{ comment.created_at | format_datetime_tz(workspace.timezone if workspace and workspace.timezone else 'UTC', '%b %d, %Y %I:%M %p') }}
                                 </span>
                             </div>
-                            <p class="text-gray-700 whitespace-pre-wrap break-words" style="word-break: break-word; overflow-wrap: anywhere;">{{ comment.content }}</p>
+                            <p class="text-gray-700 whitespace-pre-wrap break-words linkify-content" style="word-break: break-word; overflow-wrap: anywhere;">{{ comment.content }}</p>
                         </div>
                         {% endfor %}
                     {% else %}
                         <p class="text-gray-500 text-center py-4">No comments yet</p>
                     {% endif %}
                 </div>
+                
+                <script>
+                // Make URLs and emails clickable in comments
+                document.querySelectorAll('.linkify-content').forEach(function(el) {
+                    const urlRegex = /(https?:\/\/[^\s<]+)/g;
+                    const emailRegex = /([a-zA-Z0-9._-]+@[a-zA-Z0-9._-]+\.[a-zA-Z0-9._-]+)/g;
+                    let html = el.innerHTML;
+                    html = html.replace(urlRegex, '<a href="$1" target="_blank" class="text-blue-600 hover:underline">$1</a>');
+                    html = html.replace(emailRegex, '<a href="mailto:$1" class="text-blue-600 hover:underline">$1</a>');
+                    el.innerHTML = html;
+                });
+                </script>
 
                 <!-- Add Comment Form -->
                 {% if ticket.status == 'closed' %}
