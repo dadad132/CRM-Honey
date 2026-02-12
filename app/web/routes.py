@@ -13642,6 +13642,10 @@ async def send_ticket_comment_email(ticket, content: str, user_id: int, db: Asyn
             log(f"❌ SMTP settings incomplete for workspace {ticket.workspace_id}")
             return
         
+        if not email_settings.smtp_from_email:
+            log(f"❌ SMTP 'From' email not configured for workspace {ticket.workspace_id}")
+            return
+        
         log(f"[EMAIL] SMTP settings found: {email_settings.smtp_host}:{email_settings.smtp_port}")
         
         # Determine which email to send from
@@ -13752,43 +13756,82 @@ async def send_ticket_comment_email(ticket, content: str, user_id: int, db: Asyn
             
             log(f"[EMAIL] Email message prepared, attempting to send via SMTP...")
             
+            # Extract all SMTP settings BEFORE entering thread pool
+            # (ORM objects should not be accessed across threads)
+            smtp_host = email_settings.smtp_host
+            smtp_port = email_settings.smtp_port
+            smtp_username = email_settings.smtp_username
+            smtp_password = email_settings.smtp_password
+            smtp_use_tls = email_settings.smtp_use_tls
+            
             # Send email in thread pool to avoid blocking
             import concurrent.futures
             import asyncio
             loop = asyncio.get_event_loop()
             
+            # SMTP timeout in seconds
+            SMTP_TIMEOUT = 30
+            
             def send_email():
-                log(f"[EMAIL] Connecting to SMTP server {email_settings.smtp_host}:{email_settings.smtp_port}")
-                if email_settings.smtp_use_tls:
-                    server = smtplib.SMTP(email_settings.smtp_host, email_settings.smtp_port)
-                    server.starttls()
-                else:
-                    server = smtplib.SMTP_SSL(email_settings.smtp_host, email_settings.smtp_port)
-                
-                log(f"[EMAIL] Logging in as {email_settings.smtp_username}")
-                server.login(email_settings.smtp_username, email_settings.smtp_password)
-                log(f"[EMAIL] Sending message...")
-                server.send_message(msg)
-                server.quit()
-                log(f"[EMAIL] SMTP connection closed successfully")
+                log(f"[EMAIL] Connecting to SMTP server {smtp_host}:{smtp_port} (timeout: {SMTP_TIMEOUT}s)")
+                try:
+                    if smtp_use_tls:
+                        server = smtplib.SMTP(smtp_host, smtp_port, timeout=SMTP_TIMEOUT)
+                        server.starttls()
+                    else:
+                        server = smtplib.SMTP_SSL(smtp_host, smtp_port, timeout=SMTP_TIMEOUT)
+                    
+                    log(f"[EMAIL] Logging in as {smtp_username}")
+                    server.login(smtp_username, smtp_password)
+                    log(f"[EMAIL] Sending message...")
+                    server.send_message(msg)
+                    server.quit()
+                    log(f"[EMAIL] SMTP connection closed successfully")
+                    return True
+                except smtplib.SMTPAuthenticationError as e:
+                    log(f"[EMAIL] ❌ SMTP Authentication failed: {e}")
+                    return False
+                except smtplib.SMTPConnectError as e:
+                    log(f"[EMAIL] ❌ SMTP Connection failed: {e}")
+                    return False
+                except smtplib.SMTPServerDisconnected as e:
+                    log(f"[EMAIL] ❌ SMTP Server disconnected: {e}")
+                    return False
+                except TimeoutError as e:
+                    log(f"[EMAIL] ❌ SMTP Timeout after {SMTP_TIMEOUT}s: {e}")
+                    return False
+                except Exception as e:
+                    log(f"[EMAIL] ❌ SMTP Error: {e}")
+                    return False
             
             with concurrent.futures.ThreadPoolExecutor() as pool:
-                await loop.run_in_executor(pool, send_email)
+                email_sent = await loop.run_in_executor(pool, send_email)
+            
+            if not email_sent:
+                log(f"❌ Email was NOT sent to {ticket.guest_email}")
+                return
             
             # Store the Message-ID so replies can be threaded
             from app.models.processed_mail import ProcessedMail
+            
+            # Extract ticket values before database operations
+            ticket_workspace_id = ticket.workspace_id
+            ticket_id = ticket.id
+            msg_subject = msg['Subject']
+            guest_email = ticket.guest_email
+            
             processed = ProcessedMail(
-                workspace_id=ticket.workspace_id,
+                workspace_id=ticket_workspace_id,
                 message_id=message_id,
                 email_from=from_email,
-                subject=msg['Subject'],
-                ticket_id=ticket.id,
+                subject=msg_subject,
+                ticket_id=ticket_id,
                 processed_at=get_local_time()
             )
             db.add(processed)
             await db.commit()
             
-            log(f"✅ Sent email notification to {ticket.guest_email} from {from_email} with Message-ID: {message_id}")
+            log(f"✅ Sent email notification to {guest_email} from {from_email} with Message-ID: {message_id}")
     except Exception as e:
         log(f"❌ Error sending email notification: {e}")
         import traceback
