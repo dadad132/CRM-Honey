@@ -1635,13 +1635,31 @@ async def web_global_search(
                 'priority': task.priority.value if hasattr(task.priority, 'value') else task.priority
             })
         
-        # Search tickets
+        # Search tickets (includes guest info and comments)
+        from sqlalchemy import exists
+        from app.models.ticket import TicketComment
+        
+        # Subquery to find tickets with matching comments
+        comment_match_subq = exists().where(
+            TicketComment.ticket_id == Ticket.id,
+            TicketComment.content.ilike(search_term)
+        )
+        
         ticket_results = await db.execute(
             select(Ticket)
             .where(
                 Ticket.workspace_id == user.workspace_id,
                 Ticket.is_archived == False,
-                (Ticket.subject.ilike(search_term) | Ticket.description.ilike(search_term) | Ticket.ticket_number.ilike(search_term))
+                or_(
+                    Ticket.subject.ilike(search_term),
+                    Ticket.description.ilike(search_term),
+                    Ticket.ticket_number.ilike(search_term),
+                    Ticket.guest_email.ilike(search_term),
+                    Ticket.guest_name.ilike(search_term),
+                    Ticket.guest_surname.ilike(search_term),
+                    Ticket.guest_company.ilike(search_term),
+                    comment_match_subq
+                )
             )
             .limit(10)
         )
@@ -1751,13 +1769,31 @@ async def api_global_search(
                 'url': f'/web/tasks/{task.id}'
             })
         
-        # Search tickets
+        # Search tickets (includes guest info and comments)
+        from sqlalchemy import exists, or_
+        from app.models.ticket import TicketComment
+        
+        # Subquery to find tickets with matching comments
+        comment_match_subq2 = exists().where(
+            TicketComment.ticket_id == Ticket.id,
+            TicketComment.content.ilike(search_term)
+        )
+        
         ticket_results = await db.execute(
             select(Ticket)
             .where(
                 Ticket.workspace_id == user.workspace_id,
                 Ticket.is_archived == False,
-                (Ticket.subject.ilike(search_term) | Ticket.description.ilike(search_term) | Ticket.ticket_number.ilike(search_term))
+                or_(
+                    Ticket.subject.ilike(search_term),
+                    Ticket.description.ilike(search_term),
+                    Ticket.ticket_number.ilike(search_term),
+                    Ticket.guest_email.ilike(search_term),
+                    Ticket.guest_name.ilike(search_term),
+                    Ticket.guest_surname.ilike(search_term),
+                    Ticket.guest_company.ilike(search_term),
+                    comment_match_subq2
+                )
             )
             .limit(5)
         )
@@ -10455,14 +10491,26 @@ async def web_tickets_list(request: Request, db: AsyncSession = Depends(get_sess
     
     # Search filter
     if search_query:
-        from sqlalchemy import or_
+        from sqlalchemy import or_, exists
+        from app.models.ticket import TicketComment
         search_pattern = f"%{search_query}%"
+        
+        # Subquery to find tickets with matching comments
+        comment_match = exists().where(
+            TicketComment.ticket_id == Ticket.id,
+            TicketComment.content.ilike(search_pattern)
+        )
+        
         query = query.where(
             or_(
                 Ticket.ticket_number.ilike(search_pattern),
                 Ticket.subject.ilike(search_pattern),
                 Ticket.description.ilike(search_pattern),
-                Ticket.guest_email.ilike(search_pattern)
+                Ticket.guest_email.ilike(search_pattern),
+                Ticket.guest_name.ilike(search_pattern),
+                Ticket.guest_surname.ilike(search_pattern),
+                Ticket.guest_company.ilike(search_pattern),
+                comment_match
             )
         )
     
@@ -13287,14 +13335,26 @@ async def web_tickets_archived(request: Request, db: AsyncSession = Depends(get_
     
     # Search filter
     if search_query:
-        from sqlalchemy import or_
+        from sqlalchemy import or_, exists
+        from app.models.ticket import TicketComment
         search_pattern = f"%{search_query}%"
+        
+        # Subquery to find tickets with matching comments
+        comment_match = exists().where(
+            TicketComment.ticket_id == Ticket.id,
+            TicketComment.content.ilike(search_pattern)
+        )
+        
         query = query.where(
             or_(
                 Ticket.ticket_number.ilike(search_pattern),
                 Ticket.subject.ilike(search_pattern),
                 Ticket.description.ilike(search_pattern),
-                Ticket.guest_email.ilike(search_pattern)
+                Ticket.guest_email.ilike(search_pattern),
+                Ticket.guest_name.ilike(search_pattern),
+                Ticket.guest_surname.ilike(search_pattern),
+                Ticket.guest_company.ilike(search_pattern),
+                comment_match
             )
         )
     
