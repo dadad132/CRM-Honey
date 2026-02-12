@@ -23,7 +23,8 @@ class DatabaseBackup:
         self.backup_dir.mkdir(exist_ok=True)
         self.uploads_dir = Path("app/uploads")  # Attachments directory
         self.max_backups = 10  # Keep last 10 automatic backups
-        self.max_manual_backups = 20  # Keep last 20 manual backups
+        self.max_manual_backups = 15  # Keep last 15 manual backups
+        self.max_uploaded_backups = 5  # Keep last 5 uploaded backups
         self.backup_interval = 43200  # Backup every 12 hours (43200 seconds)
         self._backup_task: Optional[asyncio.Task] = None
         
@@ -50,8 +51,8 @@ class DatabaseBackup:
             backup_type = "MANUAL" if is_manual else "AUTO"
             
             if include_attachments:
-                # Create ZIP archive with database + attachments
-                with zipfile.ZipFile(backup_file, 'w', zipfile.ZIP_DEFLATED) as zipf:
+                # Create ZIP archive with database + attachments (maximum compression)
+                with zipfile.ZipFile(backup_file, 'w', zipfile.ZIP_DEFLATED, compresslevel=9) as zipf:
                     # Add database
                     zipf.write(self.db_path, arcname='data.db')
                     
@@ -62,7 +63,9 @@ class DatabaseBackup:
                                 arcname = str(file_path.relative_to(self.uploads_dir.parent))
                                 zipf.write(file_path, arcname=arcname)
                 
-                logger.info(f"✅ Full backup (DB + attachments) created: {backup_file} ({backup_type})")
+                # Log backup size
+                backup_size_mb = backup_file.stat().st_size / (1024 * 1024)
+                logger.info(f"✅ Full backup (DB + attachments) created: {backup_file} ({backup_type}) - {backup_size_mb:.2f} MB")
             else:
                 # Simple database-only backup
                 shutil.copy2(self.db_path, backup_file)
@@ -104,7 +107,7 @@ class DatabaseBackup:
             logger.error(f"Error cleaning up old backups: {e}")
     
     def _cleanup_old_manual_backups(self):
-        """Remove old MANUAL backup files beyond max_manual_backups (default 20)"""
+        """Remove old MANUAL backup files beyond max_manual_backups (default 15)"""
         try:
             # Only get manual backups (both .db and .zip)
             manual_backups = sorted(
@@ -119,6 +122,37 @@ class DatabaseBackup:
                 logger.info(f"🗑️  Removed old manual backup: {old_backup.name}")
         except Exception as e:
             logger.error(f"Error cleaning up old manual backups: {e}")
+    
+    def _cleanup_old_uploaded_backups(self):
+        """Remove old UPLOADED backup files beyond max_uploaded_backups (default 5)"""
+        try:
+            # Only get uploaded backups (both .db and .zip)
+            uploaded_backups = sorted(
+                [f for f in self.backup_dir.glob("backup_UPLOADED_*.*") if f.suffix in ['.db', '.zip']],
+                key=lambda x: x.stat().st_mtime,
+                reverse=True
+            )
+            
+            # Remove uploaded backups beyond max_uploaded_backups
+            for old_backup in uploaded_backups[self.max_uploaded_backups:]:
+                old_backup.unlink()
+                logger.info(f"🗑️  Removed old uploaded backup: {old_backup.name}")
+        except Exception as e:
+            logger.error(f"Error cleaning up old uploaded backups: {e}")
+    
+    def cleanup_all_old_backups(self):
+        """Run cleanup for all backup types - enforces all retention limits
+        
+        Retention limits:
+        - Auto backups: 10
+        - Manual backups: 15
+        - Uploaded backups: 5
+        """
+        logger.info("🧹 Running full backup cleanup...")
+        self._cleanup_old_backups()
+        self._cleanup_old_manual_backups()
+        self._cleanup_old_uploaded_backups()
+        logger.info("🧹 Backup cleanup complete")
     
     def delete_backup(self, filename: str) -> bool:
         """Delete a specific backup file
@@ -271,8 +305,11 @@ class DatabaseBackup:
             logger.warning("Auto-backup already running")
             return
         
+        # Run initial cleanup to enforce retention limits
+        self.cleanup_all_old_backups()
+        
         self._backup_task = asyncio.create_task(self._backup_loop())
-        logger.info(f"🔄 Auto-backup started (interval: {self.backup_interval}s)")
+        logger.info(f"🔄 Auto-backup started (interval: {self.backup_interval}s) - Limits: AUTO={self.max_backups}, MANUAL={self.max_manual_backups}, UPLOADED={self.max_uploaded_backups}")
     
     async def stop_auto_backup(self):
         """Stop automatic backup"""
@@ -291,6 +328,8 @@ class DatabaseBackup:
             try:
                 await asyncio.sleep(self.backup_interval)
                 self.create_backup(include_attachments=True)  # Always include attachments in auto-backups
+                # Run full cleanup to enforce all retention limits
+                self.cleanup_all_old_backups()
             except asyncio.CancelledError:
                 logger.info("Backup loop cancelled")
                 break
@@ -325,6 +364,10 @@ class DatabaseBackup:
                 f.write(file_content)
             
             logger.info(f"✅ Uploaded backup saved: {backup_path}")
+            
+            # Cleanup old uploaded backups
+            self._cleanup_old_uploaded_backups()
+            
             return backup_path
             
         except Exception as e:
@@ -332,11 +375,12 @@ class DatabaseBackup:
             return None
     
     def get_backup_stats(self) -> dict:
-        """Get statistics about backups (automatic and manual)"""
+        """Get statistics about backups (automatic, manual, and uploaded)"""
         all_backups = [f for f in self.backup_dir.glob("backup_*.*") 
                       if f.suffix in ['.db', '.zip'] and 'latest' not in f.name and 'corrupted' not in f.name]
         auto_backups = [f for f in all_backups if "_AUTO_" in f.name]
         manual_backups = [f for f in all_backups if "_MANUAL_" in f.name]
+        uploaded_backups = [f for f in all_backups if "_UPLOADED_" in f.name]
         full_backups = [f for f in all_backups if f.suffix == '.zip']
         db_only_backups = [f for f in all_backups if f.suffix == '.db']
         
@@ -345,6 +389,7 @@ class DatabaseBackup:
                 "count": 0,
                 "auto_count": 0,
                 "manual_count": 0,
+                "uploaded_count": 0,
                 "full_count": 0,
                 "db_only_count": 0,
                 "total_size": 0,
@@ -352,7 +397,12 @@ class DatabaseBackup:
                 "latest": None,
                 "latest_time": None,
                 "oldest": None,
-                "oldest_time": None
+                "oldest_time": None,
+                "limits": {
+                    "auto": self.max_backups,
+                    "manual": self.max_manual_backups,
+                    "uploaded": self.max_uploaded_backups
+                }
             }
         
         backups_sorted = sorted(all_backups, key=lambda x: x.stat().st_mtime, reverse=True)
@@ -362,6 +412,7 @@ class DatabaseBackup:
             "count": len(all_backups),
             "auto_count": len(auto_backups),
             "manual_count": len(manual_backups),
+            "uploaded_count": len(uploaded_backups),
             "full_count": len(full_backups),
             "db_only_count": len(db_only_backups),
             "total_size": total_size,
@@ -370,6 +421,11 @@ class DatabaseBackup:
             "latest_time": datetime.fromtimestamp(backups_sorted[0].stat().st_mtime).strftime('%Y-%m-%d %H:%M:%S') if backups_sorted else None,
             "oldest": backups_sorted[-1].name if backups_sorted else None,
             "oldest_time": datetime.fromtimestamp(backups_sorted[-1].stat().st_mtime).strftime('%Y-%m-%d %H:%M:%S') if backups_sorted else None,
+            "limits": {
+                "auto": self.max_backups,
+                "manual": self.max_manual_backups,
+                "uploaded": self.max_uploaded_backups
+            }
         }
 
 
