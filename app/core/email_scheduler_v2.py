@@ -33,12 +33,16 @@ class EmailScheduler:
     async def check_emails_task(self):
         """Background task to check emails periodically"""
         
-        print(f"[Email-to-Ticket] Scheduler started (checking every {self.check_interval}s)")
+        print(f"[Email-to-Ticket] ✅ Scheduler started (checking every {self.check_interval}s)")
+        check_count = 0
         
         while self.running:
+            check_count += 1
             try:
                 timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-                print(f"[{timestamp}] [Email-to-Ticket] Checking emails...")
+                print(f"[{timestamp}] [Email-to-Ticket] 📧 Check #{check_count} starting...")
+                
+                total_tickets_created = 0
                 
                 # Process legacy workspace email settings (single account)
                 workspace_ids = []
@@ -65,7 +69,8 @@ class EmailScheduler:
                 # Process new multi-account email settings
                 await self._process_email_accounts()
                 
-                print(f"[{timestamp}] [Email-to-Ticket] Check complete. Next check in {self.check_interval}s")
+                timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+                print(f"[{timestamp}] [Email-to-Ticket] ✅ Check #{check_count} complete. Next check in {self.check_interval}s")
                 
                 # Wait for next check
                 await asyncio.sleep(self.check_interval)
@@ -76,7 +81,7 @@ class EmailScheduler:
             except Exception as e:
                 print(f"[Email-to-Ticket] Error in background task: {e}")
                 print(f"[Email-to-Ticket] Traceback: {traceback.format_exc()}")
-                await asyncio.sleep(self.check_interval)
+                # Wait before retrying (single sleep, not double)
                 await asyncio.sleep(self.check_interval)
     
     async def _process_workspace(self, workspace_id: int):

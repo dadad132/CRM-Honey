@@ -6,12 +6,16 @@ IMAP-based email processing, uses database settings, keeps emails on server
 import asyncio
 import imaplib
 import email
+import socket
 from email.header import decode_header
 from email.utils import parseaddr
 import re
 import logging
 from datetime import datetime, date, timezone, timedelta
 from typing import Optional, List, Tuple
+
+# Set default IMAP socket timeout to prevent hanging connections
+IMAP_TIMEOUT = 60  # seconds
 from sqlmodel import Session, select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
@@ -135,18 +139,25 @@ class EmailToTicketService:
         self.workspace_id = workspace_id
         
     def connect_imap(self):
-        """Connect to IMAP server"""
+        """Connect to IMAP server with timeout"""
         try:
+            # Set socket timeout to prevent hanging
+            socket.setdefaulttimeout(IMAP_TIMEOUT)
+            
             if self.settings.incoming_mail_use_ssl:
                 mail = imaplib.IMAP4_SSL(
                     self.settings.incoming_mail_host,
-                    self.settings.incoming_mail_port or 993
+                    self.settings.incoming_mail_port or 993,
+                    timeout=IMAP_TIMEOUT
                 )
             else:
                 mail = imaplib.IMAP4(
                     self.settings.incoming_mail_host,
                     self.settings.incoming_mail_port or 143
                 )
+            
+            # Reset default timeout after connection
+            socket.setdefaulttimeout(None)
             
             mail.login(
                 self.settings.incoming_mail_username,
@@ -1234,12 +1245,14 @@ async def process_email_account(db: AsyncSession, account) -> List[Ticket]:
             nonlocal mail, pop3_conn
             
             if protocol == 'pop3':
-                # POP3 connection
+                # POP3 connection with timeout
                 print(f"[Email Account] Using POP3 protocol on {imap_host}:{imap_port}")
+                socket.setdefaulttimeout(IMAP_TIMEOUT)
                 if imap_use_ssl:
-                    pop3_conn = poplib.POP3_SSL(imap_host, imap_port or 995)
+                    pop3_conn = poplib.POP3_SSL(imap_host, imap_port or 995, timeout=IMAP_TIMEOUT)
                 else:
-                    pop3_conn = poplib.POP3(imap_host, imap_port or 110)
+                    pop3_conn = poplib.POP3(imap_host, imap_port or 110, timeout=IMAP_TIMEOUT)
+                socket.setdefaulttimeout(None)
                 
                 pop3_conn.user(imap_username)
                 pop3_conn.pass_(imap_password)
@@ -1265,10 +1278,11 @@ async def process_email_account(db: AsyncSession, account) -> List[Ticket]:
                 
                 return raw_emails
             else:
-                # IMAP connection (default)
+                # IMAP connection (default) with timeout
                 print(f"[Email Account] Using IMAP protocol on {imap_host}:{imap_port}")
+                socket.setdefaulttimeout(IMAP_TIMEOUT)
                 if imap_use_ssl:
-                    mail = imaplib.IMAP4_SSL(imap_host, imap_port or 993)
+                    mail = imaplib.IMAP4_SSL(imap_host, imap_port or 993, timeout=IMAP_TIMEOUT)
                 else:
                     # Non-SSL connection - try STARTTLS for security
                     mail = imaplib.IMAP4(imap_host, imap_port or 143)
@@ -1277,6 +1291,7 @@ async def process_email_account(db: AsyncSession, account) -> List[Ticket]:
                     except Exception:
                         # Server doesn't support STARTTLS, continue without encryption
                         pass
+                socket.setdefaulttimeout(None)  # Reset timeout
                 
                 mail.login(imap_username, imap_password)
                 mail.select('INBOX')
