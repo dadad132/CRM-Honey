@@ -900,12 +900,8 @@ class EmailToTicketService:
                         
                         existing_ticket = await self.find_ticket_by_reply(fresh_db, in_reply_to, references)
                         
-                        # If not found via headers, try subject line (Gmail/Outlook fallback)
-                        if not existing_ticket:
-                            print(f"[IMAP] Trying subject line fallback...")
-                            existing_ticket = await self.find_ticket_by_subject(fresh_db, subject)
-                        
-                        # If still not found, try by sender email (last resort)
+                        # If not found via headers, try by sender email
+                        # (Skip subject matching - too aggressive, catches invoice numbers etc.)
                         if not existing_ticket:
                             print(f"[IMAP] Trying sender email fallback...")
                             existing_ticket = await self.find_ticket_by_sender(fresh_db, sender_email)
@@ -1448,14 +1444,8 @@ async def process_email_account(db: AsyncSession, account) -> List[Ticket]:
                         fresh_db, workspace_id, in_reply_to, references
                     )
                     
-                    # If not found via headers, try subject line (Gmail/Outlook fallback)
-                    if not existing_ticket:
-                        print(f"[Email Account] Trying subject line fallback...")
-                        existing_ticket = await find_ticket_by_subject_for_account(
-                            fresh_db, workspace_id, subject
-                        )
-                    
-                    # If still not found, try by sender email (last resort)
+                    # If not found via headers, try by sender email
+                    # (Skip subject matching - too aggressive, catches invoice numbers etc.)
                     if not existing_ticket:
                         print(f"[Email Account] Trying sender email fallback...")
                         existing_ticket = await find_ticket_by_sender_for_account(
