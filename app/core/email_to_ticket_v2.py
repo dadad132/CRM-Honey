@@ -345,7 +345,7 @@ class EmailToTicketService:
         return self.clean_email_body(body)
     
     def html_to_text(self, html: str) -> str:
-        """Convert HTML email to plain text, preserving signature formatting"""
+        """Convert HTML email to clean plain text, preserving signature layout"""
         from html.parser import HTMLParser
         import re
         
@@ -355,6 +355,9 @@ class EmailToTicketService:
                 self.text = []
                 self.skip = False
                 self.current_href = None
+                self.link_text = []
+                self.in_link = False
+                self.last_was_block = False
                 
             def handle_starttag(self, tag, attrs):
                 attrs_dict = dict(attrs)
@@ -362,48 +365,104 @@ class EmailToTicketService:
                     self.skip = True
                 elif tag == 'br':
                     self.text.append('\n')
+                    self.last_was_block = True
                 elif tag == 'p':
-                    self.text.append('\n\n')
+                    if self.text and not self.last_was_block:
+                        self.text.append('\n')
+                    self.last_was_block = True
                 elif tag == 'div':
-                    self.text.append('\n')
+                    if self.text and not self.last_was_block:
+                        self.text.append('\n')
+                    self.last_was_block = True
                 elif tag in ['li']:
                     self.text.append('\n• ')
+                    self.last_was_block = True
                 elif tag == 'a':
-                    # Save href for appending after link text
                     self.current_href = attrs_dict.get('href', '')
+                    self.in_link = True
+                    self.link_text = []
                 elif tag == 'hr':
-                    self.text.append('\n' + '-' * 40 + '\n')
-                elif tag == 'td':
-                    self.text.append(' | ')
-                elif tag == 'th':
-                    self.text.append(' | ')
+                    self.text.append('\n' + '—' * 30 + '\n')
+                    self.last_was_block = True
+                elif tag == 'tr':
+                    # New table row = new line
+                    if self.text and not self.last_was_block:
+                        self.text.append('\n')
+                    self.last_was_block = True
+                elif tag in ['td', 'th']:
+                    # Table cells separated by a space (not pipes)
+                    if self.text and self.text[-1] not in ['\n', '']:
+                        last = self.text[-1].rstrip()
+                        if last:
+                            self.text.append('  ')
+                elif tag == 'img':
+                    # Show alt text for images (e.g. logo alt text)
+                    alt = attrs_dict.get('alt', '').strip()
+                    if alt:
+                        self.text.append(alt)
+                        self.last_was_block = False
+                elif tag == 'blockquote':
+                    self.text.append('\n')
+                    self.last_was_block = True
                     
             def handle_endtag(self, tag):
                 if tag in ['script', 'style', 'head']:
                     self.skip = False
                 elif tag == 'a':
-                    # Append URL after link text if it's different
-                    if self.current_href and self.current_href.startswith(('http://', 'https://', 'mailto:')):
-                        # Clean up mailto links
-                        if self.current_href.startswith('mailto:'):
-                            email = self.current_href.replace('mailto:', '').split('?')[0]
-                            self.text.append(f' <{email}>')
+                    # Smart URL handling
+                    href = self.current_href or ''
+                    display = ''.join(self.link_text).strip()
+                    
+                    if href.startswith('mailto:'):
+                        email_addr = href.replace('mailto:', '').split('?')[0]
+                        # If link text is the same as the email, just show it once
+                        if display and display != email_addr:
+                            self.text.append(f'{display} ({email_addr})')
                         else:
-                            self.text.append(f' ({self.current_href})')
+                            self.text.append(email_addr)
+                    elif href.startswith(('http://', 'https://')):
+                        if display and display != href and not display.startswith('http'):
+                            # Link text is meaningful (not just the URL)
+                            self.text.append(f'{display} ({href})')
+                        elif display:
+                            # Link text IS the URL or similar - just show once
+                            self.text.append(display)
+                        else:
+                            self.text.append(href)
+                    elif display:
+                        self.text.append(display)
+                        
                     self.current_href = None
-                elif tag in ['p', 'div']:
-                    self.text.append('\n')
+                    self.in_link = False
+                    self.link_text = []
+                    self.last_was_block = False
+                elif tag in ['p', 'div', 'blockquote']:
+                    if self.text and not self.last_was_block:
+                        self.text.append('\n')
+                    self.last_was_block = True
                 elif tag == 'tr':
-                    self.text.append('\n')
+                    pass  # handled in starttag
                 elif tag in ['table']:
+                    if self.text and not self.last_was_block:
+                        self.text.append('\n')
+                    self.last_was_block = True
+                elif tag in ['h1', 'h2', 'h3', 'h4', 'h5', 'h6']:
                     self.text.append('\n')
+                    self.last_was_block = True
                     
             def handle_data(self, data):
                 if not self.skip:
-                    # Clean up whitespace but preserve meaningful content
                     cleaned = data.strip()
                     if cleaned:
-                        self.text.append(data)
+                        if self.in_link:
+                            self.link_text.append(cleaned)
+                        else:
+                            self.text.append(cleaned)
+                        self.last_was_block = False
+                    elif data and not self.last_was_block:
+                        # Whitespace between inline elements
+                        if self.text and self.text[-1] not in ['\n', '\n\n', '']:
+                            self.text.append(' ')
         
         try:
             parser = HTMLToText()
@@ -411,9 +470,11 @@ class EmailToTicketService:
             text = ''.join(parser.text)
             
             # Clean up extra whitespace but preserve signature formatting
-            text = re.sub(r'\n{4,}', '\n\n\n', text)  # Max 3 consecutive newlines
-            text = re.sub(r' {3,}', '  ', text)  # Max 2 consecutive spaces
-            text = re.sub(r'\t+', ' ', text)  # Tabs to space
+            text = re.sub(r'\n{4,}', '\n\n', text)      # Max 2 consecutive newlines
+            text = re.sub(r' {3,}', '  ', text)          # Max 2 consecutive spaces
+            text = re.sub(r'\t+', ' ', text)              # Tabs to space
+            text = re.sub(r'[ \t]+\n', '\n', text)        # Trailing whitespace on lines
+            text = re.sub(r'\n[ \t]+\n', '\n\n', text)    # Lines with only whitespace
             text = text.strip()
             
             return text
@@ -1237,6 +1298,19 @@ async def add_comment_from_email_for_account(
     return comment
 
 
+def _html_to_text_standalone(html: str) -> str:
+    """Standalone HTML-to-text converter for use outside the EmailToTicketService class"""
+    # Create a temporary service instance to reuse the converter
+    service = EmailToTicketService.__new__(EmailToTicketService)
+    return service.html_to_text(html)
+
+
+def _clean_email_body_standalone(body: str) -> str:
+    """Standalone email body cleaner for use outside the EmailToTicketService class"""
+    service = EmailToTicketService.__new__(EmailToTicketService)
+    return service.clean_email_body(body)
+
+
 async def process_email_account(db: AsyncSession, account) -> List[Ticket]:
     """
     Process emails for an IncomingEmailAccount and create tickets or add comments to existing tickets.
@@ -1427,19 +1501,40 @@ async def process_email_account(db: AsyncSession, account) -> List[Ticket]:
                     print(f"[Email Account] In-Reply-To: '{in_reply_to}'")
                     print(f"[Email Account] References: '{references}'")
                     
-                    # Extract body
+                    # Extract body (try plain text first, fall back to HTML)
                     body = ''
+                    html_body = ''
                     if msg.is_multipart():
                         for part in msg.walk():
-                            if part.get_content_type() == 'text/plain':
+                            content_type = part.get_content_type()
+                            if content_type == 'text/plain' and not body:
                                 payload = part.get_payload(decode=True)
                                 if payload:
-                                    body = payload.decode(errors='replace')
-                                    break
+                                    charset = part.get_content_charset() or 'utf-8'
+                                    body = payload.decode(charset, errors='replace')
+                            elif content_type == 'text/html' and not html_body:
+                                payload = part.get_payload(decode=True)
+                                if payload:
+                                    charset = part.get_content_charset() or 'utf-8'
+                                    html_body = payload.decode(charset, errors='replace')
                     else:
+                        content_type = msg.get_content_type()
                         payload = msg.get_payload(decode=True)
                         if payload:
-                            body = payload.decode(errors='replace')
+                            charset = msg.get_content_charset() or 'utf-8'
+                            decoded = payload.decode(charset, errors='replace')
+                            if content_type == 'text/html':
+                                html_body = decoded
+                            else:
+                                body = decoded
+                    
+                    # If we only have HTML, convert to clean plain text
+                    if not body.strip() and html_body:
+                        body = _html_to_text_standalone(html_body)
+                    
+                    # Clean quoted replies from body
+                    if body:
+                        body = _clean_email_body_standalone(body)
                     
                     # Check if this is a reply to an existing ticket
                     existing_ticket = await find_ticket_by_reply_for_account(
