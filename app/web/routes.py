@@ -13201,6 +13201,82 @@ async def web_tickets_track_detail(
     })
 
 
+@router.post('/tickets/track/{ticket_number}/reply')
+async def web_tickets_track_reply(
+    request: Request,
+    ticket_number: str,
+    content: str = Form(...),
+    db: AsyncSession = Depends(get_session)
+):
+    """Allow guest/client to reply to their ticket from the tracking page"""
+    from app.models.ticket import Ticket, TicketComment, TicketHistory
+    
+    # Find ticket
+    result = await db.execute(
+        select(Ticket).where(Ticket.ticket_number == ticket_number)
+    )
+    ticket = result.scalar_one_or_none()
+    
+    if not ticket:
+        request.session['error_message'] = 'Ticket not found.'
+        return RedirectResponse('/web/tickets/track', status_code=303)
+    
+    if ticket.status == 'closed':
+        request.session['error_message'] = 'This ticket is closed and cannot accept new replies.'
+        return RedirectResponse(f'/web/tickets/track/{ticket_number}', status_code=303)
+    
+    # Create the comment
+    sender_name = f"{ticket.guest_name or ''} {ticket.guest_surname or ''}".strip() or ticket.guest_email or 'Guest'
+    comment = TicketComment(
+        ticket_id=ticket.id,
+        user_id=None,  # Guest comment
+        content=f"**Reply from {sender_name}:**\n\n{content}",
+        is_internal=False,
+        created_at=datetime.utcnow()
+    )
+    db.add(comment)
+    
+    # Update ticket timestamp
+    ticket.updated_at = datetime.utcnow()
+    
+    # Add history entry
+    history = TicketHistory(
+        ticket_id=ticket.id,
+        user_id=None,
+        action='comment_added',
+        new_value=f'Guest reply from {sender_name}',
+        created_at=datetime.utcnow()
+    )
+    db.add(history)
+    
+    # Notify staff about guest reply
+    from app.models.notification import Notification
+    admin_users = (await db.execute(
+        select(User).where(
+            User.workspace_id == ticket.workspace_id,
+            User.is_active == True,
+            (User.is_admin == True) | (User.can_see_all_tickets == True)
+        )
+    )).scalars().all()
+    
+    for user in admin_users:
+        if getattr(user, 'mute_ticket_notifications', False):
+            continue
+        notification = Notification(
+            user_id=user.id,
+            type='ticket',
+            message=f'💬 Guest reply on ticket #{ticket.ticket_number} from {sender_name}',
+            url=f'/web/tickets/{ticket.id}',
+            related_id=ticket.id
+        )
+        db.add(notification)
+    
+    await db.commit()
+    
+    request.session['success_message'] = 'Your reply has been sent successfully.'
+    return RedirectResponse(f'/web/tickets/track/{ticket_number}', status_code=303)
+
+
 @router.get('/tickets/archived', response_class=HTMLResponse)
 async def web_tickets_archived(request: Request, db: AsyncSession = Depends(get_session)):
     """View archived tickets"""
