@@ -1349,12 +1349,14 @@ async def process_email_account(db: AsyncSession, account) -> List[Ticket]:
                 mail.login(imap_username, imap_password)
                 mail.select('INBOX')
                 
-                # Only fetch UNSEEN (unread) emails for better performance
-                # This is much faster than fetching all emails from last 7 days
-                status, messages = mail.search(None, 'UNSEEN')
+                # Fetch emails from the last 7 days (not just unread)
+                # This ensures we catch emails even if marked as read by phone/webmail
+                from datetime import datetime, timedelta
+                date_since = (datetime.now() - timedelta(days=7)).strftime("%d-%b-%Y")
+                status, messages = mail.search(None, f'SINCE {date_since}')
                 email_ids = messages[0].split()
                 
-                print(f"[IMAP] Found {len(email_ids)} unread messages in INBOX")
+                print(f"[Email Account] Found {len(email_ids)} messages from last 7 days in INBOX")
                 
                 raw_emails = []
                 for email_id in email_ids:
