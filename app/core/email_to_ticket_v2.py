@@ -235,8 +235,11 @@ class EmailToTicketService:
         return decoded_string
     
     def extract_email_address(self, from_header: str) -> Tuple[str, str]:
-        """Extract name and email from 'From' header"""
+        """Extract name and email from 'From' header, with MIME decoding"""
         name, email_addr = parseaddr(from_header)
+        # Decode MIME-encoded name (e.g. =?UTF-8?B?...?=)
+        if name and ('=?' in name):
+            name = self.decode_header_value(name)
         return name, email_addr.lower()
     
     def clean_email_body(self, body: str) -> str:
@@ -1478,6 +1481,15 @@ async def process_email_account(db: AsyncSession, account) -> List[Ticket]:
                     from_header = msg.get('From', '')
                     sender_name, sender_email_addr = parseaddr(from_header)
                     sender_email_addr = sender_email_addr.lower() if sender_email_addr else ''
+                    # Decode MIME-encoded name (e.g. =?UTF-8?B?...?=)
+                    if sender_name and ('=?' in sender_name):
+                        decoded_parts = decode_header(sender_name)
+                        sender_name = ''
+                        for part, charset in decoded_parts:
+                            if isinstance(part, bytes):
+                                sender_name += part.decode(charset or 'utf-8', errors='replace')
+                            else:
+                                sender_name += part
                     
                     # Decode subject
                     subject_header = msg.get('Subject', 'No Subject')
