@@ -165,6 +165,7 @@ class EmailToTicketService:
             )
             return mail
         except Exception as e:
+            socket.setdefaulttimeout(None)  # Reset timeout on failure
             print(f"Failed to connect to IMAP server: {e}")
             raise
     
@@ -618,7 +619,7 @@ class EmailToTicketService:
             select(Ticket).where(
                 Ticket.guest_email == sender_email,
                 Ticket.workspace_id == self.workspace_id,
-                Ticket.status.in_(['new', 'open', 'pending', 'in_progress'])
+                Ticket.status.in_(['open', 'in_progress', 'waiting'])
             ).order_by(Ticket.created_at.desc())
         )
         tickets = result.scalars().all()
@@ -740,7 +741,7 @@ class EmailToTicketService:
             ticket_id=ticket.id,
             user_id=None,  # System action
             action='created',
-            comment=history_comment,
+            new_value=history_comment,
             created_at=datetime.utcnow()
         )
         db.add(history)
@@ -804,7 +805,7 @@ class EmailToTicketService:
             ticket_id=ticket.id,
             user_id=None,
             action='comment_added',
-            comment=f'Email reply received from {sender_email}',
+            new_value=f'Email reply received from {sender_email}',
             created_at=get_local_time()
         )
         db.add(history)
@@ -1218,7 +1219,7 @@ async def find_ticket_by_sender_for_account(db: AsyncSession, workspace_id: int,
         select(Ticket).where(
             Ticket.guest_email == sender_email,
             Ticket.workspace_id == workspace_id,
-            Ticket.status.in_(['new', 'open', 'pending', 'in_progress'])
+            Ticket.status.in_(['open', 'in_progress', 'waiting'])
         ).order_by(Ticket.created_at.desc())
     )
     tickets = result.scalars().all()
@@ -1262,7 +1263,7 @@ async def add_comment_from_email_for_account(
         ticket_id=ticket.id,
         user_id=None,
         action='comment_added',
-        comment=f'Email reply received from {sender_email}',
+        new_value=f'Email reply received from {sender_email}',
         created_at=get_local_time()
     )
     db.add(history)
@@ -1656,8 +1657,7 @@ async def process_email_account(db: AsyncSession, account) -> List[Ticket]:
                             continue
                         notification = Notification(
                             user_id=user.id,
-                            title=f"📧 New Ticket: #{ticket_number}",
-                            message=f"Email from {sender_name} ({sender_email_addr}): {subject[:100]}",
+                            message=f"📧 New Ticket: #{ticket_number} - Email from {sender_name} ({sender_email_addr}): {subject[:100]}",
                             type='ticket',
                             url=f'/web/tickets/{ticket_id}',
                             related_id=ticket_id

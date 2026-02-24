@@ -1131,8 +1131,8 @@ async def web_dashboard_quick_task(
     # Add task history
     history = TaskHistory(
         task_id=task.id,
-        user_id=user_id,
-        action='created',
+        editor_id=user_id,
+        field='created',
         new_value=title
     )
     db.add(history)
@@ -1925,8 +1925,8 @@ async def web_task_duplicate(
     # Add history
     history = TaskHistory(
         task_id=new_task.id,
-        user_id=user_id,
-        action='created',
+        editor_id=user_id,
+        field='created',
         new_value=f"Duplicated from task #{task_id}"
     )
     db.add(history)
@@ -2233,120 +2233,6 @@ async def web_notifications_mark_all_read(
     
     await db.commit()
     return RedirectResponse('/web/notifications', status_code=303)
-
-
-@router.get('/search', response_class=HTMLResponse)
-async def web_search(
-    request: Request,
-    q: str = Query(""),
-    db: AsyncSession = Depends(get_session)
-):
-    """Search across tasks and projects"""
-    user_id = request.session.get('user_id')
-    if not user_id:
-        return RedirectResponse('/web/login', status_code=303)
-    
-    user = (await db.execute(select(User).where(User.id == user_id))).scalar_one_or_none()
-    if not user or not user.is_active:
-        request.session.clear()
-        return RedirectResponse('/web/login', status_code=303)
-    
-    results = {'tasks': [], 'projects': [], 'comments': []}
-    
-    if q and len(q.strip()) >= 2:
-        search_term = f"%{q.strip()}%"
-        
-        # Search tasks - include project info in query to avoid N+1
-        from sqlalchemy.orm import selectinload
-        task_query = (
-            select(Task, Project.name.label('project_name'))
-            .join(Project, Task.project_id == Project.id)
-            .where(Project.workspace_id == user.workspace_id)
-            .where(
-                (Task.title.ilike(search_term)) | 
-                (Task.description.ilike(search_term))
-            )
-            .limit(20)
-        )
-        task_results = (await db.execute(task_query)).all()
-        
-        for task, project_name in task_results:
-            results['tasks'].append({
-                'id': task.id,
-                'title': task.title,
-                'description': task.description or '',
-                'status': task.status.value if task.status else 'todo',
-                'priority': task.priority.value if task.priority else 'medium',
-                'project_name': project_name or 'Unknown',
-                'project_id': task.project_id,
-            })
-        
-        # Search projects - use subquery for task count to avoid N+1
-        from sqlalchemy import func
-        task_count_subquery = (
-            select(func.count(Task.id))
-            .where(Task.project_id == Project.id)
-            .correlate(Project)
-            .scalar_subquery()
-        )
-        project_query = (
-            select(Project, task_count_subquery.label('task_count'))
-            .where(Project.workspace_id == user.workspace_id)
-            .where(
-                (Project.name.ilike(search_term)) | 
-                (Project.description.ilike(search_term))
-            )
-            .limit(20)
-        )
-        project_results = (await db.execute(project_query)).all()
-        
-        for project, task_count in project_results:
-            results['projects'].append({
-                'id': project.id,
-                'name': project.name,
-                'description': project.description or '',
-                'task_count': task_count or 0,
-            })
-        
-        # Search comments - join all related tables in single query
-        comment_query = (
-            select(
-                Comment,
-                Task.id.label('task_id'),
-                Task.title.label('task_title'),
-                User.full_name.label('author_full_name'),
-                User.username.label('author_username'),
-                Project.id.label('project_id'),
-                Project.name.label('project_name')
-            )
-            .join(Task, Comment.task_id == Task.id)
-            .join(Project, Task.project_id == Project.id)
-            .outerjoin(User, Comment.author_id == User.id)
-            .where(Project.workspace_id == user.workspace_id)
-            .where(Comment.content.ilike(search_term))
-            .limit(20)
-        )
-        comment_results = (await db.execute(comment_query)).all()
-        
-        for comment, task_id, task_title, author_full_name, author_username, project_id, project_name in comment_results:
-            results['comments'].append({
-                'id': comment.id,
-                'content': comment.content,
-                'created_at': comment.created_at,
-                'task_id': task_id,
-                'task_title': task_title or 'Unknown Task',
-                'author_name': author_full_name or author_username or 'Unknown',
-                'project_name': project_name or 'Unknown',
-                'project_id': project_id,
-            })
-    
-    return templates.TemplateResponse('search/results.html', {
-        'request': request,
-        'user': user,
-        'query': q,
-        'results': results,
-        'header_title': f'Search: {q}' if q else 'Search'
-    })
 
 
 # --------------------------
@@ -10819,12 +10705,16 @@ async def web_tickets_guest_submit(
         # Auto-set priority to medium for guest tickets
         priority = 'medium'
         
-        # Generate ticket number
+        # Generate ticket number using MAX to avoid race conditions
         year = datetime.utcnow().year
+        from sqlalchemy import func
         result = await db.execute(
-            select(Ticket).where(Ticket.workspace_id == workspace_id)
+            select(func.count(Ticket.id)).where(
+                Ticket.workspace_id == workspace_id,
+                Ticket.ticket_number.like(f"TKT-{year}-%")
+            )
         )
-        ticket_count = len(result.scalars().all()) + 1
+        ticket_count = (result.scalar() or 0) + 1
         ticket_number = f"TKT-{year}-{ticket_count:05d}"
         
         # Create ticket
@@ -10994,10 +10884,11 @@ async def web_tickets_guest_submit(
         })
         
     except Exception as e:
+        logger.error(f"Guest ticket creation failed: {e}")
         return templates.TemplateResponse('tickets/guest.html', {
             'request': request,
             'success': False,
-            'error': f"Failed to create ticket: {str(e)}"
+            'error': 'Failed to create ticket. Please try again or contact support.'
         })
 
 
@@ -13106,7 +12997,7 @@ async def support_analyze_image(
                     response_data['kb_articles'] = [
                         {
                             'id': a.id,
-                            'title': a.title,
+                            'title': a.problem_title,
                             'problem': a.problem_description,
                             'solution': a.solution_steps,
                             'success_rate': a.success_rate
@@ -13197,11 +13088,11 @@ async def get_support_articles(
             'articles': [
                 {
                     'id': a.id,
-                    'title': a.title,
+                    'title': a.problem_title,
                     'problem': a.problem_description,
                     'solution': a.solution_steps,
                     'success_rate': a.success_rate,
-                    'times_used': a.times_used
+                    'times_used': a.times_shown
                 }
                 for a in articles
             ]
@@ -15800,12 +15691,23 @@ async def use_template(
         project_id=int(form.get('project_id')),
         priority=template.priority,
         status='pending',
-        created_by_id=user.id,
-        assigned_to_id=int(form.get('assigned_to_id')) if form.get('assigned_to_id') else None,
+        creator_id=user.id,
         due_date=datetime.strptime(form.get('due_date'), '%Y-%m-%d') if form.get('due_date') else None
     )
     
     db.add(task)
+    await db.flush()
+    
+    # Auto-assign to creator
+    from app.models.assignment import Assignment
+    assignment = Assignment(task_id=task.id, user_id=user.id, assigned_by=user.id)
+    db.add(assignment)
+    
+    # If specific user was assigned, add them too
+    assigned_to_id = form.get('assigned_to_id')
+    if assigned_to_id and int(assigned_to_id) != user.id:
+        extra_assignment = Assignment(task_id=task.id, user_id=int(assigned_to_id), assigned_by=user.id)
+        db.add(extra_assignment)
     
     # Increment template use count
     template.use_count += 1
@@ -15814,72 +15716,6 @@ async def use_template(
     await db.refresh(task)
     
     return RedirectResponse(url=f'/web/tasks/{task.id}', status_code=303)
-
-
-# ============ ACTIVITY FEED ============
-
-@router.get('/activity', response_class=HTMLResponse)
-async def activity_page(
-    request: Request,
-    page: int = 1,
-    ajax: int = 0,
-    db: AsyncSession = Depends(get_session),
-    user: User = Depends(get_current_user)
-):
-    """Team activity feed page"""
-    from app.models.task_extensions import ActivityLog
-    if not user or not user.workspace_id:
-        return RedirectResponse(url='/web/login', status_code=303)
-    
-    per_page = 20
-    offset = (page - 1) * per_page
-    
-    # Get activity logs with user info
-    activities_query = (
-        select(ActivityLog)
-        .where(ActivityLog.workspace_id == user.workspace_id)
-        .order_by(ActivityLog.created_at.desc())
-        .offset(offset)
-        .limit(per_page + 1)
-    )
-    
-    activities = list((await db.execute(activities_query)).scalars().all())
-    has_more = len(activities) > per_page
-    activities = activities[:per_page]
-    
-    # Load user info for each activity
-    users_map = {}
-    if activities:
-        user_ids = [a.user_id for a in activities if hasattr(a, 'user_id') and a.user_id is not None]
-        if user_ids:
-            users_result = (await db.execute(
-                select(User).where(User.id.in_(user_ids))
-            )).scalars().all()
-            users_map = {u.id: u for u in users_result}
-    
-    def get_entity_url(entity_type, entity_id):
-        urls = {
-            'task': f'/web/tasks/{entity_id}',
-            'project': f'/web/projects/{entity_id}',
-            'ticket': f'/web/tickets/{entity_id}',
-        }
-        return urls.get(entity_type, '#')
-    
-    if ajax:
-        # Return just the activity items for AJAX loading
-        html = ""
-        for activity in activities:
-            html += f"<!-- Activity item HTML would go here -->"
-        return HTMLResponse(html)
-    
-    return templates.TemplateResponse("activity/index.html", {
-        "request": request,
-        "user": user,
-        "activities": activities,
-        "users_map": users_map,
-        "has_more": has_more,
-        "get_entity_url": get_entity_url
-    })
 
 
 # Calls feature removed - routes deleted
