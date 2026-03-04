@@ -4911,14 +4911,28 @@ async def web_admin_check_emails(request: Request, db: AsyncSession = Depends(ge
         from app.models.incoming_email_account import IncomingEmailAccount
         
         all_tickets = []
-        comments_added = 0
+        account_results = []  # Track per-account status
+        legacy_error = None
         
         # 1. Process main workspace emails (legacy support)
         try:
             tickets = await process_workspace_emails(db, user.workspace_id)
             all_tickets.extend(tickets)
+            account_results.append({
+                'name': 'Legacy Email Settings',
+                'status': 'success',
+                'tickets_created': len(tickets)
+            })
         except Exception as e:
+            import traceback
+            legacy_error = str(e)
             logger.warning(f"[Email] Error processing workspace emails: {e}")
+            logger.warning(traceback.format_exc())
+            account_results.append({
+                'name': 'Legacy Email Settings',
+                'status': 'error',
+                'error': str(e)
+            })
         
         # 2. Process ALL alternate email accounts
         accounts_result = await db.execute(
@@ -4933,15 +4947,43 @@ async def web_admin_check_emails(request: Request, db: AsyncSession = Depends(ge
             try:
                 tickets = await process_email_account(db, account)
                 all_tickets.extend(tickets)
+                account_results.append({
+                    'name': account.name,
+                    'email': account.email_address,
+                    'host': account.imap_host,
+                    'protocol': getattr(account, 'protocol', 'imap'),
+                    'status': 'success',
+                    'tickets_created': len(tickets)
+                })
             except Exception as e:
+                import traceback
                 logger.warning(f"[Email] Error processing account {account.name}: {e}")
+                logger.warning(traceback.format_exc())
+                account_results.append({
+                    'name': account.name,
+                    'email': account.email_address,
+                    'host': account.imap_host,
+                    'protocol': getattr(account, 'protocol', 'imap'),
+                    'status': 'error',
+                    'error': str(e)
+                })
+        
+        # Build summary
+        failed_accounts = [a for a in account_results if a['status'] == 'error']
+        success_accounts = [a for a in account_results if a['status'] == 'success']
+        
+        message = f'Checked {len(account_results)} email source(s): {len(success_accounts)} succeeded'
+        if failed_accounts:
+            failed_names = ', '.join(a['name'] for a in failed_accounts)
+            message += f', {len(failed_accounts)} FAILED ({failed_names})'
         
         return JSONResponse({
-            'success': True, 
-            'message': f'Checked emails successfully ({len(accounts)} alternate account(s))',
+            'success': len(failed_accounts) == 0, 
+            'message': message,
             'tickets_created': len(all_tickets),
             'ticket_numbers': [t.ticket_number for t in all_tickets],
-            'accounts_checked': len(accounts)
+            'accounts_checked': len(accounts),
+            'account_results': account_results
         })
         
     except Exception as e:
@@ -4949,6 +4991,215 @@ async def web_admin_check_emails(request: Request, db: AsyncSession = Depends(ge
         error_details = traceback.format_exc()
         logger.error(f"Email check error: {error_details}")
         return JSONResponse({'success': False, 'error': str(e), 'details': error_details})
+
+
+@router.get('/admin/email-settings/diagnose')
+async def web_admin_email_diagnose(request: Request, db: AsyncSession = Depends(get_session)):
+    """Diagnose email account connections - tests each account and reports status"""
+    user_id = request.session.get('user_id')
+    if not user_id:
+        return JSONResponse({'success': False, 'error': 'Not authenticated'})
+    
+    user = (await db.execute(select(User).where(User.id == user_id))).scalar_one_or_none()
+    if not user or not user.is_admin:
+        return JSONResponse({'success': False, 'error': 'Admin access required'})
+    
+    import imaplib as _imaplib
+    import poplib as _poplib
+    import socket as _socket
+    
+    from app.models.email_settings import EmailSettings
+    from app.models.incoming_email_account import IncomingEmailAccount
+    from app.models.processed_mail import ProcessedMail
+    
+    results = []
+    
+    # 1. Check legacy EmailSettings
+    settings = (await db.execute(
+        select(EmailSettings).where(EmailSettings.workspace_id == user.workspace_id)
+    )).scalar_one_or_none()
+    
+    if settings and settings.incoming_mail_host:
+        def test_legacy():
+            step = "initializing"
+            try:
+                _socket.setdefaulttimeout(15)
+                host = settings.incoming_mail_host
+                port = settings.incoming_mail_port or 993
+                use_ssl = settings.incoming_mail_use_ssl
+                username = settings.incoming_mail_username
+                
+                step = f"connecting to {host}:{port}"
+                if use_ssl:
+                    m = _imaplib.IMAP4_SSL(host, port)
+                else:
+                    m = _imaplib.IMAP4(host, port or 143)
+                
+                step = f"authenticating as {username}"
+                m.login(username, settings.incoming_mail_password)
+                
+                step = "selecting INBOX"
+                m.select('INBOX')
+                
+                from datetime import datetime as dt2, timedelta as td2
+                date_since = (dt2.now() - td2(days=7)).strftime("%d-%b-%Y")
+                status2, messages2 = m.search(None, f'SINCE {date_since}')
+                email_count = len(messages2[0].split()) if messages2[0] else 0
+                
+                gmail_folders = {}
+                for folder in ['[Gmail]/Spam', '[Gmail]/All Mail', '[Gmail]/Trash']:
+                    try:
+                        s, _ = m.select(folder)
+                        if s == 'OK':
+                            s2, m2 = m.search(None, f'SINCE {date_since}')
+                            gmail_folders[folder] = len(m2[0].split()) if m2[0] else 0
+                    except Exception:
+                        pass
+                
+                m.close()
+                m.logout()
+                _socket.setdefaulttimeout(None)
+                return {
+                    'status': 'success',
+                    'inbox_emails_7days': email_count,
+                    'gmail_folders': gmail_folders if gmail_folders else None
+                }
+            except Exception as e:
+                _socket.setdefaulttimeout(None)
+                return {'status': 'error', 'error': f"Failed at {step}: {str(e)}"}
+        
+        import asyncio as _asyncio
+        try:
+            result = await _asyncio.wait_for(_asyncio.to_thread(test_legacy), timeout=30.0)
+        except _asyncio.TimeoutError:
+            result = {'status': 'error', 'error': 'Connection timed out after 30 seconds'}
+        
+        results.append({
+            'type': 'Legacy EmailSettings',
+            'name': 'Main Workspace Email',
+            'host': settings.incoming_mail_host,
+            'port': settings.incoming_mail_port,
+            'username': settings.incoming_mail_username,
+            'use_ssl': settings.incoming_mail_use_ssl,
+            'mail_type': settings.incoming_mail_type,
+            **result
+        })
+    else:
+        results.append({
+            'type': 'Legacy EmailSettings',
+            'name': 'Main Workspace Email',
+            'status': 'not_configured',
+            'error': 'No incoming mail settings configured'
+        })
+    
+    # 2. Check IncomingEmailAccount entries
+    accounts = (await db.execute(
+        select(IncomingEmailAccount).where(
+            IncomingEmailAccount.workspace_id == user.workspace_id
+        )
+    )).scalars().all()
+    
+    for account in accounts:
+        acct_host = account.imap_host
+        acct_port = account.imap_port or 993
+        acct_ssl = account.imap_use_ssl
+        acct_user = account.imap_username
+        acct_pass = account.imap_password
+        acct_protocol = getattr(account, 'protocol', 'imap')
+        
+        def test_account(h=acct_host, p=acct_port, ssl_on=acct_ssl, u=acct_user, pw=acct_pass, proto=acct_protocol):
+            step = "initializing"
+            try:
+                _socket.setdefaulttimeout(15)
+                if proto == 'pop3':
+                    step = f"POP3 connecting to {h}:{p}"
+                    if ssl_on:
+                        conn = _poplib.POP3_SSL(h, p)
+                    else:
+                        conn = _poplib.POP3(h, p or 110)
+                    step = f"authenticating as {u}"
+                    conn.user(u)
+                    conn.pass_(pw)
+                    count, size = conn.stat()
+                    conn.quit()
+                    _socket.setdefaulttimeout(None)
+                    return {'status': 'success', 'total_emails': count, 'protocol': 'pop3'}
+                else:
+                    step = f"IMAP connecting to {h}:{p}"
+                    if ssl_on:
+                        m = _imaplib.IMAP4_SSL(h, p)
+                    else:
+                        m = _imaplib.IMAP4(h, p or 143)
+                        try:
+                            m.starttls()
+                        except Exception:
+                            pass
+                    
+                    step = f"authenticating as {u}"
+                    m.login(u, pw)
+                    m.select('INBOX')
+                    
+                    from datetime import datetime as dt3, timedelta as td3
+                    date_since = (dt3.now() - td3(days=7)).strftime("%d-%b-%Y")
+                    status3, messages3 = m.search(None, f'SINCE {date_since}')
+                    email_count = len(messages3[0].split()) if messages3[0] else 0
+                    
+                    gmail_folders = {}
+                    if 'gmail' in h.lower() or 'google' in h.lower():
+                        for folder in ['[Gmail]/Spam', '[Gmail]/All Mail', '[Gmail]/Trash']:
+                            try:
+                                s, _ = m.select(folder)
+                                if s == 'OK':
+                                    s2, m2 = m.search(None, f'SINCE {date_since}')
+                                    gmail_folders[folder] = len(m2[0].split()) if m2[0] else 0
+                            except Exception:
+                                pass
+                    
+                    m.close()
+                    m.logout()
+                    _socket.setdefaulttimeout(None)
+                    return {
+                        'status': 'success',
+                        'inbox_emails_7days': email_count,
+                        'gmail_folders': gmail_folders if gmail_folders else None,
+                        'protocol': 'imap'
+                    }
+            except Exception as e:
+                _socket.setdefaulttimeout(None)
+                return {'status': 'error', 'error': f"Failed at {step}: {str(e)}"}
+        
+        import asyncio as _asyncio2
+        try:
+            result = await _asyncio2.wait_for(_asyncio2.to_thread(test_account), timeout=30.0)
+        except _asyncio2.TimeoutError:
+            result = {'status': 'error', 'error': 'Connection timed out after 30 seconds'}
+        
+        results.append({
+            'type': 'IncomingEmailAccount',
+            'name': account.name,
+            'email': account.email_address,
+            'host': account.imap_host,
+            'port': account.imap_port,
+            'username': account.imap_username,
+            'use_ssl': account.imap_use_ssl,
+            'is_active': account.is_active,
+            'protocol': acct_protocol,
+            **result
+        })
+    
+    # 3. Get processed email count
+    processed_result = await db.execute(
+        select(ProcessedMail).where(ProcessedMail.workspace_id == user.workspace_id)
+    )
+    processed_count = len(processed_result.scalars().all())
+    
+    return JSONResponse({
+        'success': True,
+        'workspace_id': user.workspace_id,
+        'total_email_sources': len(results),
+        'total_processed_emails': processed_count,
+        'accounts': results
+    })
 
 
 @router.get('/admin/email-settings/debug')

@@ -907,8 +907,7 @@ class EmailToTicketService:
                         # Folder doesn't exist or can't be selected - skip silently
                         continue
                 
-                # Re-select INBOX for marking emails as read
-                mail.select('INBOX')
+                # Don't re-select INBOX here - we'll select the correct folder when marking as read
                 return all_raw_emails
             
             # Run IMAP fetch in thread pool (non-blocking)
@@ -931,12 +930,23 @@ class EmailToTicketService:
                     # Get message ID
                     message_id = msg.get('Message-ID', f'no-id-{email_id.decode()}')
                     
+                    # Helper to mark email as read in correct folder
+                    async def mark_as_read_in_folder(eid, fld):
+                        """Select the correct folder and mark email as read"""
+                        def _mark():
+                            mail.select(fld)
+                            mail.store(eid, '+FLAGS', '\\Seen')
+                        await asyncio.to_thread(_mark)
+                    
                     # Use fresh session for each email to avoid greenlet context issues
                     async with NewAsyncSession(engine) as fresh_db:
                         # Check if already processed
                         if await self.is_email_processed(fresh_db, message_id):
                             # Mark as read but don't process again (run in thread)
-                            await asyncio.to_thread(mail.store, email_id, '+FLAGS', '\\Seen')
+                            try:
+                                await mark_as_read_in_folder(email_id, folder)
+                            except Exception as e:
+                                print(f"[IMAP] Warning: Could not mark email as read in {folder}: {e}")
                             continue
                         
                         # Extract email info
@@ -996,8 +1006,11 @@ class EmailToTicketService:
                                 fresh_db, message_id, sender_email, subject, existing_ticket_id
                             )
                             
-                            # Mark email as read (run in thread - blocking operation)
-                            await asyncio.to_thread(mail.store, email_id, '+FLAGS', '\\Seen')
+                            # Mark email as read in correct folder (run in thread)
+                            try:
+                                await mark_as_read_in_folder(email_id, folder)
+                            except Exception as e:
+                                print(f"[IMAP] Warning: Could not mark email as read in {folder}: {e}")
                             
                             print(f"[IMAP] Added comment to ticket {existing_ticket_number} from {sender_email}")
                         else:
@@ -1007,7 +1020,10 @@ class EmailToTicketService:
                                     print(f"[IMAP] ⏭️ SKIPPING: Email from {folder} folder doesn't look like a support query")
                                     print(f"[IMAP]    Subject: {subject[:50]}...")
                                     # Mark as read but don't create ticket
-                                    await asyncio.to_thread(mail.store, email_id, '+FLAGS', '\\Seen')
+                                    try:
+                                        await mark_as_read_in_folder(email_id, folder)
+                                    except Exception as e:
+                                        print(f"[IMAP] Warning: Could not mark email as read in {folder}: {e}")
                                     # Mark as processed to avoid checking again
                                     await self.mark_email_processed(
                                         fresh_db, message_id, sender_email, subject, None
@@ -1031,8 +1047,11 @@ class EmailToTicketService:
                                 fresh_db, message_id, sender_email, subject, ticket_id
                             )
                             
-                            # Mark email as read (run in thread)
-                            await asyncio.to_thread(mail.store, email_id, '+FLAGS', '\\Seen')
+                            # Mark email as read in correct folder (run in thread)
+                            try:
+                                await mark_as_read_in_folder(email_id, folder)
+                            except Exception as e:
+                                print(f"[IMAP] Warning: Could not mark email as read in {folder}: {e}")
                             
                             tickets_created.append(ticket)
                             if project:
@@ -1425,28 +1444,50 @@ async def process_email_account(db: AsyncSession, account) -> List[Ticket]:
                 socket.setdefaulttimeout(None)  # Reset timeout
                 
                 mail.login(imap_username, imap_password)
-                mail.select('INBOX')
+                
+                # Check multiple folders - INBOX plus Gmail-specific folders
+                # Gmail may route emails to spam/promotions/etc.
+                folders_to_check = ['INBOX']
+                
+                # Add Gmail-specific folders if it looks like a Gmail server
+                if 'gmail' in imap_host.lower() or 'google' in imap_host.lower():
+                    folders_to_check.extend([
+                        '[Gmail]/Spam',
+                        '[Gmail]/All Mail',
+                    ])
                 
                 # Fetch emails from the last 7 days (not just unread)
                 # This ensures we catch emails even if marked as read by phone/webmail
                 from datetime import datetime, timedelta
                 date_since = (datetime.now() - timedelta(days=7)).strftime("%d-%b-%Y")
-                status, messages = mail.search(None, f'SINCE {date_since}')
-                email_ids = messages[0].split()
-                
-                print(f"[Email Account] Found {len(email_ids)} messages from last 7 days in INBOX")
                 
                 raw_emails = []
-                for email_id in email_ids:
+                for folder in folders_to_check:
                     try:
-                        status, msg_data = mail.fetch(email_id, '(RFC822)')
-                        if msg_data and msg_data[0]:
-                            raw_emails.append({
-                                'email_id': email_id,
-                                'msg_bytes': msg_data[0][1]
-                            })
+                        status, _ = mail.select(folder)
+                        if status != 'OK':
+                            continue
+                        
+                        status, messages = mail.search(None, f'SINCE {date_since}')
+                        email_ids = messages[0].split()
+                        
+                        if email_ids:
+                            print(f"[Email Account] Found {len(email_ids)} messages from last 7 days in {folder}")
+                        
+                        for email_id in email_ids:
+                            try:
+                                status, msg_data = mail.fetch(email_id, '(RFC822)')
+                                if msg_data and msg_data[0]:
+                                    raw_emails.append({
+                                        'email_id': email_id,
+                                        'msg_bytes': msg_data[0][1],
+                                        'folder': folder  # Track which folder this came from
+                                    })
+                            except Exception as e:
+                                print(f"[Email Account] Error fetching email {email_id} from {folder}: {e}")
+                                continue
                     except Exception as e:
-                        print(f"[Email Account] Error fetching email {email_id}: {e}")
+                        # Folder doesn't exist or can't be selected - skip silently
                         continue
                 
                 return raw_emails
@@ -1458,6 +1499,7 @@ async def process_email_account(db: AsyncSession, account) -> List[Ticket]:
         
         for raw_email in raw_emails:
             email_id = raw_email['email_id']
+            email_folder = raw_email.get('folder', 'INBOX')  # Track folder for marking as read
             try:
                 msg = email_lib.message_from_bytes(raw_email['msg_bytes'])
                 
@@ -1474,7 +1516,14 @@ async def process_email_account(db: AsyncSession, account) -> List[Ticket]:
                     )
                     if existing.scalar_one_or_none():
                         print(f"[Email Account] Email already processed, marking as read")
-                        await asyncio.to_thread(mail.store, email_id, '+FLAGS', '\\Seen')
+                        if mail:
+                            try:
+                                def _mark_read_1():
+                                    mail.select(email_folder)
+                                    mail.store(email_id, '+FLAGS', '\\Seen')
+                                await asyncio.to_thread(_mark_read_1)
+                            except Exception as e:
+                                print(f"[Email Account] Warning: Could not mark email as read: {e}")
                         continue
                     
                     # Extract email info
@@ -1588,7 +1637,13 @@ async def process_email_account(db: AsyncSession, account) -> List[Ticket]:
                         
                         # Mark as read (run in thread)
                         if mail:
-                            await asyncio.to_thread(mail.store, email_id, '+FLAGS', '\\Seen')
+                            try:
+                                def _mark_read_2():
+                                    mail.select(email_folder)
+                                    mail.store(email_id, '+FLAGS', '\\Seen')
+                                await asyncio.to_thread(_mark_read_2)
+                            except Exception as e:
+                                print(f"[Email Account] Warning: Could not mark email as read: {e}")
                         
                         print(f"[Email Account] Added comment to ticket #{existing_ticket_number} from {sender_email_addr}")
                         continue  # Move to next email, don't create new ticket
@@ -1652,7 +1707,14 @@ async def process_email_account(db: AsyncSession, account) -> List[Ticket]:
                     await fresh_db.commit()
                     
                     # Mark as read (run in thread)
-                    await asyncio.to_thread(mail.store, email_id, '+FLAGS', '\\Seen')
+                    if mail:
+                        try:
+                            def _mark_read_3():
+                                mail.select(email_folder)
+                                mail.store(email_id, '+FLAGS', '\\Seen')
+                            await asyncio.to_thread(_mark_read_3)
+                        except Exception as e:
+                            print(f"[Email Account] Warning: Could not mark email as read: {e}")
                     
                     # Notify all admins and users with can_see_all_tickets permission
                     admin_query = select(User).where(
@@ -1694,7 +1756,7 @@ async def process_email_account(db: AsyncSession, account) -> List[Ticket]:
             await asyncio.to_thread(lambda: pop3_conn.quit())
         
     except Exception as e:
-        print(f"[Email Account] Error fetching emails for account {account_name}: {e}")
+        print(f"[Email Account] ❌ Error fetching emails for account {account_name}: {e}")
         import traceback
         traceback.print_exc()
         if mail:
@@ -1707,5 +1769,7 @@ async def process_email_account(db: AsyncSession, account) -> List[Ticket]:
                 await asyncio.to_thread(lambda: pop3_conn.quit())
             except:
                 pass
+        # Re-raise so the caller can report the error per-account
+        raise
     
     return tickets_created

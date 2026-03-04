@@ -21,3 +21,4 @@ app/uploads/
 
 # Alembic
 alembic/versions/*.pyc
+*.DS_Store
