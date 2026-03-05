@@ -112,8 +112,8 @@
                         <label class="block text-sm font-medium text-gray-700 mb-1">Mail Type</label>
                         <select name="incoming_mail_type"
                                 class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-green-500">
-                            <option value="POP3" {% if not settings or settings.incoming_mail_type == 'POP3' %}selected{% endif %}>POP3</option>
-                            <option value="IMAP" {% if settings and settings.incoming_mail_type == 'IMAP' %}selected{% endif %}>IMAP</option>
+                            <option value="IMAP" {% if not settings or settings.incoming_mail_type == 'IMAP' %}selected{% endif %}>IMAP</option>
+                            <option value="POP3" {% if settings and settings.incoming_mail_type == 'POP3' %}selected{% endif %}>POP3</option>
                         </select>
                     </div>
                     
@@ -129,9 +129,9 @@
                         <div>
                             <label class="block text-sm font-medium text-gray-700 mb-1">Incoming Port</label>
                             <input type="number" name="incoming_mail_port"
-                                   value="{{ settings.incoming_mail_port if settings and settings.incoming_mail_port else 110 }}"
+                                   value="{{ settings.incoming_mail_port if settings and settings.incoming_mail_port else 993 }}"
                                    class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-green-500"
-                                   placeholder="110">
+                                   placeholder="993">
                             <p class="text-xs text-gray-500 mt-1">POP3: 110 (995 SSL) | IMAP: 143 (993 SSL)</p>
                         </div>
                     </div>

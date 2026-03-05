@@ -4745,9 +4745,9 @@ async def web_admin_email_settings_save(
     smtp_from_email: str = Form(...),
     smtp_from_name: str = Form(...),
     smtp_use_tls: Optional[str] = Form(None),
-    incoming_mail_type: Optional[str] = Form("POP3"),
+    incoming_mail_type: Optional[str] = Form("IMAP"),
     incoming_mail_host: Optional[str] = Form(None),
-    incoming_mail_port: Optional[int] = Form(110),
+    incoming_mail_port: Optional[int] = Form(993),
     incoming_mail_username: Optional[str] = Form(None),
     incoming_mail_password: Optional[str] = Form(None),
     incoming_mail_use_ssl: Optional[str] = Form(None),
@@ -5029,7 +5029,14 @@ async def web_admin_email_diagnose(request: Request, db: AsyncSession = Depends(
                 use_ssl = settings.incoming_mail_use_ssl
                 username = settings.incoming_mail_username
                 
-                step = f"connecting to {host}:{port}"
+                # Auto-detect Gmail and force correct IMAP settings
+                is_gmail = 'gmail' in host.lower() or 'google' in host.lower()
+                if is_gmail and (not use_ssl or port in (110, 143, 0)):
+                    print(f"[Diagnose] Gmail detected ({host}) - forcing SSL on port 993")
+                    use_ssl = True
+                    port = 993
+                
+                step = f"connecting to {host}:{port} (SSL={use_ssl})"
                 if use_ssl:
                     m = _imaplib.IMAP4_SSL(host, port)
                 else:

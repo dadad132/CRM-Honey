@@ -25,12 +25,12 @@ class EmailSettings(SQLModel, table=True):
     smtp_use_tls: bool = Field(default=True)
     
     # Incoming Mail Settings (POP3/IMAP)
-    incoming_mail_type: Optional[str] = Field(default="POP3")  # POP3 or IMAP
+    incoming_mail_type: Optional[str] = Field(default="IMAP")  # POP3 or IMAP
     incoming_mail_host: Optional[str] = Field(default=None)
-    incoming_mail_port: Optional[int] = Field(default=110)  # 110 for POP3, 993 for IMAP
+    incoming_mail_port: Optional[int] = Field(default=993)  # 993 for IMAP SSL, 110 for POP3
     incoming_mail_username: Optional[str] = Field(default=None)
     incoming_mail_password: Optional[str] = Field(default=None)
-    incoming_mail_use_ssl: bool = Field(default=False)
+    incoming_mail_use_ssl: bool = Field(default=True)
     webmail_url: Optional[str] = Field(default=None)
     
     # Email Template Settings

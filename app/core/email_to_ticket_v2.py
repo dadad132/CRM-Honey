@@ -139,21 +139,39 @@ class EmailToTicketService:
         self.workspace_id = workspace_id
         
     def connect_imap(self):
-        """Connect to IMAP server with timeout"""
+        """Connect to IMAP server with timeout.
+        
+        Auto-detects Gmail/Google hosts and forces correct IMAP settings
+        (port 993, SSL) regardless of what the user configured, since Gmail
+        requires SSL on port 993 for IMAP access.
+        """
         try:
+            host = self.settings.incoming_mail_host or ''
+            port = self.settings.incoming_mail_port
+            use_ssl = self.settings.incoming_mail_use_ssl
+            
+            # Auto-detect Gmail/Google and force correct IMAP settings
+            # Gmail REQUIRES SSL on port 993 — POP3 defaults (port 110, no SSL) will fail
+            is_gmail = 'gmail' in host.lower() or 'google' in host.lower()
+            if is_gmail:
+                if not use_ssl or port in (None, 110, 143, 0):
+                    print(f"[IMAP] Gmail detected ({host}) - forcing SSL on port 993 (was port={port}, ssl={use_ssl})")
+                    use_ssl = True
+                    port = 993
+            
             # Set socket timeout to prevent hanging
             socket.setdefaulttimeout(IMAP_TIMEOUT)
             
-            if self.settings.incoming_mail_use_ssl:
+            if use_ssl:
                 mail = imaplib.IMAP4_SSL(
-                    self.settings.incoming_mail_host,
-                    self.settings.incoming_mail_port or 993,
+                    host,
+                    port or 993,
                     timeout=IMAP_TIMEOUT
                 )
             else:
                 mail = imaplib.IMAP4(
-                    self.settings.incoming_mail_host,
-                    self.settings.incoming_mail_port or 143
+                    host,
+                    port or 143
                 )
             
             # Reset default timeout after connection
@@ -163,10 +181,11 @@ class EmailToTicketService:
                 self.settings.incoming_mail_username,
                 self.settings.incoming_mail_password
             )
+            print(f"[IMAP] Successfully connected to {host}:{port} (SSL={use_ssl})")
             return mail
         except Exception as e:
             socket.setdefaulttimeout(None)  # Reset timeout on failure
-            print(f"Failed to connect to IMAP server: {e}")
+            print(f"[IMAP] Failed to connect to IMAP server {host}:{port} (SSL={use_ssl}): {e}")
             raise
     
     def _fetch_raw_emails_sync(self) -> List[dict]:
@@ -1107,7 +1126,12 @@ async def process_workspace_emails(db: AsyncSession, workspace_id: int) -> List[
         print(f"[Email] Incoming mail not configured for workspace {workspace_id}")
         return []
     
-    # Create service and process emails
+    # Log the settings being used for debugging
+    print(f"[Email] Workspace {workspace_id}: host={settings.incoming_mail_host}, "
+          f"port={settings.incoming_mail_port}, type={settings.incoming_mail_type}, "
+          f"ssl={settings.incoming_mail_use_ssl}, user={settings.incoming_mail_username}")
+    
+    # Create service and process emails (always uses IMAP — connect_imap auto-detects Gmail)
     service = EmailToTicketService(settings, workspace_id)
     return await service.process_emails(db)
 
@@ -1394,6 +1418,18 @@ async def process_email_account(db: AsyncSession, account) -> List[Ticket]:
             """Synchronous mail connection and fetch (IMAP or POP3)"""
             nonlocal mail, pop3_conn
             
+            # Auto-detect Gmail and force correct settings
+            is_gmail = 'gmail' in imap_host.lower() or 'google' in imap_host.lower()
+            effective_ssl = imap_use_ssl
+            effective_port = imap_port
+            
+            if is_gmail and protocol != 'pop3':
+                # Gmail REQUIRES SSL on port 993 for IMAP
+                if not effective_ssl or effective_port in (None, 110, 143, 0):
+                    print(f"[Email Account] Gmail detected ({imap_host}) - forcing SSL on port 993 (was port={effective_port}, ssl={effective_ssl})")
+                    effective_ssl = True
+                    effective_port = 993
+            
             if protocol == 'pop3':
                 # POP3 connection with timeout
                 print(f"[Email Account] Using POP3 protocol on {imap_host}:{imap_port}")
@@ -1429,13 +1465,13 @@ async def process_email_account(db: AsyncSession, account) -> List[Ticket]:
                 return raw_emails
             else:
                 # IMAP connection (default) with timeout
-                print(f"[Email Account] Using IMAP protocol on {imap_host}:{imap_port}")
+                print(f"[Email Account] Using IMAP protocol on {imap_host}:{effective_port} (SSL={effective_ssl})")
                 socket.setdefaulttimeout(IMAP_TIMEOUT)
-                if imap_use_ssl:
-                    mail = imaplib.IMAP4_SSL(imap_host, imap_port or 993, timeout=IMAP_TIMEOUT)
+                if effective_ssl:
+                    mail = imaplib.IMAP4_SSL(imap_host, effective_port or 993, timeout=IMAP_TIMEOUT)
                 else:
                     # Non-SSL connection - try STARTTLS for security
-                    mail = imaplib.IMAP4(imap_host, imap_port or 143)
+                    mail = imaplib.IMAP4(imap_host, effective_port or 143)
                     try:
                         mail.starttls()
                     except Exception:
@@ -1453,8 +1489,9 @@ async def process_email_account(db: AsyncSession, account) -> List[Ticket]:
                 if 'gmail' in imap_host.lower() or 'google' in imap_host.lower():
                     folders_to_check.extend([
                         '[Gmail]/Spam',
-                        '[Gmail]/All Mail',
                     ])
+                    # NOTE: Do NOT add [Gmail]/All Mail — it contains duplicates of
+                    # every INBOX email, causing double-processing and folder state bugs
                 
                 # Fetch emails from the last 7 days (not just unread)
                 # This ensures we catch emails even if marked as read by phone/webmail
@@ -1518,9 +1555,10 @@ async def process_email_account(db: AsyncSession, account) -> List[Ticket]:
                         print(f"[Email Account] Email already processed, marking as read")
                         if mail:
                             try:
-                                def _mark_read_1():
-                                    mail.select(email_folder)
-                                    mail.store(email_id, '+FLAGS', '\\Seen')
+                                # Capture variables by value using default arguments to avoid closure bug
+                                def _mark_read_1(_folder=email_folder, _eid=email_id):
+                                    mail.select(_folder)
+                                    mail.store(_eid, '+FLAGS', '\\Seen')
                                 await asyncio.to_thread(_mark_read_1)
                             except Exception as e:
                                 print(f"[Email Account] Warning: Could not mark email as read: {e}")
@@ -1638,9 +1676,10 @@ async def process_email_account(db: AsyncSession, account) -> List[Ticket]:
                         # Mark as read (run in thread)
                         if mail:
                             try:
-                                def _mark_read_2():
-                                    mail.select(email_folder)
-                                    mail.store(email_id, '+FLAGS', '\\Seen')
+                                # Capture variables by value using default arguments to avoid closure bug
+                                def _mark_read_2(_folder=email_folder, _eid=email_id):
+                                    mail.select(_folder)
+                                    mail.store(_eid, '+FLAGS', '\\Seen')
                                 await asyncio.to_thread(_mark_read_2)
                             except Exception as e:
                                 print(f"[Email Account] Warning: Could not mark email as read: {e}")
@@ -1709,9 +1748,10 @@ async def process_email_account(db: AsyncSession, account) -> List[Ticket]:
                     # Mark as read (run in thread)
                     if mail:
                         try:
-                            def _mark_read_3():
-                                mail.select(email_folder)
-                                mail.store(email_id, '+FLAGS', '\\Seen')
+                            # Capture variables by value using default arguments to avoid closure bug
+                            def _mark_read_3(_folder=email_folder, _eid=email_id):
+                                mail.select(_folder)
+                                mail.store(_eid, '+FLAGS', '\\Seen')
                             await asyncio.to_thread(_mark_read_3)
                         except Exception as e:
                             print(f"[Email Account] Warning: Could not mark email as read: {e}")
