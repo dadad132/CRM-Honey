@@ -10682,6 +10682,24 @@ async def web_tickets_list(request: Request, db: AsyncSession = Depends(get_sess
             TicketComment.content.ilike(search_pattern)
         )
         
+        # Subquery to find tickets assigned to a user matching the search
+        assigned_user_match = exists().where(
+            User.id == Ticket.assigned_to_id,
+            or_(
+                User.full_name.ilike(search_pattern),
+                User.email.ilike(search_pattern),
+            )
+        )
+        
+        # Subquery to find tickets created by a user matching the search
+        created_user_match = exists().where(
+            User.id == Ticket.created_by_id,
+            or_(
+                User.full_name.ilike(search_pattern),
+                User.email.ilike(search_pattern),
+            )
+        )
+        
         query = query.where(
             or_(
                 Ticket.ticket_number.ilike(search_pattern),
@@ -10691,7 +10709,13 @@ async def web_tickets_list(request: Request, db: AsyncSession = Depends(get_sess
                 Ticket.guest_name.ilike(search_pattern),
                 Ticket.guest_surname.ilike(search_pattern),
                 Ticket.guest_company.ilike(search_pattern),
-                comment_match
+                Ticket.guest_phone.ilike(search_pattern),
+                Ticket.guest_office_number.ilike(search_pattern),
+                Ticket.guest_branch.ilike(search_pattern),
+                Ticket.closing_notes.ilike(search_pattern),
+                comment_match,
+                assigned_user_match,
+                created_user_match,
             )
         )
     
