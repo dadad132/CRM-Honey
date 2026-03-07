@@ -7,8 +7,10 @@ import asyncio
 import imaplib
 import email
 import socket
+import uuid
 from email.header import decode_header
 from email.utils import parseaddr
+from pathlib import Path
 import re
 import logging
 from datetime import datetime, date, timezone, timedelta
@@ -19,12 +21,18 @@ IMAP_TIMEOUT = 60  # seconds
 from sqlmodel import Session, select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
-from app.models.ticket import Ticket, TicketHistory, TicketComment
+from app.models.ticket import Ticket, TicketHistory, TicketComment, TicketAttachment
 from app.models.user import User
 from app.models.notification import Notification
 from app.models.email_settings import EmailSettings
 from app.models.processed_mail import ProcessedMail
 from app.models.project import Project
+
+# Upload directory for email attachments (same as web form uploads)
+UPLOAD_DIR = Path(__file__).resolve().parents[1] / 'uploads' / 'tickets'
+
+# Max attachment size: 10MB (same as web form)
+MAX_ATTACHMENT_SIZE = 10 * 1024 * 1024
 
 # Setup logger
 logger = logging.getLogger(__name__)
@@ -35,6 +43,135 @@ LOCAL_TZ_OFFSET = timedelta(hours=2)
 def get_local_time() -> datetime:
     """Get current time in local timezone (UTC+2)"""
     return datetime.now(timezone(LOCAL_TZ_OFFSET))
+
+
+def extract_email_attachments(msg) -> List[dict]:
+    """Extract attachments from an email.message.Message object.
+    
+    Returns a list of dicts with: filename, content, content_type, size
+    Skips inline images and oversized files.
+    """
+    attachments = []
+    
+    if not msg.is_multipart():
+        return attachments
+    
+    for part in msg.walk():
+        # Skip multipart containers
+        if part.get_content_maintype() == 'multipart':
+            continue
+        
+        # Check if this part is an attachment
+        content_disposition = str(part.get('Content-Disposition', ''))
+        filename = part.get_filename()
+        
+        # Also check for MIME-encoded filenames
+        if filename and '=?' in filename:
+            decoded_parts = decode_header(filename)
+            filename = ''
+            for fpart, charset in decoded_parts:
+                if isinstance(fpart, bytes):
+                    filename += fpart.decode(charset or 'utf-8', errors='replace')
+                else:
+                    filename += fpart
+        
+        # Skip parts that are not attachments (no filename and no attachment disposition)
+        if not filename and 'attachment' not in content_disposition.lower():
+            continue
+        
+        # Skip inline images without filenames (embedded logos etc.)
+        if not filename and 'inline' in content_disposition.lower():
+            continue
+        
+        # Generate a filename if none provided
+        if not filename:
+            ext = part.get_content_type().split('/')[-1] if part.get_content_type() else 'bin'
+            filename = f'attachment.{ext}'
+        
+        try:
+            content = part.get_payload(decode=True)
+            if not content:
+                continue
+            
+            # Skip oversized attachments
+            if len(content) > MAX_ATTACHMENT_SIZE:
+                print(f"[Email Attachment] Skipping '{filename}' - too large ({len(content)} bytes, max {MAX_ATTACHMENT_SIZE})")
+                continue
+            
+            content_type = part.get_content_type() or 'application/octet-stream'
+            
+            attachments.append({
+                'filename': filename,
+                'content': content,
+                'content_type': content_type,
+                'size': len(content)
+            })
+            print(f"[Email Attachment] Found: '{filename}' ({content_type}, {len(content)} bytes)")
+        except Exception as e:
+            print(f"[Email Attachment] Error extracting '{filename}': {e}")
+            continue
+    
+    return attachments
+
+
+async def save_email_attachments(
+    db: AsyncSession,
+    ticket_id: int,
+    attachments: List[dict],
+    comment_id: Optional[int] = None
+) -> List[TicketAttachment]:
+    """Save extracted email attachments to disk and create DB records.
+    
+    Args:
+        db: Database session
+        ticket_id: Ticket to attach files to
+        attachments: List of dicts from extract_email_attachments()
+        comment_id: Optional comment ID if attachments go with a reply comment
+    
+    Returns:
+        List of created TicketAttachment records
+    """
+    if not attachments:
+        return []
+    
+    # Ensure upload directory exists
+    UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+    
+    saved = []
+    for att in attachments:
+        try:
+            # Generate unique filename (same pattern as web form uploads)
+            original_name = att['filename']
+            ext = Path(original_name).suffix or '.bin'
+            unique_filename = f"{uuid.uuid4()}{ext}"
+            file_path = UPLOAD_DIR / unique_filename
+            relative_path = f"app/uploads/tickets/{unique_filename}"
+            
+            # Write file to disk
+            file_path.write_bytes(att['content'])
+            
+            # Create DB record
+            attachment = TicketAttachment(
+                ticket_id=ticket_id,
+                comment_id=comment_id,
+                filename=original_name,
+                file_path=relative_path,
+                file_size=att['size'],
+                mime_type=att['content_type'],
+                uploaded_by_id=None  # Guest upload from email
+            )
+            db.add(attachment)
+            saved.append(attachment)
+            print(f"[Email Attachment] Saved: '{original_name}' -> {relative_path}")
+        except Exception as e:
+            print(f"[Email Attachment] Error saving '{att.get('filename', '?')}': {e}")
+            continue
+    
+    if saved:
+        await db.flush()  # Flush to assign IDs
+        print(f"[Email Attachment] Total saved: {len(saved)} attachment(s) for ticket {ticket_id}")
+    
+    return saved
 
 
 def is_support_query(subject: str, body: str, sender_email: str) -> bool:
@@ -717,7 +854,8 @@ class EmailToTicketService:
         subject: str,
         body: str,
         to_email: Optional[str] = None,
-        project: Optional[Project] = None
+        project: Optional[Project] = None,
+        attachments: Optional[List[dict]] = None
     ) -> Ticket:
         """Create a guest ticket from email"""
         
@@ -794,6 +932,10 @@ class EmailToTicketService:
             )
             db.add(notification)
         
+        # Save email attachments if any
+        if attachments:
+            await save_email_attachments(db, ticket.id, attachments)
+        
         await db.commit()
         await db.refresh(ticket)
         
@@ -805,7 +947,8 @@ class EmailToTicketService:
         ticket: Ticket,
         sender_name: str,
         sender_email: str,
-        body: str
+        body: str,
+        attachments: Optional[List[dict]] = None
     ) -> TicketComment:
         """Add a comment to an existing ticket from email reply"""
         
@@ -857,6 +1000,11 @@ class EmailToTicketService:
                 related_id=ticket.id
             )
             db.add(notification)
+        
+        # Save email attachments if any (linked to both ticket and comment)
+        if attachments:
+            await db.flush()  # Flush to get comment.id
+            await save_email_attachments(db, ticket.id, attachments, comment_id=comment.id)
         
         await db.commit()
         await db.refresh(comment)
@@ -977,6 +1125,9 @@ class EmailToTicketService:
                         subject = self.decode_header_value(msg.get('Subject', 'No Subject'))
                         body = self.extract_email_body(msg)
                         
+                        # Extract attachments from the email
+                        email_attachments = extract_email_attachments(msg)
+                        
                         print(f"\n{'='*80}")
                         print(f"[IMAP] Processing email from folder: {folder}")
                         print(f"[IMAP] From: {sender_name} <{sender_email}>")
@@ -1017,7 +1168,8 @@ class EmailToTicketService:
                             
                             # Add as comment to existing ticket
                             await self.add_comment_from_email(
-                                fresh_db, existing_ticket, sender_name, sender_email, body
+                                fresh_db, existing_ticket, sender_name, sender_email, body,
+                                attachments=email_attachments
                             )
                             
                             # Mark as processed
@@ -1053,7 +1205,8 @@ class EmailToTicketService:
                             
                             # Always create tickets (linked to project if matched)
                             ticket = await self.create_ticket_from_email(
-                                fresh_db, sender_name, sender_email, subject, body, to_email, project
+                                fresh_db, sender_name, sender_email, subject, body, to_email, project,
+                                attachments=email_attachments
                             )
                             
                             # Refresh and store ID immediately
@@ -1287,7 +1440,8 @@ async def add_comment_from_email_for_account(
     ticket: Ticket,
     sender_name: str,
     sender_email: str,
-    body: str
+    body: str,
+    attachments: Optional[List[dict]] = None
 ) -> TicketComment:
     """Add a comment to an existing ticket from email reply (for alternate email accounts)"""
     
@@ -1338,6 +1492,11 @@ async def add_comment_from_email_for_account(
             related_id=ticket.id
         )
         db.add(notification)
+    
+    # Save email attachments if any (linked to both ticket and comment)
+    if attachments:
+        await db.flush()  # Flush to get comment.id
+        await save_email_attachments(db, ticket.id, attachments, comment_id=comment.id)
     
     await db.commit()
     await db.refresh(comment)
@@ -1636,6 +1795,9 @@ async def process_email_account(db: AsyncSession, account) -> List[Ticket]:
                     if body:
                         body = _clean_email_body_standalone(body)
                     
+                    # Extract attachments from the email
+                    email_attachments = extract_email_attachments(msg)
+                    
                     # Check if this is a reply to an existing ticket
                     existing_ticket = await find_ticket_by_reply_for_account(
                         fresh_db, workspace_id, in_reply_to, references
@@ -1659,7 +1821,8 @@ async def process_email_account(db: AsyncSession, account) -> List[Ticket]:
                         
                         # Add as comment to existing ticket
                         await add_comment_from_email_for_account(
-                            fresh_db, existing_ticket, sender_name, sender_email_addr, body
+                            fresh_db, existing_ticket, sender_name, sender_email_addr, body,
+                            attachments=email_attachments
                         )
                         
                         # Mark email as processed (linked to existing ticket)
@@ -1733,6 +1896,10 @@ async def process_email_account(db: AsyncSession, account) -> List[Ticket]:
                     
                     # Store ID immediately after refresh to avoid lazy loading issues
                     ticket_id = new_ticket.id
+                    
+                    # Save email attachments if any
+                    if email_attachments:
+                        await save_email_attachments(fresh_db, ticket_id, email_attachments)
                     
                     # Mark email as processed
                     processed = ProcessedMail(
