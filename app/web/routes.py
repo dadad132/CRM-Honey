@@ -701,12 +701,13 @@ async def web_dashboard(request: Request, view: Optional[str] = None, user_id: O
         }
         tasks_due_soon.append(task_dict)
     
-    # Open tickets
+    # Open tickets (exclude archived)
     tickets_result = await db.execute(
         select(Ticket)
         .where(
             Ticket.workspace_id == user.workspace_id,
-            Ticket.status.in_(['open', 'in_progress', 'waiting'])
+            Ticket.status.in_(['open', 'in_progress', 'waiting']),
+            Ticket.is_archived == False
         )
     )
     open_tickets = tickets_result.scalars().all()
@@ -940,13 +941,14 @@ async def web_dashboard(request: Request, view: Optional[str] = None, user_id: O
         )
         team_tasks_completed = len(team_done_result.scalars().all())
         
-        # Tickets resolved this week
+        # Tickets resolved this week (exclude archived)
         resolved_result = await db.execute(
             select(Ticket)
             .where(
                 Ticket.workspace_id == user.workspace_id,
                 Ticket.status.in_(['resolved', 'closed']),
-                Ticket.resolved_at >= datetime.combine(week_ago, time.min)
+                Ticket.resolved_at >= datetime.combine(week_ago, time.min),
+                Ticket.is_archived == False
             )
         )
         team_tickets_resolved = len(resolved_result.scalars().all())
@@ -989,12 +991,13 @@ async def web_dashboard(request: Request, view: Optional[str] = None, user_id: O
                     )
                     su_done_tasks = len(su_done_result.scalars().all())
                     
-                    # Get selected user's open tickets
+                    # Get selected user's open tickets (exclude archived)
                     su_tickets_result = await db.execute(
                         select(Ticket)
                         .where(
                             Ticket.assigned_to_id == user_id,
-                            Ticket.status.in_(['open', 'in_progress', 'waiting'])
+                            Ticket.status.in_(['open', 'in_progress', 'waiting']),
+                            Ticket.is_archived == False
                         )
                     )
                     su_open_tickets = len(su_tickets_result.scalars().all())

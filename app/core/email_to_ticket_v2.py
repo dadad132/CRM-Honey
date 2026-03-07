@@ -444,15 +444,20 @@ class EmailToTicketService:
         return result
     
     def determine_priority(self, subject: str, body: str) -> str:
-        """Auto-detect priority from content"""
-        content = (subject + ' ' + body).lower()
+        """Auto-detect priority from email subject only (not body, to avoid false matches).
         
-        urgent_keywords = ['urgent', 'emergency', 'critical', 'asap', 'down', 'not working']
-        high_keywords = ['important', 'high priority', 'soon', 'broken', 'error']
+        Only checks the subject line to avoid common words in email bodies
+        like 'error', 'not working', 'down' triggering false urgent/high priority.
+        """
+        subject_lower = subject.lower()
         
-        if any(keyword in content for keyword in urgent_keywords):
+        # Only match deliberate urgency markers in the subject line
+        urgent_keywords = ['urgent', 'emergency', 'critical', 'asap']
+        high_keywords = ['important', 'high priority']
+        
+        if any(keyword in subject_lower for keyword in urgent_keywords):
             return 'urgent'
-        elif any(keyword in content for keyword in high_keywords):
+        elif any(keyword in subject_lower for keyword in high_keywords):
             return 'high'
         else:
             return 'medium'
@@ -1853,13 +1858,14 @@ async def process_email_account(db: AsyncSession, account) -> List[Ticket]:
                     print(f"[Email Account] ❌ NO MATCH - Creating new ticket")
                     
                     # Determine priority
-                    content = (subject + ' ' + body).lower()
-                    urgent_keywords = ['urgent', 'emergency', 'critical', 'asap', 'down', 'not working']
-                    high_keywords = ['important', 'high priority', 'soon', 'broken', 'error']
+                    # Only check subject for priority keywords (body has too many false matches)
+                    subject_lower = subject.lower()
+                    urgent_keywords = ['urgent', 'emergency', 'critical', 'asap']
+                    high_keywords = ['important', 'high priority']
                     
-                    if any(keyword in content for keyword in urgent_keywords):
+                    if any(keyword in subject_lower for keyword in urgent_keywords):
                         priority = 'urgent'
-                    elif any(keyword in content for keyword in high_keywords):
+                    elif any(keyword in subject_lower for keyword in high_keywords):
                         priority = 'high'
                     else:
                         priority = default_priority
