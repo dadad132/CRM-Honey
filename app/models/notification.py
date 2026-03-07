@@ -13,6 +13,6 @@ class Notification(SQLModel, table=True):
     message: str
     url: Optional[str] = None
     related_id: Optional[int] = None  # ID of related task/meeting/project/message
-    created_at: datetime = Field(default_factory=datetime.utcnow)
-    read_at: Optional[datetime] = None
+    created_at: datetime = Field(default_factory=datetime.utcnow, index=True)
+    read_at: Optional[datetime] = Field(default=None, index=True)
     dismissed_at: Optional[datetime] = None  # For popup auto-dismiss tracking

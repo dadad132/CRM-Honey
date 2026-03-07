@@ -98,7 +98,7 @@ class RecurringTask(SQLModel, table=True):
     project_id: int = Field(foreign_key="project.id", index=True)
     title: str
     description: Optional[str] = None
-    status: str = "pending"  # Uses TaskStatus values
+    status: str = "todo"  # Uses TaskStatus values: todo, in_progress, done, blocked
     priority: str = "medium"  # Uses TaskPriority values
     recurrence_type: str  # daily, weekly, monthly, yearly
     recurrence_value: Optional[str] = None  # e.g., "monday,wednesday" for weekly, "15" for monthly
@@ -134,7 +134,7 @@ class TaskAttachment(SQLModel, table=True):
     # UI would need a dropdown or input field when uploading attachments
     # Also consider: description field for additional context about the attachment
     id: Optional[int] = Field(default=None, primary_key=True)
-    task_id: int = Field(foreign_key="task.id")
+    task_id: int = Field(foreign_key="task.id", index=True)
     filename: str
     file_path: str  # Path to stored file
     file_size: int  # Size in bytes
@@ -146,8 +146,8 @@ class TaskAttachment(SQLModel, table=True):
 class TimeLog(SQLModel, table=True):
     """Track time spent on tasks"""
     id: Optional[int] = Field(default=None, primary_key=True)
-    task_id: int = Field(foreign_key="task.id")
-    user_id: int = Field(foreign_key="user.id")
+    task_id: int = Field(foreign_key="task.id", index=True)
+    user_id: int = Field(foreign_key="user.id", index=True)
     hours: float
     description: Optional[str] = None
     logged_at: datetime = Field(default_factory=datetime.utcnow)
@@ -156,8 +156,8 @@ class TimeLog(SQLModel, table=True):
 class ActivityLog(SQLModel, table=True):
     """Centralized activity feed for entire workspace"""
     id: Optional[int] = Field(default=None, primary_key=True)
-    workspace_id: int = Field(foreign_key="workspace.id")
-    user_id: int = Field(foreign_key="user.id")  # Who performed the action
+    workspace_id: int = Field(foreign_key="workspace.id", index=True)
+    user_id: int = Field(foreign_key="user.id", index=True)  # Who performed the action
     action_type: str  # created, updated, commented, assigned, completed, etc.
     entity_type: str  # task, project, meeting, chat, etc.
     entity_id: int  # ID of the affected entity

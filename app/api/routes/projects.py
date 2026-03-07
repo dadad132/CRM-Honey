@@ -97,7 +97,9 @@ async def update_project(
 
 @router.delete("/{project_id}", status_code=204)
 async def delete_project(project_id: int, user_id: int = Depends(get_current_user_id), db: AsyncSession = Depends(get_db)):
-    user = (await db.execute(select(User).where(User.id == user_id))).scalar_one()
+    user = (await db.execute(select(User).where(User.id == user_id))).scalar_one_or_none()
+    if not user:
+        raise HTTPException(status_code=401, detail="User not found")
     result = await db.execute(select(Project).where(Project.id == project_id, Project.workspace_id == user.workspace_id))
     project = result.scalar_one_or_none()
     if not project:

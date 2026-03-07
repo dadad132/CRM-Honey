@@ -16,7 +16,4 @@ class ProcessedMail(SQLModel, table=True):
     subject: str  # Email subject
     processed_at: datetime = Field(default_factory=datetime.utcnow)
     ticket_id: Optional[int] = Field(default=None, foreign_key="ticket.id")
-    workspace_id: int = Field(foreign_key="workspace.id")
-    
-    class Config:
-        arbitrary_types_allowed = True
+    workspace_id: int = Field(foreign_key="workspace.id", index=True)

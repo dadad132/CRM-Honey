@@ -20,7 +20,7 @@ class Company(SQLModel, table=True):
     country: Optional[str] = None
     postal_code: Optional[str] = None
     notes: Optional[str] = None
-    workspace_id: int = Field(foreign_key="workspace.id")
+    workspace_id: int = Field(foreign_key="workspace.id", index=True)
     created_by: int = Field(foreign_key="user.id")
     created_at: datetime = Field(default_factory=datetime.utcnow)
     updated_at: datetime = Field(default_factory=datetime.utcnow)

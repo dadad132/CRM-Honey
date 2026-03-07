@@ -4,7 +4,7 @@ from typing import Optional
 from datetime import datetime
 import random
 
-from sqlmodel import Field, Relationship, SQLModel
+from sqlmodel import Field, SQLModel
 from .enums import MeetingPlatform
 
 # Distinct colors for user calendar display
@@ -49,7 +49,7 @@ class UserBase(SQLModel):
 class User(UserBase, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     hashed_password: str
-    workspace_id: Optional[int] = Field(default=None, foreign_key="workspace.id")
+    workspace_id: Optional[int] = Field(default=None, foreign_key="workspace.id", index=True)
     email_verified: bool = False
     verification_code: Optional[str] = None
     verification_expires_at: Optional[datetime] = None

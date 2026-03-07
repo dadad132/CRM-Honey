@@ -15,7 +15,7 @@ class Contact(SQLModel, table=True):
     phone: Optional[str] = None
     mobile: Optional[str] = None
     job_title: Optional[str] = None
-    company_id: Optional[int] = Field(default=None, foreign_key="company.id")
+    company_id: Optional[int] = Field(default=None, foreign_key="company.id", index=True)
     address: Optional[str] = None
     city: Optional[str] = None
     state: Optional[str] = None
@@ -24,7 +24,7 @@ class Contact(SQLModel, table=True):
     notes: Optional[str] = None
     linkedin_url: Optional[str] = None
     twitter_handle: Optional[str] = None
-    workspace_id: int = Field(foreign_key="workspace.id")
+    workspace_id: int = Field(foreign_key="workspace.id", index=True)
     created_by: int = Field(foreign_key="user.id")
     created_at: datetime = Field(default_factory=datetime.utcnow)
     updated_at: datetime = Field(default_factory=datetime.utcnow)

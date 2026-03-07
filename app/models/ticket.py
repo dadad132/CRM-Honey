@@ -24,15 +24,15 @@ class TicketBase(SQLModel):
     is_guest: bool = Field(default=False)
     guest_name: Optional[str] = None
     guest_surname: Optional[str] = None
-    guest_email: Optional[str] = None
+    guest_email: Optional[str] = Field(default=None, index=True)
     guest_phone: Optional[str] = None
     guest_company: Optional[str] = None
     guest_office_number: Optional[str] = None
     guest_branch: Optional[str] = None
     
     # Related to project/task (optional)
-    related_project_id: Optional[int] = Field(default=None, foreign_key="project.id")
-    related_task_id: Optional[int] = Field(default=None, foreign_key="task.id")
+    related_project_id: Optional[int] = Field(default=None, foreign_key="project.id", index=True)
+    related_task_id: Optional[int] = Field(default=None, foreign_key="task.id", index=True)
     
     # Timestamps
     created_at: datetime = Field(default_factory=datetime.utcnow)
@@ -47,7 +47,7 @@ class TicketBase(SQLModel):
     working_days: Optional[str] = Field(default="0,1,2,3,4")
     
     # Archive support
-    is_archived: bool = False
+    is_archived: bool = Field(default=False, index=True)
     archived_at: Optional[datetime] = None
     
     # Closing/Billing details (optional, filled when closing ticket)

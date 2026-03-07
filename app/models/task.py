@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime, date, time
 from typing import Optional
 
-from sqlmodel import Field, Relationship, SQLModel
+from sqlmodel import Field, SQLModel
 
 from .enums import TaskPriority, TaskStatus
 
@@ -24,7 +24,7 @@ class TaskBase(SQLModel):
     estimated_hours: Optional[float] = None
     time_spent_hours: Optional[float] = None
     # Archive status - when task is marked done and locked
-    is_archived: bool = Field(default=False)
+    is_archived: bool = Field(default=False, index=True)
     archived_at: Optional[datetime] = None
     # Tags for flexible categorization
     tags: Optional[str] = None  # Comma-separated tags
@@ -52,10 +52,10 @@ class TaskBase(SQLModel):
 
 class Task(TaskBase, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
-    project_id: int = Field(foreign_key="project.id")
-    creator_id: int = Field(foreign_key="user.id")
+    project_id: int = Field(foreign_key="project.id", index=True)
+    creator_id: int = Field(foreign_key="user.id", index=True)
     # Subtask support - parent task relationship
-    parent_task_id: Optional[int] = Field(default=None, foreign_key="task.id")
+    parent_task_id: Optional[int] = Field(default=None, foreign_key="task.id", index=True)
 
 
 class TaskCreate(SQLModel):

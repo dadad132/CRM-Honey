@@ -3,8 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Optional
 
-from sqlmodel import Field, SQLModel, Column
-from sqlalchemy import Integer, String, DateTime, ForeignKey
+from sqlmodel import Field, SQLModel
 
 
 class CommentBase(SQLModel):

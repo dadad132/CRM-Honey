@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime, date
 from typing import Optional
 
-from sqlmodel import Field, Relationship, SQLModel
+from sqlmodel import Field, SQLModel
 
 
 class ProjectBase(SQLModel):
@@ -26,8 +26,8 @@ class ProjectBase(SQLModel):
 
 class Project(ProjectBase, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
-    owner_id: int = Field(foreign_key="user.id")
-    workspace_id: Optional[int] = Field(default=None, foreign_key="workspace.id")
+    owner_id: int = Field(foreign_key="user.id", index=True)
+    workspace_id: Optional[int] = Field(default=None, foreign_key="workspace.id", index=True)
 
 
 class ProjectCreate(SQLModel):

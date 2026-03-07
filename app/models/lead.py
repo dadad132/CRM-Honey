@@ -38,10 +38,10 @@ class Lead(SQLModel, table=True):
     source: Optional[LeadSource] = None
     estimated_value: Optional[float] = None
     notes: Optional[str] = None
-    assigned_to: Optional[int] = Field(default=None, foreign_key="user.id")
+    assigned_to: Optional[int] = Field(default=None, foreign_key="user.id", index=True)
     converted_to_contact_id: Optional[int] = Field(default=None, foreign_key="contact.id")
     converted_at: Optional[datetime] = None
-    workspace_id: int = Field(foreign_key="workspace.id")
+    workspace_id: int = Field(foreign_key="workspace.id", index=True)
     created_by: int = Field(foreign_key="user.id")
     created_at: datetime = Field(default_factory=datetime.utcnow)
     updated_at: datetime = Field(default_factory=datetime.utcnow)

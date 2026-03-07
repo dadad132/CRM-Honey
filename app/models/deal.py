@@ -24,13 +24,13 @@ class Deal(SQLModel, table=True):
     stage: DealStage = Field(default=DealStage.prospecting)
     probability: int = Field(default=0)  # 0-100%
     expected_close_date: Optional[date] = None
-    contact_id: Optional[int] = Field(default=None, foreign_key="contact.id")
-    company_id: Optional[int] = Field(default=None, foreign_key="company.id")
+    contact_id: Optional[int] = Field(default=None, foreign_key="contact.id", index=True)
+    company_id: Optional[int] = Field(default=None, foreign_key="company.id", index=True)
     description: Optional[str] = None
     notes: Optional[str] = None
-    assigned_to: int = Field(foreign_key="user.id")
+    assigned_to: int = Field(foreign_key="user.id", index=True)
     closed_at: Optional[datetime] = None
-    workspace_id: int = Field(foreign_key="workspace.id")
+    workspace_id: int = Field(foreign_key="workspace.id", index=True)
     created_by: int = Field(foreign_key="user.id")
     created_at: datetime = Field(default_factory=datetime.utcnow)
     updated_at: datetime = Field(default_factory=datetime.utcnow)

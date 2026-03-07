@@ -72,7 +72,7 @@ async def list_tasks(
     # Limit tasks to projects in the user's workspace
     user = (await db.execute(select(User).where(User.id == user_id))).scalar_one_or_none()
     if not user:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User not found")
+        raise HTTPException(status_code=401, detail="User not found")
     stmt = select(Task).join(Project, Task.project_id == Project.id).where(Project.workspace_id == user.workspace_id)
     if project_id_int:
         stmt = stmt.where(Task.project_id == project_id_int)
@@ -158,7 +158,9 @@ async def update_task(
 
 @router.delete("/{task_id}", status_code=204)
 async def delete_task(task_id: int, user_id: int = Depends(get_current_user_id), db: AsyncSession = Depends(get_db)):
-    user = (await db.execute(select(User).where(User.id == user_id))).scalar_one()
+    user = (await db.execute(select(User).where(User.id == user_id))).scalar_one_or_none()
+    if not user:
+        raise HTTPException(status_code=401, detail="User not found")
     
     # Only admins can delete tasks
     if not user.is_admin:

@@ -53,5 +53,4 @@ async def health_check():
     return {
         "status": "healthy",
         "version": VERSION,
-        "timestamp": "2025-11-01T00:00:00Z"
     }

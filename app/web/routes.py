@@ -2575,7 +2575,7 @@ async def web_admin_generate_user_activity_pdf(
                 if isinstance(created_at_val, str):
                     try:
                         self.created_at = datetime.fromisoformat(created_at_val.replace('Z', '+00:00'))
-                    except:
+                    except Exception:
                         self.created_at = datetime.now()
                 else:
                     self.created_at = created_at_val
@@ -3650,7 +3650,7 @@ async def web_admin_user_activity_view(
                 if isinstance(created_at_val, str):
                     try:
                         self.created_at = datetime.fromisoformat(created_at_val.replace('Z', '+00:00'))
-                    except:
+                    except Exception:
                         self.created_at = datetime.now()
                 else:
                     self.created_at = created_at_val
@@ -3869,7 +3869,7 @@ async def web_admin_user_activity_view(
         if isinstance(comment_date, str):
             try:
                 comment_date = datetime.fromisoformat(comment_date.replace('Z', '+00:00'))
-            except:
+            except Exception:
                 comment_date = None
         recent_activity.append({
             'type': 'comment',
@@ -3886,7 +3886,7 @@ async def web_admin_user_activity_view(
         if isinstance(dt, str):
             try:
                 return datetime.fromisoformat(dt.replace('Z', '+00:00'))
-            except:
+            except Exception:
                 return datetime.min
         return dt
     
@@ -4251,7 +4251,15 @@ async def web_admin_backup_download(
     from app.core.backup import backup_manager
     from fastapi.responses import FileResponse
     
-    backup_path = backup_manager.backup_dir / filename
+    # Security: prevent path traversal
+    if '..' in filename or '/' in filename or '\\' in filename:
+        raise HTTPException(status_code=400, detail="Invalid filename")
+    
+    backup_path = (backup_manager.backup_dir / filename).resolve()
+    # Ensure the resolved path is still inside the backup directory
+    if not str(backup_path).startswith(str(backup_manager.backup_dir.resolve())):
+        raise HTTPException(status_code=400, detail="Invalid filename")
+    
     if not backup_path.exists():
         raise HTTPException(status_code=404, detail="Backup file not found")
     
@@ -4338,6 +4346,10 @@ async def web_admin_backup_delete(
         raise HTTPException(status_code=403, detail="Admin access required")
     
     from app.core.backup import backup_manager
+    
+    # Security: prevent path traversal
+    if '..' in backup_file or '/' in backup_file or '\\' in backup_file:
+        return RedirectResponse('/web/admin/backups?error=invalid_filename', status_code=303)
     
     success = backup_manager.delete_backup(backup_file)
     
@@ -4449,7 +4461,7 @@ async def web_admin_setup_ssh(
         if result.stdout:
             with open(known_hosts, "a") as f:
                 f.write(result.stdout)
-    except:
+    except Exception:
         pass
     
     # Update git remote to SSH
@@ -4458,7 +4470,7 @@ async def web_admin_setup_ssh(
             "git", "remote", "set-url", "origin",
             "git@github.com:dadad132/cem-backend.git"
         ], capture_output=True)
-    except:
+    except Exception:
         pass
     
     # Read public key
@@ -6102,10 +6114,17 @@ async def web_admin_site_settings_upload_logo(
         return RedirectResponse('/web/dashboard', status_code=303)
     
     try:
-        # Validate file type
-        allowed_types = ['image/png', 'image/jpeg', 'image/jpg', 'image/gif', 'image/svg+xml']
+        # Validate file type (SVG excluded - can contain XSS scripts)
+        allowed_types = ['image/png', 'image/jpeg', 'image/jpg', 'image/gif']
         if logo.content_type not in allowed_types:
-            request.session['error_message'] = 'Invalid file type. Please upload PNG, JPG, GIF, or SVG.'
+            request.session['error_message'] = 'Invalid file type. Please upload PNG, JPG, or GIF.'
+            return RedirectResponse('/web/admin/site-settings', status_code=303)
+        
+        # Validate file size (max 5MB)
+        logo_content = await logo.read()
+        await logo.seek(0)  # Reset for later read
+        if len(logo_content) > 5 * 1024 * 1024:
+            request.session['error_message'] = 'Logo file is too large. Maximum size is 5MB.'
             return RedirectResponse('/web/admin/site-settings', status_code=303)
         
         # Create uploads directory if it doesn't exist
@@ -8209,10 +8228,10 @@ async def web_task_add_comment(
         for file in files:
             if file.filename:  # Only process if file was actually uploaded
                 # Read file content
-                content = await file.read()
+                file_content = await file.read()
                 
                 # Validate file size (max 10MB)
-                if len(content) > 10 * 1024 * 1024:
+                if len(file_content) > 10 * 1024 * 1024:
                     raise HTTPException(status_code=400, detail=f'File {file.filename} is too large. Maximum size is 10MB.')
                 
                 # Generate unique filename
@@ -8222,7 +8241,7 @@ async def web_task_add_comment(
                 
                 # Save file to disk
                 with open(file_path, 'wb') as f:
-                    f.write(content)
+                    f.write(file_content)
                 
                 # Store relative path from app directory
                 relative_path = f"app/uploads/comments/{unique_filename}"
@@ -8232,7 +8251,7 @@ async def web_task_add_comment(
                     comment_id=comment.id,
                     filename=file.filename,
                     file_path=relative_path,
-                    file_size=len(content),
+                    file_size=len(file_content),
                     content_type=file.content_type or 'application/octet-stream',
                     uploaded_by_id=user_id
                 )
@@ -9433,17 +9452,20 @@ async def web_tickets_report(
         )).scalars().all()
     projects_dict = {p.id: p for p in all_projects}
     
-    # Count tickets per project for display
+    # Count tickets per project in a single GROUP BY query (avoid N+1)
     project_ticket_counts = {}
-    for pid in project_ids_with_tickets:
-        if pid:
-            count_query = select(func.count(Ticket.id)).where(
+    if project_ids_with_tickets:
+        counts_result = await db.execute(
+            select(Ticket.related_project_id, func.count(Ticket.id))
+            .where(
                 Ticket.workspace_id == user.workspace_id,
-                Ticket.related_project_id == pid,
+                Ticket.related_project_id.in_([pid for pid in project_ids_with_tickets if pid]),
                 Ticket.created_at >= start_dt,
                 Ticket.created_at < end_dt
             )
-            count = (await db.execute(count_query)).scalar() or 0
+            .group_by(Ticket.related_project_id)
+        )
+        for pid, count in counts_result.all():
             project_ticket_counts[pid] = count
     
     # Get selected user for filtering
@@ -10405,7 +10427,7 @@ async def web_tickets_report_excel(
                 try:
                     if cell.value:
                         max_length = max(max_length, len(str(cell.value)))
-                except:
+                except Exception:
                     pass
             adjusted_width = min(max_length + 2, 60)
             ws.column_dimensions[column].width = adjusted_width
@@ -10777,18 +10799,26 @@ async def web_tickets_create(
     # Parse working days (default to Mon-Fri if not provided)
     working_days_str = ','.join(ticket_working_days_list) if ticket_working_days_list else '0,1,2,3,4'
     
-    # Generate ticket number using MAX to avoid race conditions
+    # Generate ticket number using MAX to avoid duplicates after deletions
     year = datetime.utcnow().year
     from sqlalchemy import func, text
-    # Get the highest ticket number for this year in this workspace
+    # Get the highest existing ticket number for this year in this workspace
+    prefix = f"TKT-{year}-"
     result = await db.execute(
-        select(func.count(Ticket.id)).where(
+        select(func.max(Ticket.ticket_number)).where(
             Ticket.workspace_id == user.workspace_id,
-            Ticket.ticket_number.like(f"TKT-{year}-%")
+            Ticket.ticket_number.like(f"{prefix}%")
         )
     )
-    ticket_count = result.scalar() or 0
-    ticket_number = f"TKT-{year}-{ticket_count + 1:05d}"
+    max_ticket = result.scalar()
+    if max_ticket:
+        try:
+            last_num = int(max_ticket.split('-')[-1])
+        except (ValueError, IndexError):
+            last_num = 0
+    else:
+        last_num = 0
+    ticket_number = f"{prefix}{last_num + 1:05d}"
     
     # Create ticket
     ticket = Ticket(
@@ -10978,17 +11008,25 @@ async def web_tickets_guest_submit(
         # Auto-set priority to medium for guest tickets
         priority = 'medium'
         
-        # Generate ticket number using MAX to avoid race conditions
+        # Generate ticket number using MAX to avoid duplicates after deletions
         year = datetime.utcnow().year
         from sqlalchemy import func
+        prefix = f"TKT-{year}-"
         result = await db.execute(
-            select(func.count(Ticket.id)).where(
+            select(func.max(Ticket.ticket_number)).where(
                 Ticket.workspace_id == workspace_id,
-                Ticket.ticket_number.like(f"TKT-{year}-%")
+                Ticket.ticket_number.like(f"{prefix}%")
             )
         )
-        ticket_count = (result.scalar() or 0) + 1
-        ticket_number = f"TKT-{year}-{ticket_count:05d}"
+        max_ticket = result.scalar()
+        if max_ticket:
+            try:
+                last_num = int(max_ticket.split('-')[-1])
+            except (ValueError, IndexError):
+                last_num = 0
+        else:
+            last_num = 0
+        ticket_number = f"{prefix}{last_num + 1:05d}"
         
         # Create ticket
         ticket = Ticket(
@@ -11257,7 +11295,7 @@ async def handle_conversational_message(message_lower: str, db: AsyncSession) ->
             email_settings = settings_result.scalar_one_or_none()
             if email_settings and email_settings.smtp_from_email:
                 support_email = email_settings.smtp_from_email
-        except:
+        except Exception:
             pass
         
         return f"""I understand you'd like to speak with a human support agent! 👨‍💻 No problem at all!
@@ -13423,6 +13461,12 @@ async def web_tickets_track_submit(
         request.session['error_message'] = 'Email address does not match this ticket. Please use the email you submitted the ticket with.'
         return RedirectResponse('/web/tickets/track', status_code=303)
     
+    # Store verified ticket access in session
+    verified_tickets = request.session.get('verified_tickets', [])
+    if ticket_number not in verified_tickets:
+        verified_tickets.append(ticket_number)
+        request.session['verified_tickets'] = verified_tickets
+    
     # Redirect to tracking detail page
     return RedirectResponse(f'/web/tickets/track/{ticket_number}', status_code=303)
 
@@ -13435,6 +13479,14 @@ async def web_tickets_track_detail(
 ):
     """Show ticket tracking details (must have verified via POST first or have session)"""
     from app.models.ticket import Ticket, TicketComment
+    
+    # Check if user is logged in (staff) or has verified access via email
+    user_id = request.session.get('user_id')
+    verified_tickets = request.session.get('verified_tickets', [])
+    
+    if not user_id and ticket_number not in verified_tickets:
+        request.session['error_message'] = 'Please verify your email to view this ticket.'
+        return RedirectResponse('/web/tickets/track', status_code=303)
     
     # Find ticket
     result = await db.execute(
@@ -13455,16 +13507,19 @@ async def web_tickets_track_detail(
     )
     comments = comments_result.scalars().all()
     
-    # Load user info for comments and create list of dicts
+    # Load user info for comments in a single batch query (avoid N+1)
+    user_ids = list(set(c.user_id for c in comments if c.user_id))
+    users_map = {}
+    if user_ids:
+        users_result = await db.execute(select(User).where(User.id.in_(user_ids)))
+        for u in users_result.scalars().all():
+            users_map[u.id] = u
+    
     comments_with_users = []
     for comment in comments:
-        user = None
-        if comment.user_id:
-            user = (await db.execute(select(User).where(User.id == comment.user_id))).scalar_one_or_none()
-        
         comments_with_users.append({
             'comment': comment,
-            'user': user
+            'user': users_map.get(comment.user_id) if comment.user_id else None
         })
     
     return templates.TemplateResponse('tickets/track_detail.html', {
@@ -13483,6 +13538,13 @@ async def web_tickets_track_reply(
 ):
     """Allow guest/client to reply to their ticket from the tracking page"""
     from app.models.ticket import Ticket, TicketComment, TicketHistory
+    
+    # Verify access: must be logged in or have verified via email
+    user_id = request.session.get('user_id')
+    verified_tickets = request.session.get('verified_tickets', [])
+    if not user_id and ticket_number not in verified_tickets:
+        request.session['error_message'] = 'Please verify your email before replying.'
+        return RedirectResponse('/web/tickets/track', status_code=303)
     
     # Find ticket
     result = await db.execute(
@@ -13650,13 +13712,13 @@ async def web_tickets_detail(request: Request, ticket_id: int, db: AsyncSession 
     )
     comments = comments_result.scalars().all()
     
-    # Get comment authors
-    comment_authors = {}
-    for comment in comments:
-        # TicketComment uses `user_id` (nullable for guest comments)
-        if comment.user_id not in comment_authors:
-            author = (await db.execute(select(User).where(User.id == comment.user_id))).scalar_one_or_none() if comment.user_id else None
-            comment_authors[comment.user_id] = author
+    # Get comment authors in a single batch query (avoid N+1)
+    comment_user_ids = list(set(c.user_id for c in comments if c.user_id))
+    comment_authors = {None: None}  # Pre-set None for guest comments
+    if comment_user_ids:
+        authors_result = await db.execute(select(User).where(User.id.in_(comment_user_ids)))
+        for author in authors_result.scalars().all():
+            comment_authors[author.id] = author
     
     # Get attachments
     attachments = (await db.execute(
@@ -14163,10 +14225,17 @@ async def web_tickets_update_status(
     from app.models.ticket import Ticket, TicketHistory
     from datetime import datetime
     
-    ticket = (await db.execute(select(Ticket).where(Ticket.id == ticket_id))).scalar_one_or_none()
+    ticket = (await db.execute(select(Ticket).where(Ticket.id == ticket_id, Ticket.workspace_id == user.workspace_id))).scalar_one_or_none()
     if not ticket:
         if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
             return JSONResponse({'error': 'Ticket not found'}, status_code=404)
+        return RedirectResponse('/web/tickets', status_code=303)
+    
+    # Validate status value
+    valid_statuses = ['open', 'in_progress', 'waiting', 'resolved', 'closed']
+    if status not in valid_statuses:
+        if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+            return JSONResponse({'error': f'Invalid status. Must be one of: {valid_statuses}'}, status_code=400)
         return RedirectResponse('/web/tickets', status_code=303)
     
     old_status = ticket.status
@@ -15173,14 +15242,25 @@ async def web_chat_send_message(
         
         for file in attachments:
             if file.filename:
+                # Read file content first for validation
+                content_bytes = await file.read()
+                
+                # Validate file size (max 10MB)
+                if len(content_bytes) > 10 * 1024 * 1024:
+                    continue  # Skip files that are too large
+                
+                # Block dangerous file extensions
+                file_ext = Path(file.filename).suffix.lower()
+                blocked_extensions = {'.exe', '.bat', '.cmd', '.sh', '.php', '.py', '.rb', '.pl', '.cgi', '.js', '.msi', '.ps1', '.vbs', '.wsf'}
+                if file_ext in blocked_extensions:
+                    continue  # Skip dangerous file types
+                
                 # Generate unique filename
-                file_ext = Path(file.filename).suffix
                 unique_filename = f"{uuid.uuid4()}{file_ext}"
                 file_path = upload_dir / unique_filename
                 
                 # Save file
                 with open(file_path, 'wb') as f:
-                    content_bytes = await file.read()
                     f.write(content_bytes)
                 
                 # Create attachment record
@@ -15319,6 +15399,10 @@ async def web_invite_user(
     if not user:
         request.session.clear()
         return RedirectResponse('/web/login', status_code=303)
+    
+    # Only admins can invite users
+    if not user.is_admin:
+        return RedirectResponse('/web/dashboard', status_code=303)
     
     # Check if user with email already exists
     existing = (await db.execute(select(User).where(User.email == email))).scalar_one_or_none()
