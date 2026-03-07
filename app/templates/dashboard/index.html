@@ -316,8 +316,13 @@
         </div>
       </div>
       <div class="mt-3 flex items-center gap-2 text-sm">
+        {% if stats.urgent_tickets > 0 or stats.high_tickets > 0 %}
         {% if stats.urgent_tickets > 0 %}
         <span class="text-red-600 font-medium">{{ stats.urgent_tickets }} urgent</span>
+        {% endif %}
+        {% if stats.high_tickets > 0 %}
+        <span class="text-orange-500 font-medium">{{ stats.high_tickets }} high</span>
+        {% endif %}
         {% else %}
         <span class="text-green-600 font-medium">No urgent tickets</span>
         {% endif %}

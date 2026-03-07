@@ -711,7 +711,8 @@ async def web_dashboard(request: Request, view: Optional[str] = None, user_id: O
         )
     )
     open_tickets = tickets_result.scalars().all()
-    urgent_tickets = len([t for t in open_tickets if t.priority in ['urgent', 'high']])
+    urgent_tickets = len([t for t in open_tickets if t.priority == 'urgent'])
+    high_tickets = len([t for t in open_tickets if t.priority == 'high'])
     
     # Meetings today
     meetings_result = await db.execute(
@@ -1061,6 +1062,7 @@ async def web_dashboard(request: Request, view: Optional[str] = None, user_id: O
         'my_tasks_done': my_tasks_done,
         'open_tickets': len(open_tickets),
         'urgent_tickets': urgent_tickets,
+        'high_tickets': high_tickets,
         'active_projects': len(projects),
         'total_team_members': total_team_members,
         'meetings_today': meetings_today,
