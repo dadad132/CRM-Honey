@@ -6122,7 +6122,6 @@ async def web_admin_site_settings_upload_logo(
         
         # Validate file size (max 5MB)
         logo_content = await logo.read()
-        await logo.seek(0)  # Reset for later read
         if len(logo_content) > 5 * 1024 * 1024:
             request.session['error_message'] = 'Logo file is too large. Maximum size is 5MB.'
             return RedirectResponse('/web/admin/site-settings', status_code=303)
@@ -6141,8 +6140,7 @@ async def web_admin_site_settings_upload_logo(
         
         # Save file
         with open(file_path, 'wb') as f:
-            content = await logo.read()
-            f.write(content)
+            f.write(logo_content)
         
         # Update workspace
         workspace = (await db.execute(
