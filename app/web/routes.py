@@ -10140,6 +10140,7 @@ async def web_tickets_report_pdf(
     # Tickets Closed
     elements.append(Paragraph("Tickets Closed", heading_style))
     closed_data = [['Ticket #', 'Subject', 'Closed By', 'Priority', 'Resolution']]
+    closed_tickets_with_billing = []
     for ticket in all_tickets:
         if ticket.status == 'closed' and ticket.closed_at:
             closed_by = users_dict.get(ticket.closed_by_id)
@@ -10155,6 +10156,13 @@ async def web_tickets_report_pdf(
                 ticket.priority.title(),
                 f'{resolution_hours}h',
             ])
+            # Collect billing info for a separate section
+            has_billing = (ticket.billable_traveling or ticket.billable_labour_onsite or 
+                          ticket.billable_remote_labour or ticket.billable_equipment_used or
+                          ticket.non_billable_traveling or ticket.non_billable_labour_onsite or
+                          ticket.non_billable_remote_labour or ticket.non_billable_equipment_used)
+            if has_billing:
+                closed_tickets_with_billing.append(ticket)
     
     if len(closed_data) > 1:
         closed_table = Table(closed_data, colWidths=[1.2*inch, 2*inch, 1.3*inch, 0.9*inch, 0.9*inch])
@@ -10172,6 +10180,36 @@ async def web_tickets_report_pdf(
     else:
         elements.append(Paragraph("No tickets closed during this period.", styles['Normal']))
     elements.append(Spacer(1, 0.3*inch))
+    
+    # Billing Details for Closed Tickets
+    if closed_tickets_with_billing:
+        elements.append(Paragraph("Billing Details", heading_style))
+        billing_data = [['Ticket #', 'Bill. Travel', 'Bill. On-site', 'Bill. Remote', 'Bill. Equip', 'NB Travel', 'NB On-site', 'NB Remote', 'NB Equip']]
+        for ticket in closed_tickets_with_billing:
+            billing_data.append([
+                ticket.ticket_number,
+                ticket.billable_traveling or '-',
+                ticket.billable_labour_onsite or '-',
+                ticket.billable_remote_labour or '-',
+                ticket.billable_equipment_used or '-',
+                ticket.non_billable_traveling or '-',
+                ticket.non_billable_labour_onsite or '-',
+                ticket.non_billable_remote_labour or '-',
+                ticket.non_billable_equipment_used or '-',
+            ])
+        billing_table = Table(billing_data, colWidths=[0.9*inch, 0.7*inch, 0.7*inch, 0.7*inch, 0.7*inch, 0.7*inch, 0.7*inch, 0.7*inch, 0.7*inch])
+        billing_table.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#059669')),
+            ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+            ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+            ('FONTSIZE', (0, 0), (-1, -1), 7),
+            ('BOTTOMPADDING', (0, 0), (-1, 0), 8),
+            ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
+            ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.lightgrey]),
+        ]))
+        elements.append(billing_table)
+        elements.append(Spacer(1, 0.3*inch))
     
     # Open Tickets (ALL currently open, regardless of date range)
     elements.append(Paragraph("Open Tickets", heading_style))
@@ -10325,8 +10363,7 @@ async def web_tickets_report_excel(
     # Query ALL currently open tickets (regardless of date range) - same as HTML and PDF report
     current_open_query = select(Ticket).where(
         Ticket.workspace_id == user.workspace_id,
-        Ticket.status.in_(['open', 'in_progress', 'waiting']),
-        Ticket.is_archived == False
+        Ticket.status.in_(['open', 'in_progress', 'waiting'])
     )
     if user_id_int:
         current_open_query = current_open_query.where(
@@ -10516,8 +10553,11 @@ async def web_tickets_report_excel(
     
     # Sheet 4: Closed Tickets
     ws_closed = wb.create_sheet("Closed Tickets")
-    ws_closed.append(["Ticket #", "Subject", "Priority", "Category", "Closed By", "Created", "Closed", "Resolution (hrs)"])
-    style_header_row(ws_closed, 1, 8)
+    ws_closed.append(["Ticket #", "Subject", "Priority", "Category", "Closed By", "Created", "Closed", "Resolution (hrs)",
+                      "Billable Traveling", "Billable Labour On-site", "Billable Remote Labour", "Billable Equipment",
+                      "Non-Billable Traveling", "Non-Billable Labour On-site", "Non-Billable Remote Labour", "Non-Billable Equipment",
+                      "Closing Notes"])
+    style_header_row(ws_closed, 1, 17)
     for ticket in all_tickets:
         if ticket.status == 'closed' and ticket.closed_at:
             closed_by = users_dict.get(ticket.closed_by_id)
@@ -10534,6 +10574,15 @@ async def web_tickets_report_excel(
                 ticket.created_at.strftime('%Y-%m-%d %H:%M'),
                 ticket.closed_at.strftime('%Y-%m-%d %H:%M'),
                 resolution_hours,
+                ticket.billable_traveling or '',
+                ticket.billable_labour_onsite or '',
+                ticket.billable_remote_labour or '',
+                ticket.billable_equipment_used or '',
+                ticket.non_billable_traveling or '',
+                ticket.non_billable_labour_onsite or '',
+                ticket.non_billable_remote_labour or '',
+                ticket.non_billable_equipment_used or '',
+                ticket.closing_notes or '',
             ])
     auto_width(ws_closed)
     
