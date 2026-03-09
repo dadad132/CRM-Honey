@@ -1667,7 +1667,6 @@ async def web_global_search(
             select(Ticket)
             .where(
                 Ticket.workspace_id == user.workspace_id,
-                Ticket.is_archived == False,
                 or_(
                     Ticket.subject.ilike(search_term),
                     Ticket.description.ilike(search_term),
@@ -1801,7 +1800,6 @@ async def api_global_search(
             select(Ticket)
             .where(
                 Ticket.workspace_id == user.workspace_id,
-                Ticket.is_archived == False,
                 or_(
                     Ticket.subject.ilike(search_term),
                     Ticket.description.ilike(search_term),
@@ -9693,6 +9691,15 @@ async def web_tickets_report(
                 'closed_at': ticket.closed_at,
                 'closed_by_name': (closed_by.full_name or closed_by.username) if closed_by else 'Unknown',
                 'resolution_hours': resolution_hours,
+                'billable_traveling': ticket.billable_traveling or '',
+                'billable_labour_onsite': ticket.billable_labour_onsite or '',
+                'billable_remote_labour': ticket.billable_remote_labour or '',
+                'billable_equipment_used': ticket.billable_equipment_used or '',
+                'non_billable_traveling': ticket.non_billable_traveling or '',
+                'non_billable_labour_onsite': ticket.non_billable_labour_onsite or '',
+                'non_billable_remote_labour': ticket.non_billable_remote_labour or '',
+                'non_billable_equipment_used': ticket.non_billable_equipment_used or '',
+                'closing_notes': ticket.closing_notes or '',
             })
     
     # Sort by closed date
@@ -9985,8 +9992,7 @@ async def web_tickets_report_pdf(
     # Query ALL currently open tickets (regardless of date range) - same as HTML report
     current_open_query = select(Ticket).where(
         Ticket.workspace_id == user.workspace_id,
-        Ticket.status.in_(['open', 'in_progress', 'waiting']),
-        Ticket.is_archived == False
+        Ticket.status.in_(['open', 'in_progress', 'waiting'])
     )
     if user_id_int:
         current_open_query = current_open_query.where(
@@ -10623,10 +10629,9 @@ async def web_tickets_list(request: Request, db: AsyncSession = Depends(get_sess
     project_filter = request.query_params.get('project', 'all')  # New: filter by project scope
     search_query = request.query_params.get('search', '').strip()
     
-    # Base query - exclude archived
+    # Base query - include all tickets (active + archived)
     query = select(Ticket).where(
-        Ticket.workspace_id == user.workspace_id,
-        Ticket.is_archived == False
+        Ticket.workspace_id == user.workspace_id
     )
     
     # Project-based visibility based on user permissions
