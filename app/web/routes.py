@@ -1654,13 +1654,24 @@ async def web_global_search(
             })
         
         # Search tickets (includes guest info and comments)
-        from sqlalchemy import exists
+        from sqlalchemy import exists, case, literal
         from app.models.ticket import TicketComment
         
         # Subquery to find tickets with matching comments
         comment_match_subq = exists().where(
             TicketComment.ticket_id == Ticket.id,
             TicketComment.content.ilike(search_term)
+        )
+        
+        # Relevance ordering: name/email matches first, then subject, then description/comments
+        relevance = case(
+            (Ticket.guest_name.ilike(search_term), literal(1)),
+            (Ticket.guest_surname.ilike(search_term), literal(1)),
+            (Ticket.guest_email.ilike(search_term), literal(1)),
+            (Ticket.guest_company.ilike(search_term), literal(1)),
+            (Ticket.ticket_number.ilike(search_term), literal(1)),
+            (Ticket.subject.ilike(search_term), literal(2)),
+            else_=literal(3)
         )
         
         ticket_results = await db.execute(
@@ -1678,6 +1689,7 @@ async def web_global_search(
                     comment_match_subq
                 )
             )
+            .order_by(relevance, Ticket.created_at.desc())
             .limit(10)
         )
         for ticket in ticket_results.scalars().all():
@@ -1686,7 +1698,10 @@ async def web_global_search(
                 'ticket_number': ticket.ticket_number,
                 'title': ticket.subject,
                 'status': ticket.status,
-                'priority': ticket.priority
+                'priority': ticket.priority,
+                'guest_name': f"{ticket.guest_name or ''} {ticket.guest_surname or ''}".strip(),
+                'guest_email': ticket.guest_email or '',
+                'guest_company': ticket.guest_company or ''
             })
         
         # Search projects
@@ -1787,13 +1802,24 @@ async def api_global_search(
             })
         
         # Search tickets (includes guest info and comments)
-        from sqlalchemy import exists, or_
+        from sqlalchemy import exists, or_, case, literal
         from app.models.ticket import TicketComment
         
         # Subquery to find tickets with matching comments
         comment_match_subq2 = exists().where(
             TicketComment.ticket_id == Ticket.id,
             TicketComment.content.ilike(search_term)
+        )
+        
+        # Relevance ordering: name/email matches first, then subject, then description/comments
+        relevance2 = case(
+            (Ticket.guest_name.ilike(search_term), literal(1)),
+            (Ticket.guest_surname.ilike(search_term), literal(1)),
+            (Ticket.guest_email.ilike(search_term), literal(1)),
+            (Ticket.guest_company.ilike(search_term), literal(1)),
+            (Ticket.ticket_number.ilike(search_term), literal(1)),
+            (Ticket.subject.ilike(search_term), literal(2)),
+            else_=literal(3)
         )
         
         ticket_results = await db.execute(
@@ -1811,6 +1837,7 @@ async def api_global_search(
                     comment_match_subq2
                 )
             )
+            .order_by(relevance2, Ticket.created_at.desc())
             .limit(5)
         )
         for ticket in ticket_results.scalars().all():
@@ -1818,7 +1845,9 @@ async def api_global_search(
                 'id': ticket.id,
                 'ticket_number': ticket.ticket_number,
                 'title': ticket.subject,
-                'url': f'/web/tickets/{ticket.id}'
+                'url': f'/web/tickets/{ticket.id}',
+                'guest_name': f"{ticket.guest_name or ''} {ticket.guest_surname or ''}".strip(),
+                'guest_email': ticket.guest_email or ''
             })
         
         # Search projects
@@ -10727,7 +10756,7 @@ async def web_tickets_list(request: Request, db: AsyncSession = Depends(get_sess
     
     # Search filter
     if search_query:
-        from sqlalchemy import or_, exists
+        from sqlalchemy import or_, exists, case, literal
         from app.models.ticket import TicketComment
         search_pattern = f"%{search_query}%"
         
@@ -10773,8 +10802,23 @@ async def web_tickets_list(request: Request, db: AsyncSession = Depends(get_sess
                 created_user_match,
             )
         )
-    
-    query = query.order_by(Ticket.created_at.desc())
+        
+        # Relevance ordering: name/email/ticket# matches first, then subject, then description/comments
+        relevance = case(
+            (Ticket.guest_name.ilike(search_pattern), literal(1)),
+            (Ticket.guest_surname.ilike(search_pattern), literal(1)),
+            (Ticket.guest_email.ilike(search_pattern), literal(1)),
+            (Ticket.guest_company.ilike(search_pattern), literal(1)),
+            (Ticket.guest_phone.ilike(search_pattern), literal(1)),
+            (Ticket.ticket_number.ilike(search_pattern), literal(1)),
+            (assigned_user_match, literal(1)),
+            (created_user_match, literal(1)),
+            (Ticket.subject.ilike(search_pattern), literal(2)),
+            else_=literal(3)
+        )
+        query = query.order_by(relevance, Ticket.created_at.desc())
+    else:
+        query = query.order_by(Ticket.created_at.desc())
     tickets = (await db.execute(query)).scalars().all()
     
     # Get user's projects for filter dropdown
