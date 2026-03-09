@@ -80,8 +80,6 @@
                     <option value="open" {% if status_filter == 'open' %}selected{% endif %}>Open</option>
                     <option value="in_progress" {% if status_filter == 'in_progress' %}selected{% endif %}>In Progress</option>
                     <option value="waiting" {% if status_filter == 'waiting' %}selected{% endif %}>Waiting</option>
-                    <option value="resolved" {% if status_filter == 'resolved' %}selected{% endif %}>Resolved</option>
-                    <option value="closed" {% if status_filter == 'closed' %}selected{% endif %}>Closed</option>
                 </select>
             </div>
             <div>
@@ -131,7 +129,7 @@
 
     <!-- Board View (Kanban) -->
     <div id="boardView" class="mb-6">
-        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             <!-- Open Column -->
             <div class="bg-blue-50 rounded-lg p-3 min-h-[400px]">
                 <div class="flex items-center justify-between mb-3">
@@ -273,99 +271,7 @@
                 </div>
             </div>
 
-            <!-- Resolved Column -->
-            <div class="bg-green-50 rounded-lg p-3 min-h-[400px]">
-                <div class="flex items-center justify-between mb-3">
-                    <h3 class="font-semibold text-green-800">
-                        <i class="fas fa-check-circle mr-2"></i>Resolved
-                    </h3>
-                    <span class="bg-green-200 text-green-800 text-xs px-2 py-1 rounded-full" id="count-resolved">
-                        {{ tickets|selectattr('status', 'equalto', 'resolved')|list|length }}
-                    </span>
-                </div>
-                <div id="ticket-col-resolved" class="space-y-2 min-h-[100px]">
-                    {% for ticket in tickets if ticket.status == 'resolved' %}
-                    <div data-ticket-id="{{ ticket.id }}" onclick="window.location='/web/tickets/{{ ticket.id }}'" 
-                         class="ticket-card cursor-pointer bg-white rounded-lg shadow-sm p-3 hover:shadow-md transition-shadow border-l-4 
-                        {% if ticket.priority == 'urgent' %}border-red-500
-                        {% elif ticket.priority == 'high' %}border-orange-500
-                        {% elif ticket.priority == 'medium' %}border-yellow-500
-                        {% else %}border-gray-300{% endif %}">
-                        <div class="flex items-center justify-between mb-1">
-                            <span class="text-xs text-gray-500">{{ ticket.ticket_number }}</span>
-                            <div class="flex items-center gap-1">
-                                {% if ticket.is_archived %}
-                                <span class="px-1 py-0.5 text-xs rounded bg-amber-100 text-amber-700" title="Archived">📦</span>
-                                {% endif %}
-                                {% if ticket.related_project_id and projects_dict.get(ticket.related_project_id) %}
-                                <span class="px-1.5 py-0.5 text-xs rounded bg-indigo-100 text-indigo-700 truncate max-w-[80px]" title="{{ projects_dict[ticket.related_project_id].name }}">
-                                    {{ projects_dict[ticket.related_project_id].name[:10] }}{% if projects_dict[ticket.related_project_id].name|length > 10 %}...{% endif %}
-                                </span>
-                                {% endif %}
-                            </div>
-                        </div>
-                        <div class="font-medium text-sm text-gray-900 mb-2 line-clamp-2">{{ ticket.subject }}</div>
-                        <div class="flex items-center justify-between">
-                            {% if ticket.priority == 'urgent' %}
-                            <span class="px-1.5 py-0.5 text-xs rounded bg-red-100 text-red-700">Urgent</span>
-                            {% elif ticket.priority == 'high' %}
-                            <span class="px-1.5 py-0.5 text-xs rounded bg-orange-100 text-orange-700">High</span>
-                            {% endif %}
-                            {% if ticket.is_guest %}
-                            <span class="text-xs text-indigo-600"><i class="fas fa-user-circle"></i></span>
-                            {% endif %}
-                        </div>
-                    </div>
-                    {% endfor %}
-                </div>
-            </div>
-
-            <!-- Closed Column -->
-            <div class="bg-gray-100 rounded-lg p-3 min-h-[400px]">
-                <div class="flex items-center justify-between mb-3">
-                    <h3 class="font-semibold text-gray-700">
-                        <i class="fas fa-times-circle mr-2"></i>Closed
-                    </h3>
-                    <span class="bg-gray-300 text-gray-700 text-xs px-2 py-1 rounded-full" id="count-closed">
-                        {{ tickets|selectattr('status', 'equalto', 'closed')|list|length }}
-                    </span>
-                </div>
-                <div id="ticket-col-closed" class="space-y-2 min-h-[100px]">
-                    {% for ticket in tickets if ticket.status == 'closed' %}
-                    <div data-ticket-id="{{ ticket.id }}" onclick="window.location='/web/tickets/{{ ticket.id }}'" 
-                         class="ticket-card cursor-pointer bg-white rounded-lg shadow-sm p-3 hover:shadow-md transition-shadow border-l-4 
-                        {% if ticket.priority == 'urgent' %}border-red-500
-                        {% elif ticket.priority == 'high' %}border-orange-500
-                        {% elif ticket.priority == 'medium' %}border-yellow-500
-                        {% else %}border-gray-300{% endif %}">
-                        <div class="flex items-center justify-between mb-1">
-                            <span class="text-xs text-gray-500">{{ ticket.ticket_number }}</span>
-                            <div class="flex items-center gap-1">
-                                {% if ticket.is_archived %}
-                                <span class="px-1 py-0.5 text-xs rounded bg-amber-100 text-amber-700" title="Archived">📦</span>
-                                {% endif %}
-                                {% if ticket.related_project_id and projects_dict.get(ticket.related_project_id) %}
-                                <span class="px-1.5 py-0.5 text-xs rounded bg-indigo-100 text-indigo-700 truncate max-w-[80px]" title="{{ projects_dict[ticket.related_project_id].name }}">
-                                    {{ projects_dict[ticket.related_project_id].name[:10] }}{% if projects_dict[ticket.related_project_id].name|length > 10 %}...{% endif %}
-                                </span>
-                                {% endif %}
-                            </div>
-                        </div>
-                        <div class="font-medium text-sm text-gray-900 mb-2 line-clamp-2">{{ ticket.subject }}</div>
-                        <div class="flex items-center justify-between">
-                            {% if ticket.priority == 'urgent' %}
-                            <span class="px-1.5 py-0.5 text-xs rounded bg-red-100 text-red-700">Urgent</span>
-                            {% elif ticket.priority == 'high' %}
-                            <span class="px-1.5 py-0.5 text-xs rounded bg-orange-100 text-orange-700">High</span>
-                            {% endif %}
-                            {% if ticket.is_guest %}
-                            <span class="text-xs text-indigo-600"><i class="fas fa-user-circle"></i></span>
-                            {% endif %}
-                        </div>
-                    </div>
-                    {% endfor %}
-                </div>
-            </div>
+            <!-- Closed/Resolved tickets are in the Archived tab -->
         </div>
         
         {% if not tickets %}

@@ -10678,9 +10678,10 @@ async def web_tickets_list(request: Request, db: AsyncSession = Depends(get_sess
     project_filter = request.query_params.get('project', 'all')  # New: filter by project scope
     search_query = request.query_params.get('search', '').strip()
     
-    # Base query - include all tickets (active + archived)
+    # Base query - exclude closed and resolved (those go to archived tab)
     query = select(Ticket).where(
-        Ticket.workspace_id == user.workspace_id
+        Ticket.workspace_id == user.workspace_id,
+        Ticket.status.notin_(['closed', 'resolved'])
     )
     
     # Project-based visibility based on user permissions
@@ -13707,10 +13708,14 @@ async def web_tickets_archived(request: Request, db: AsyncSession = Depends(get_
     # Get search parameter
     search_query = request.query_params.get('search', '').strip()
     
-    # Get archived tickets
+    # Get archived tickets + closed/resolved tickets
+    from sqlalchemy import or_
     query = select(Ticket).where(
         Ticket.workspace_id == user.workspace_id,
-        Ticket.is_archived == True
+        or_(
+            Ticket.is_archived == True,
+            Ticket.status.in_(['closed', 'resolved'])
+        )
     )
     
     # Search filter
