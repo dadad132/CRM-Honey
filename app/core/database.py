@@ -110,6 +110,63 @@ async def lifespan(app):  # FastAPI lifespan
     except Exception as e:
         logger.warning(f"⚠️  System log cleanup scheduler not started: {e}")
     
+    # Fix ticketattachment.uploaded_by_id NOT NULL constraint
+    # The model says Optional[int] but the DB column may still have NOT NULL from original create
+    # SQLite doesn't support ALTER COLUMN, so we recreate the table if needed
+    try:
+        import sqlite3
+        from pathlib import Path
+        
+        db_path = Path("data.db")
+        if db_path.exists():
+            conn = sqlite3.connect(str(db_path))
+            cursor = conn.cursor()
+            
+            # Check if uploaded_by_id is NOT NULL (notnull=1 in pragma)
+            cursor.execute('PRAGMA table_info("ticketattachment")')
+            cols = {row[1]: row for row in cursor.fetchall()}
+            # PRAGMA table_info columns: cid, name, type, notnull, dflt_value, pk
+            if "uploaded_by_id" in cols and cols["uploaded_by_id"][3] == 1:
+                logger.info("🔧 Fixing ticketattachment.uploaded_by_id NOT NULL constraint...")
+                cursor.execute("PRAGMA foreign_keys=OFF")
+                cursor.execute("BEGIN TRANSACTION")
+                try:
+                    cursor.execute("""
+                        CREATE TABLE ticketattachment_new (
+                            id INTEGER PRIMARY KEY,
+                            ticket_id INTEGER NOT NULL REFERENCES ticket(id),
+                            comment_id INTEGER REFERENCES ticketcomment(id),
+                            filename VARCHAR NOT NULL,
+                            file_path VARCHAR NOT NULL,
+                            file_size INTEGER NOT NULL,
+                            mime_type VARCHAR,
+                            uploaded_by_id INTEGER REFERENCES "user"(id),
+                            uploaded_at TIMESTAMP DEFAULT (CURRENT_TIMESTAMP)
+                        )
+                    """)
+                    cursor.execute("""
+                        INSERT INTO ticketattachment_new
+                            (id, ticket_id, comment_id, filename, file_path, file_size, mime_type, uploaded_by_id, uploaded_at)
+                        SELECT id, ticket_id, comment_id, filename, file_path, file_size, mime_type, uploaded_by_id, uploaded_at
+                        FROM ticketattachment
+                    """)
+                    cursor.execute("DROP TABLE ticketattachment")
+                    cursor.execute("ALTER TABLE ticketattachment_new RENAME TO ticketattachment")
+                    # Recreate indexes
+                    cursor.execute("CREATE INDEX IF NOT EXISTS ix_ticketattachment_ticket_id ON ticketattachment(ticket_id)")
+                    cursor.execute("CREATE INDEX IF NOT EXISTS ix_ticketattachment_comment_id ON ticketattachment(comment_id)")
+                    cursor.execute("COMMIT")
+                    logger.info("✅ Fixed ticketattachment.uploaded_by_id - now allows NULL for email attachments")
+                except Exception:
+                    cursor.execute("ROLLBACK")
+                    raise
+                finally:
+                    cursor.execute("PRAGMA foreign_keys=ON")
+            
+            conn.close()
+    except Exception as e:
+        logger.warning(f"⚠️  Could not fix ticketattachment schema: {e}")
+    
     # Fix attachment paths from absolute to relative on startup
     try:
         import sqlite3
