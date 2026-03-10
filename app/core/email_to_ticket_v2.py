@@ -329,6 +329,7 @@ class EmailToTicketService:
         """
         Synchronous method to fetch raw emails from IMAP server.
         This runs in a thread pool to avoid blocking the event loop.
+        Uses IMAP UIDs (stable across sessions) instead of sequence numbers.
         
         Returns list of dicts with: email_id, msg_bytes, message_id
         """
@@ -341,24 +342,26 @@ class EmailToTicketService:
             
             # Search for emails from the last 7 days (not just unread)
             # This ensures we catch emails even if they're marked as read by other clients
+            # Use UID commands for stable email identification across sessions
             from datetime import datetime, timedelta
             date_since = (datetime.now() - timedelta(days=7)).strftime("%d-%b-%Y")
-            status, messages = mail.search(None, f'SINCE {date_since}')
+            status, messages = mail.uid('search', None, f'SINCE {date_since}')
             email_ids = messages[0].split()
             
             print(f"[IMAP] Found {len(email_ids)} messages from last 7 days")
             
             for email_id in email_ids:
                 try:
-                    status, msg_data = mail.fetch(email_id, '(RFC822)')
+                    status, msg_data = mail.uid('fetch', email_id, '(RFC822)')
                     if msg_data and msg_data[0]:
                         raw_emails.append({
                             'email_id': email_id,
                             'msg_bytes': msg_data[0][1],
-                            'mail': mail  # Pass mail connection for marking as read later
+                            'mail': mail,  # Pass mail connection for marking as read later
+                            'use_uid': True  # Flag to use UID for marking as read
                         })
                 except Exception as e:
-                    print(f"[IMAP] Error fetching email {email_id}: {e}")
+                    print(f"[IMAP] Error fetching email UID {email_id}: {e}")
                     continue
             
             # Don't close here - we need to mark emails as read later
@@ -658,8 +661,9 @@ class EmailToTicketService:
         )
         return result.scalar_one_or_none() is not None
     
-    async def find_ticket_by_reply(self, db: AsyncSession, in_reply_to: str, references: str) -> Optional[Ticket]:
-        """Find ticket from reply headers (In-Reply-To or References)"""
+    async def find_ticket_by_reply(self, db: AsyncSession, in_reply_to: str, references: str):
+        """Find ticket from reply headers (In-Reply-To or References).
+        Returns: Ticket object, 'CLOSED' if reply belongs to a closed ticket, or None if no match."""
         print(f"[DEBUG] find_ticket_by_reply called with:")
         print(f"[DEBUG]   in_reply_to: '{in_reply_to}'")
         print(f"[DEBUG]   references: '{references}'")
@@ -683,12 +687,13 @@ class EmailToTicketService:
                 )
                 ticket = ticket_result.scalar_one_or_none()
                 if ticket and ticket.status in ['closed', 'resolved']:
-                    print(f"[DEBUG] Found ticket #{ticket.ticket_number} but it's CLOSED - will create new ticket")
-                    return None
+                    print(f"[DEBUG] Found ticket #{ticket.ticket_number} but it's CLOSED - skipping email")
+                    return 'CLOSED'
                 print(f"[DEBUG] Returning ticket: {ticket.ticket_number if ticket else None}")
                 return ticket
         
         # Try References (can contain multiple message IDs)
+        found_closed = False
         if references:
             print(f"[DEBUG] Trying References header")
             # References format: "<msg1> <msg2> <msg3>"
@@ -711,10 +716,15 @@ class EmailToTicketService:
                     )
                     ticket = ticket_result.scalar_one_or_none()
                     if ticket and ticket.status in ['closed', 'resolved']:
-                        print(f"[DEBUG] Found ticket #{ticket.ticket_number} via References but it's CLOSED - will create new ticket")
+                        print(f"[DEBUG] Found ticket #{ticket.ticket_number} via References but it's CLOSED")
+                        found_closed = True
                         continue  # Try next reference
                     print(f"[DEBUG] Found ticket via References: {ticket.ticket_number if ticket else None}")
                     return ticket
+        
+        if found_closed:
+            print(f"[DEBUG] All matched references point to closed tickets - skipping email")
+            return 'CLOSED'
         
         print(f"[DEBUG] No ticket found via In-Reply-To or References")
         return None
@@ -1054,9 +1064,10 @@ class EmailToTicketService:
                             continue
                         
                         # Search for emails from the last 7 days
+                        # Use UID commands for stable email identification across sessions
                         from datetime import datetime, timedelta
                         date_since = (datetime.now() - timedelta(days=7)).strftime("%d-%b-%Y")
-                        status, messages = mail.search(None, f'SINCE {date_since}')
+                        status, messages = mail.uid('search', None, f'SINCE {date_since}')
                         email_ids = messages[0].split()
                         
                         if email_ids:
@@ -1064,16 +1075,17 @@ class EmailToTicketService:
                         
                         for email_id in email_ids:
                             try:
-                                status, msg_data = mail.fetch(email_id, '(RFC822)')
+                                status, msg_data = mail.uid('fetch', email_id, '(RFC822)')
                                 if msg_data and msg_data[0]:
                                     all_raw_emails.append({
                                         'email_id': email_id,
                                         'msg_bytes': msg_data[0][1],
                                         'folder': folder_name,
-                                        'requires_analysis': requires_analysis
+                                        'requires_analysis': requires_analysis,
+                                        'use_uid': True
                                     })
                             except Exception as e:
-                                print(f"[IMAP] Error fetching email {email_id} from {folder_name}: {e}")
+                                print(f"[IMAP] Error fetching email UID {email_id} from {folder_name}: {e}")
                                 continue
                     except Exception as e:
                         # Folder doesn't exist or can't be selected - skip silently
@@ -1099,15 +1111,24 @@ class EmailToTicketService:
                 try:
                     msg = email.message_from_bytes(raw_email['msg_bytes'])
                     
-                    # Get message ID
-                    message_id = msg.get('Message-ID', f'no-id-{email_id.decode()}')
+                    # Get message ID - use content hash as stable fallback if no Message-ID header
+                    message_id = msg.get('Message-ID')
+                    if not message_id:
+                        import hashlib
+                        raw_from = msg.get('From', '')
+                        raw_subject = msg.get('Subject', '')
+                        raw_date = msg.get('Date', '')
+                        content_key = f"{raw_from}|{raw_subject}|{raw_date}"
+                        content_hash = hashlib.sha256(content_key.encode()).hexdigest()[:32]
+                        message_id = f'<no-id-{content_hash}@generated>'
+                        print(f"[IMAP] No Message-ID header, generated stable ID from content hash: {message_id}")
                     
-                    # Helper to mark email as read in correct folder
+                    # Helper to mark email as read in correct folder (using UID)
                     async def mark_as_read_in_folder(eid, fld):
-                        """Select the correct folder and mark email as read"""
+                        """Select the correct folder and mark email as read using UID"""
                         def _mark():
                             mail.select(fld)
-                            mail.store(eid, '+FLAGS', '\\Seen')
+                            mail.uid('store', eid, '+FLAGS', '\\Seen')
                         await asyncio.to_thread(_mark)
                     
                     # Use fresh session for each email to avoid greenlet context issues
@@ -1126,6 +1147,19 @@ class EmailToTicketService:
                         sender_name, sender_email = self.extract_email_address(from_header)
                         to_header = msg.get('To', '')
                         _, to_email = self.extract_email_address(to_header)
+                        
+                        # Skip emails sent FROM our own support address (outgoing replies)
+                        own_email = (self.settings.incoming_mail_username or '').lower()
+                        smtp_from = (self.settings.smtp_from_email or '').lower() if hasattr(self.settings, 'smtp_from_email') else ''
+                        if sender_email and (sender_email.lower() == own_email or sender_email.lower() == smtp_from):
+                            print(f"[IMAP] ⏭️ SKIPPING: Email sent from our own address ({sender_email})")
+                            await self.mark_email_processed(fresh_db, message_id, sender_email,
+                                self.decode_header_value(msg.get('Subject', 'No Subject')), None)
+                            try:
+                                await mark_as_read_in_folder(email_id, folder)
+                            except Exception as e:
+                                print(f"[IMAP] Warning: Could not mark email as read in {folder}: {e}")
+                            continue
                         
                         subject = self.decode_header_value(msg.get('Subject', 'No Subject'))
                         body = self.extract_email_body(msg)
@@ -1149,6 +1183,16 @@ class EmailToTicketService:
                         print(f"[IMAP] References: '{references}'")
                         
                         existing_ticket = await self.find_ticket_by_reply(fresh_db, in_reply_to, references)
+                        
+                        # If reply belongs to a closed/resolved ticket, skip this email entirely
+                        if existing_ticket == 'CLOSED':
+                            print(f"[IMAP] ⏭️ SKIPPING: Email is a reply to a closed/resolved ticket")
+                            await self.mark_email_processed(fresh_db, message_id, sender_email, subject, None)
+                            try:
+                                await mark_as_read_in_folder(email_id, folder)
+                            except Exception as e:
+                                print(f"[IMAP] Warning: Could not mark email as read in {folder}: {e}")
+                            continue
                         
                         # If not found via headers, try by sender email
                         # (Skip subject matching - too aggressive, catches invoice numbers etc.)
@@ -1299,8 +1343,9 @@ async def find_ticket_by_reply_for_account(
     workspace_id: int, 
     in_reply_to: str, 
     references: str
-) -> Optional[Ticket]:
-    """Find ticket from reply headers (In-Reply-To or References) for alternate email accounts"""
+):
+    """Find ticket from reply headers (In-Reply-To or References) for alternate email accounts.
+    Returns: Ticket object, 'CLOSED' if reply belongs to a closed ticket, or None if no match."""
     print(f"[DEBUG] find_ticket_by_reply_for_account called with:")
     print(f"[DEBUG]   in_reply_to: '{in_reply_to}'")
     print(f"[DEBUG]   references: '{references}'")
@@ -1324,12 +1369,13 @@ async def find_ticket_by_reply_for_account(
             )
             ticket = ticket_result.scalar_one_or_none()
             if ticket and ticket.status in ['closed', 'resolved']:
-                print(f"[DEBUG] Found ticket #{ticket.ticket_number} but it's CLOSED - will create new ticket")
-                return None
+                print(f"[DEBUG] Found ticket #{ticket.ticket_number} but it's CLOSED - skipping email")
+                return 'CLOSED'
             print(f"[DEBUG] Returning ticket: {ticket.ticket_number if ticket else None}")
             return ticket
     
     # Try References (can contain multiple message IDs)
+    found_closed = False
     if references:
         print(f"[DEBUG] Trying References header")
         ref_ids = references.strip().split()
@@ -1350,10 +1396,15 @@ async def find_ticket_by_reply_for_account(
                 )
                 ticket = ticket_result.scalar_one_or_none()
                 if ticket and ticket.status in ['closed', 'resolved']:
-                    print(f"[DEBUG] Found ticket #{ticket.ticket_number} via References but it's CLOSED - will create new ticket")
+                    print(f"[DEBUG] Found ticket #{ticket.ticket_number} via References but it's CLOSED")
+                    found_closed = True
                     continue  # Try next reference
                 print(f"[DEBUG] Found ticket via References: {ticket.ticket_number if ticket else None}")
                 return ticket
+    
+    if found_closed:
+        print(f"[DEBUG] All matched references point to closed tickets - skipping email")
+        return 'CLOSED'
     
     print(f"[DEBUG] No ticket found via In-Reply-To or References")
     return None
@@ -1669,7 +1720,8 @@ async def process_email_account(db: AsyncSession, account) -> List[Ticket]:
                         if status != 'OK':
                             continue
                         
-                        status, messages = mail.search(None, f'SINCE {date_since}')
+                        # Use UID commands for stable email identification across sessions
+                        status, messages = mail.uid('search', None, f'SINCE {date_since}')
                         email_ids = messages[0].split()
                         
                         if email_ids:
@@ -1677,7 +1729,7 @@ async def process_email_account(db: AsyncSession, account) -> List[Ticket]:
                         
                         for email_id in email_ids:
                             try:
-                                status, msg_data = mail.fetch(email_id, '(RFC822)')
+                                status, msg_data = mail.uid('fetch', email_id, '(RFC822)')
                                 if msg_data and msg_data[0]:
                                     raw_emails.append({
                                         'email_id': email_id,
@@ -1704,8 +1756,17 @@ async def process_email_account(db: AsyncSession, account) -> List[Ticket]:
             try:
                 msg = email_lib.message_from_bytes(raw_email['msg_bytes'])
                 
-                # Get message ID
-                message_id = msg.get('Message-ID', f'no-id-{email_id.decode()}')
+                # Get message ID - use content hash as stable fallback if no Message-ID header
+                message_id = msg.get('Message-ID')
+                if not message_id:
+                    import hashlib
+                    raw_from = msg.get('From', '')
+                    raw_subject = msg.get('Subject', '')
+                    raw_date = msg.get('Date', '')
+                    content_key = f"{raw_from}|{raw_subject}|{raw_date}"
+                    content_hash = hashlib.sha256(content_key.encode()).hexdigest()[:32]
+                    message_id = f'<no-id-{content_hash}@generated>'
+                    print(f"[Email Account] No Message-ID header, generated stable ID from content hash: {message_id}")
                 
                 print(f"[Email Account] Processing email {email_id}: Message-ID={message_id[:50]}...")
                 
@@ -1722,7 +1783,7 @@ async def process_email_account(db: AsyncSession, account) -> List[Ticket]:
                                 # Capture variables by value using default arguments to avoid closure bug
                                 def _mark_read_1(_folder=email_folder, _eid=email_id):
                                     mail.select(_folder)
-                                    mail.store(_eid, '+FLAGS', '\\Seen')
+                                    mail.uid('store', _eid, '+FLAGS', '\\Seen')
                                 await asyncio.to_thread(_mark_read_1)
                             except Exception as e:
                                 print(f"[Email Account] Warning: Could not mark email as read: {e}")
@@ -1757,6 +1818,29 @@ async def process_email_account(db: AsyncSession, account) -> List[Ticket]:
                     
                     print(f"[Email Account] From: {sender_name} <{sender_email_addr}>")
                     print(f"[Email Account] Subject: {subject}")
+                    
+                    # Skip emails sent FROM our own support address (outgoing replies)
+                    own_addresses = {imap_username.lower(), account_email.lower()}
+                    if sender_email_addr and sender_email_addr in own_addresses:
+                        print(f"[Email Account] ⏭️ SKIPPING: Email sent from our own address ({sender_email_addr})")
+                        processed = ProcessedMail(
+                            message_id=message_id,
+                            email_from=sender_email_addr,
+                            subject=subject,
+                            ticket_id=None,
+                            workspace_id=workspace_id
+                        )
+                        fresh_db.add(processed)
+                        await fresh_db.commit()
+                        if mail:
+                            try:
+                                def _mark_read_self(_folder=email_folder, _eid=email_id):
+                                    mail.select(_folder)
+                                    mail.uid('store', _eid, '+FLAGS', '\\Seen')
+                                await asyncio.to_thread(_mark_read_self)
+                            except Exception as e:
+                                print(f"[Email Account] Warning: Could not mark email as read: {e}")
+                        continue
                     
                     # Get reply headers for threading detection
                     in_reply_to = msg.get('In-Reply-To', '').strip()
@@ -1808,6 +1892,28 @@ async def process_email_account(db: AsyncSession, account) -> List[Ticket]:
                         fresh_db, workspace_id, in_reply_to, references
                     )
                     
+                    # If reply belongs to a closed/resolved ticket, skip this email entirely
+                    if existing_ticket == 'CLOSED':
+                        print(f"[Email Account] ⏭️ SKIPPING: Email is a reply to a closed/resolved ticket")
+                        processed = ProcessedMail(
+                            message_id=message_id,
+                            email_from=sender_email_addr or 'unknown@unknown.com',
+                            subject=subject,
+                            ticket_id=None,
+                            workspace_id=workspace_id
+                        )
+                        fresh_db.add(processed)
+                        await fresh_db.commit()
+                        if mail:
+                            try:
+                                def _mark_read_closed(_folder=email_folder, _eid=email_id):
+                                    mail.select(_folder)
+                                    mail.uid('store', _eid, '+FLAGS', '\\Seen')
+                                await asyncio.to_thread(_mark_read_closed)
+                            except Exception as e:
+                                print(f"[Email Account] Warning: Could not mark email as read: {e}")
+                        continue
+                    
                     # If not found via headers, try by sender email
                     # (Skip subject matching - too aggressive, catches invoice numbers etc.)
                     if not existing_ticket:
@@ -1847,7 +1953,7 @@ async def process_email_account(db: AsyncSession, account) -> List[Ticket]:
                                 # Capture variables by value using default arguments to avoid closure bug
                                 def _mark_read_2(_folder=email_folder, _eid=email_id):
                                     mail.select(_folder)
-                                    mail.store(_eid, '+FLAGS', '\\Seen')
+                                    mail.uid('store', _eid, '+FLAGS', '\\Seen')
                                 await asyncio.to_thread(_mark_read_2)
                             except Exception as e:
                                 print(f"[Email Account] Warning: Could not mark email as read: {e}")
@@ -1924,7 +2030,7 @@ async def process_email_account(db: AsyncSession, account) -> List[Ticket]:
                             # Capture variables by value using default arguments to avoid closure bug
                             def _mark_read_3(_folder=email_folder, _eid=email_id):
                                 mail.select(_folder)
-                                mail.store(_eid, '+FLAGS', '\\Seen')
+                                mail.uid('store', _eid, '+FLAGS', '\\Seen')
                             await asyncio.to_thread(_mark_read_3)
                         except Exception as e:
                             print(f"[Email Account] Warning: Could not mark email as read: {e}")
