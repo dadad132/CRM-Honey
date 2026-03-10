@@ -11070,6 +11070,16 @@ async def web_tickets_create(
     )
     db.add(history)
     
+    # Log manual ticket creation for diagnostics
+    try:
+        from app.core.system_logger import log_fire_and_forget
+        log_fire_and_forget('INFO', 'ticket', 'User Action',
+            f'Manually created ticket #{ticket_number}',
+            f'User={user.full_name or user.username} | Subject={subject[:80]} | Guest={customer_email or "N/A"} | Priority={priority}',
+            user.workspace_id)
+    except Exception:
+        pass
+    
     # Create calendar event if scheduled date is set and ticket is assigned
     if scheduled_datetime and assigned_to_user_id:
         # Create a meeting/calendar event for the ticket
@@ -14478,6 +14488,16 @@ async def web_tickets_update_status(
         ticket.is_archived = True
         ticket.archived_at = datetime.utcnow()
     
+    # Log ticket status change for diagnostics
+    try:
+        from app.core.system_logger import log_fire_and_forget
+        log_fire_and_forget('INFO', 'ticket', 'User Action',
+            f'Status changed: {old_status} -> {status} on ticket #{ticket.ticket_number}',
+            f'User={user.full_name or user.username} | TicketID={ticket_id} | Subject={ticket.subject[:80]} | Guest={ticket.guest_email or "N/A"}',
+            user.workspace_id)
+    except Exception:
+        pass
+    
     # Add history
     history = TicketHistory(
         ticket_id=ticket_id,
@@ -14577,6 +14597,16 @@ async def web_tickets_close_with_details(
     ticket.closed_by_id = user_id
     ticket.is_archived = True
     ticket.archived_at = datetime.utcnow()
+    
+    # Log close-with-details for diagnostics
+    try:
+        from app.core.system_logger import log_fire_and_forget
+        log_fire_and_forget('INFO', 'ticket', 'User Action',
+            f'Closed with details: ticket #{ticket.ticket_number} ({old_status} -> closed)',
+            f'User={user.full_name or user.username} | TicketID={ticket_id} | Subject={ticket.subject[:80]} | Guest={ticket.guest_email or "N/A"}',
+            user.workspace_id)
+    except Exception:
+        pass
     
     # Save billing details (strip whitespace, store None if empty)
     ticket.billable_traveling = billable_traveling.strip() if billable_traveling and billable_traveling.strip() else None
@@ -14726,6 +14756,15 @@ async def web_tickets_archive(
     
     await db.commit()
     
+    try:
+        from app.core.system_logger import log_fire_and_forget
+        log_fire_and_forget('INFO', 'ticket', 'User Action',
+            f'Archived ticket #{ticket.ticket_number}',
+            f'User={user.full_name or user.username} | TicketID={ticket_id}',
+            user.workspace_id)
+    except Exception:
+        pass
+    
     request.session['success_message'] = f'Ticket #{ticket.ticket_number} has been archived.'
     return RedirectResponse('/web/tickets/archived', status_code=303)
 
@@ -14760,6 +14799,16 @@ async def web_tickets_restore(
     ticket.updated_at = datetime.utcnow()
     
     await db.commit()
+    
+    try:
+        from app.core.system_logger import log_fire_and_forget
+        log_fire_and_forget('INFO', 'ticket', 'User Action',
+            f'Restored ticket #{ticket.ticket_number}',
+            f'User={user.full_name or user.username} | TicketID={ticket_id}',
+            user.workspace_id)
+    except Exception:
+        pass
+    
     request.session['success_message'] = f'Ticket #{ticket.ticket_number} has been restored.'
     return RedirectResponse('/web/tickets/archived', status_code=303)
 
@@ -14790,6 +14839,16 @@ async def web_tickets_assign(
     old_assigned = ticket.assigned_to_id
     ticket.assigned_to_id = assigned_to_id
     ticket.updated_at = datetime.utcnow()
+    
+    # Log assignment for diagnostics
+    try:
+        from app.core.system_logger import log_fire_and_forget
+        log_fire_and_forget('INFO', 'ticket', 'User Action',
+            f'Assigned ticket #{ticket.ticket_number}',
+            f'User={user.full_name or user.username} | OldAssignee={old_assigned} | NewAssignee={assigned_to_id}',
+            user.workspace_id)
+    except Exception:
+        pass
     
     # Add history
     history = TicketHistory(
