@@ -4232,11 +4232,27 @@ async def web_admin_backups(request: Request, db: AsyncSession = Depends(get_ses
             'created_timestamp': backup_file.stat().st_mtime
         })
     
+    # Get recent system logs for display
+    from app.models.system_log import SystemLog
+    from sqlalchemy import func as sa_func
+    try:
+        log_count_result = await db.execute(select(sa_func.count()).select_from(SystemLog))
+        log_count = log_count_result.scalar() or 0
+        recent_logs_result = await db.execute(
+            select(SystemLog).order_by(SystemLog.timestamp.desc()).limit(20)
+        )
+        recent_logs = recent_logs_result.scalars().all()
+    except Exception:
+        log_count = 0
+        recent_logs = []
+    
     return templates.TemplateResponse('admin/backups.html', {
         'request': request,
         'user': user,
         'stats': stats,
-        'backups': backups
+        'backups': backups,
+        'log_count': log_count,
+        'recent_logs': recent_logs
     })
 
 
@@ -4386,6 +4402,85 @@ async def web_admin_backup_delete(
         return RedirectResponse('/web/admin/backups?success=backup_deleted', status_code=303)
     else:
         return RedirectResponse('/web/admin/backups?error=delete_failed', status_code=303)
+
+
+@router.get('/admin/backups/logs/download')
+async def web_admin_logs_download(
+    request: Request,
+    db: AsyncSession = Depends(get_session)
+):
+    """Download system diagnostic logs as a text file for a given time range."""
+    user_id = request.session.get('user_id')
+    if not user_id:
+        return RedirectResponse('/web/login', status_code=303)
+    
+    user = (await db.execute(select(User).where(User.id == user_id))).scalar_one_or_none()
+    if not user or not user.is_active or not user.is_admin:
+        raise HTTPException(status_code=403, detail="Admin access required")
+    
+    from app.models.system_log import SystemLog
+    from fastapi.responses import Response
+    
+    # Parse date range from query params
+    from_str = request.query_params.get('from', '')
+    to_str = request.query_params.get('to', '')
+    level_filter = request.query_params.get('level', '')
+    
+    try:
+        from_dt = datetime.fromisoformat(from_str) if from_str else datetime.utcnow() - timedelta(days=1)
+        to_dt = datetime.fromisoformat(to_str) if to_str else datetime.utcnow()
+    except ValueError:
+        from_dt = datetime.utcnow() - timedelta(days=1)
+        to_dt = datetime.utcnow()
+    
+    # Build query
+    query = select(SystemLog).where(
+        SystemLog.timestamp >= from_dt,
+        SystemLog.timestamp <= to_dt
+    )
+    
+    if level_filter == 'ERROR':
+        query = query.where(SystemLog.level == 'ERROR')
+    elif level_filter == 'INFO':
+        query = query.where(SystemLog.level.in_(['INFO', 'WARN', 'ERROR']))
+    # DEBUG = all levels, empty = all levels
+    
+    query = query.order_by(SystemLog.timestamp.asc())
+    
+    result = await db.execute(query)
+    logs = result.scalars().all()
+    
+    if not logs:
+        return RedirectResponse('/web/admin/backups?error=no_logs', status_code=303)
+    
+    # Build compact text report
+    lines = [
+        f"=== System Diagnostic Report ===",
+        f"Generated: {datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')} UTC",
+        f"Range: {from_dt.strftime('%Y-%m-%d %H:%M')} to {to_dt.strftime('%Y-%m-%d %H:%M')}",
+        f"Filter: {level_filter or 'ALL'}",
+        f"Entries: {len(logs)}",
+        f"{'='*60}",
+        "",
+    ]
+    
+    for log in logs:
+        ts = log.timestamp.strftime('%Y-%m-%d %H:%M:%S')
+        line = f"[{ts}] [{log.level}] [{log.source}] {log.message}"
+        if log.details:
+            line += f" | {log.details}"
+        lines.append(line)
+    
+    report_text = "\n".join(lines)
+    filename = f"system_log_{from_dt.strftime('%Y%m%d')}_{to_dt.strftime('%Y%m%d')}.txt"
+    
+    return Response(
+        content=report_text,
+        media_type="text/plain",
+        headers={
+            "Content-Disposition": f'attachment; filename="{filename}"'
+        }
+    )
 
 
 # --------------------------

@@ -18,6 +18,14 @@ from typing import Optional, List, Tuple
 
 # Set default IMAP socket timeout to prevent hanging connections
 IMAP_TIMEOUT = 60  # seconds
+
+# Lazy import helper for system logger (avoids circular imports)
+def _syslog(level, source, message, details=None, workspace_id=None):
+    try:
+        from app.core.system_logger import log_fire_and_forget
+        log_fire_and_forget(level, 'email', source, message, details, workspace_id)
+    except Exception:
+        pass
 from sqlmodel import Session, select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
@@ -319,10 +327,12 @@ class EmailToTicketService:
                 self.settings.incoming_mail_password
             )
             print(f"[IMAP] Successfully connected to {host}:{port} (SSL={use_ssl})")
+            _syslog('INFO', 'IMAP', f'Connected to {host}:{port}')
             return mail
         except Exception as e:
             socket.setdefaulttimeout(None)  # Reset timeout on failure
             print(f"[IMAP] Failed to connect to IMAP server {host}:{port} (SSL={use_ssl}): {e}")
+            _syslog('ERROR', 'IMAP', f'Connection failed: {host}:{port}', str(e)[:200])
             raise
     
     def _fetch_raw_emails_sync(self) -> List[dict]:
@@ -1098,6 +1108,7 @@ class EmailToTicketService:
             raw_emails = await asyncio.to_thread(connect_and_fetch)
             
             print(f"[IMAP] Found {len(raw_emails)} messages from last 7 days")
+            _syslog('INFO', 'IMAP', f'Fetched {len(raw_emails)} emails from last 7 days')
             
             # Import for fresh sessions
             from sqlmodel.ext.asyncio.session import AsyncSession as NewAsyncSession
@@ -1140,6 +1151,7 @@ class EmailToTicketService:
                                 await mark_as_read_in_folder(email_id, folder)
                             except Exception as e:
                                 print(f"[IMAP] Warning: Could not mark email as read in {folder}: {e}")
+                            _syslog('DEBUG', 'IMAP', 'Already processed, skipping', f'MsgID={message_id[:80]}')
                             continue
                         
                         # Extract email info
@@ -1153,6 +1165,7 @@ class EmailToTicketService:
                         smtp_from = (self.settings.smtp_from_email or '').lower() if hasattr(self.settings, 'smtp_from_email') else ''
                         if sender_email and (sender_email.lower() == own_email or sender_email.lower() == smtp_from):
                             print(f"[IMAP] ⏭️ SKIPPING: Email sent from our own address ({sender_email})")
+                            _syslog('INFO', 'IMAP', 'Skipped own outgoing email', f'From={sender_email}')
                             await self.mark_email_processed(fresh_db, message_id, sender_email,
                                 self.decode_header_value(msg.get('Subject', 'No Subject')), None)
                             try:
@@ -1173,6 +1186,7 @@ class EmailToTicketService:
                         print(f"[IMAP] To: {to_email}")
                         print(f"[IMAP] Subject: {subject}")
                         print(f"[IMAP] Message-ID: {message_id}")
+                        _syslog('INFO', 'IMAP', f'Processing: {subject[:80]}', f'From={sender_email} | MsgID={message_id[:80]} | Folder={folder}')
                         
                         # Check if this is a reply to an existing ticket
                         # Keep Message-ID with angle brackets for matching
@@ -1187,6 +1201,7 @@ class EmailToTicketService:
                         # If reply belongs to a closed/resolved ticket, skip this email entirely
                         if existing_ticket == 'CLOSED':
                             print(f"[IMAP] ⏭️ SKIPPING: Email is a reply to a closed/resolved ticket")
+                            _syslog('INFO', 'IMAP', 'Skipped reply to closed ticket', f'Subject={subject[:80]} | From={sender_email}')
                             await self.mark_email_processed(fresh_db, message_id, sender_email, subject, None)
                             try:
                                 await mark_as_read_in_folder(email_id, folder)
@@ -1202,8 +1217,10 @@ class EmailToTicketService:
                         
                         if existing_ticket:
                             print(f"[IMAP] ✅ MATCH FOUND - Adding to ticket #{existing_ticket.ticket_number}")
+                            _syslog('INFO', 'IMAP', f'Matched to ticket #{existing_ticket.ticket_number}', f'From={sender_email} | Subject={subject[:80]}')
                         else:
                             print(f"[IMAP] ❌ NO MATCH - Will create new ticket")
+                            _syslog('INFO', 'IMAP', 'No match - will create new ticket', f'From={sender_email} | Subject={subject[:80]} | InReplyTo={in_reply_to[:60]} | Refs={references[:60]}')
                         print(f"{'='*80}\n")
                         
                         # Find project by support email
@@ -1279,9 +1296,11 @@ class EmailToTicketService:
                                 print(f"[IMAP] Created ticket {ticket_number} for project '{project.name}' from {sender_email} (folder: {folder})")
                             else:
                                 print(f"[IMAP] Created ticket {ticket_number} from {sender_email} (folder: {folder})")
+                            _syslog('INFO', 'IMAP', f'Created ticket #{ticket_number}', f'From={sender_email} | Subject={subject[:80]} | Folder={folder} | MsgID={message_id[:80]}')
                     
                 except Exception as e:
                     print(f"[IMAP] Error processing email {email_id}: {e}")
+                    _syslog('ERROR', 'IMAP', f'Error processing email', f'UID={email_id} | Error={str(e)[:200]}')
                     continue
             
             # Close connection in thread pool
@@ -1290,6 +1309,7 @@ class EmailToTicketService:
             
         except Exception as e:
             print(f"[IMAP] Error fetching emails: {e}")
+            _syslog('ERROR', 'IMAP', 'Error fetching emails', str(e)[:200])
             if mail:
                 try:
                     await asyncio.to_thread(lambda: (mail.close(), mail.logout()))
@@ -1749,6 +1769,7 @@ async def process_email_account(db: AsyncSession, account) -> List[Ticket]:
         raw_emails = await asyncio.to_thread(connect_and_fetch)
         
         print(f"[Email Account] {account_name}: Found {len(raw_emails)} unread messages to process")
+        _syslog('INFO', 'Email Account', f'{account_name}: Fetched {len(raw_emails)} emails', workspace_id=workspace_id)
         
         for raw_email in raw_emails:
             email_id = raw_email['email_id']
@@ -1778,6 +1799,7 @@ async def process_email_account(db: AsyncSession, account) -> List[Ticket]:
                     )
                     if existing.scalar_one_or_none():
                         print(f"[Email Account] Email already processed, marking as read")
+                        _syslog('DEBUG', 'Email Account', 'Already processed, skipping', f'MsgID={message_id[:80]}', workspace_id)
                         if mail:
                             try:
                                 # Capture variables by value using default arguments to avoid closure bug
@@ -1818,11 +1840,13 @@ async def process_email_account(db: AsyncSession, account) -> List[Ticket]:
                     
                     print(f"[Email Account] From: {sender_name} <{sender_email_addr}>")
                     print(f"[Email Account] Subject: {subject}")
+                    _syslog('INFO', 'Email Account', f'Processing: {subject[:80]}', f'From={sender_email_addr} | MsgID={message_id[:80]}', workspace_id)
                     
                     # Skip emails sent FROM our own support address (outgoing replies)
                     own_addresses = {imap_username.lower(), account_email.lower()}
                     if sender_email_addr and sender_email_addr in own_addresses:
                         print(f"[Email Account] ⏭️ SKIPPING: Email sent from our own address ({sender_email_addr})")
+                        _syslog('INFO', 'Email Account', 'Skipped own outgoing email', f'From={sender_email_addr}', workspace_id)
                         processed = ProcessedMail(
                             message_id=message_id,
                             email_from=sender_email_addr,
@@ -1895,6 +1919,7 @@ async def process_email_account(db: AsyncSession, account) -> List[Ticket]:
                     # If reply belongs to a closed/resolved ticket, skip this email entirely
                     if existing_ticket == 'CLOSED':
                         print(f"[Email Account] ⏭️ SKIPPING: Email is a reply to a closed/resolved ticket")
+                        _syslog('INFO', 'Email Account', 'Skipped reply to closed ticket', f'Subject={subject[:80]} | From={sender_email_addr}', workspace_id)
                         processed = ProcessedMail(
                             message_id=message_id,
                             email_from=sender_email_addr or 'unknown@unknown.com',
@@ -1929,6 +1954,7 @@ async def process_email_account(db: AsyncSession, account) -> List[Ticket]:
                         existing_ticket_number = existing_ticket.ticket_number
                         
                         print(f"[Email Account] ✅ MATCH FOUND - Adding comment to ticket #{existing_ticket_number}")
+                        _syslog('INFO', 'Email Account', f'Matched to ticket #{existing_ticket_number}', f'From={sender_email_addr} | Subject={subject[:80]}', workspace_id)
                         
                         # Add as comment to existing ticket
                         await add_comment_from_email_for_account(
@@ -1962,6 +1988,7 @@ async def process_email_account(db: AsyncSession, account) -> List[Ticket]:
                         continue  # Move to next email, don't create new ticket
                     
                     print(f"[Email Account] ❌ NO MATCH - Creating new ticket")
+                    _syslog('INFO', 'Email Account', 'No match - creating new ticket', f'From={sender_email_addr} | Subject={subject[:80]} | InReplyTo={in_reply_to[:60]} | Refs={references[:60]}', workspace_id)
                     
                     # Determine priority
                     # Only check subject for priority keywords (body has too many false matches)
@@ -2061,9 +2088,11 @@ async def process_email_account(db: AsyncSession, account) -> List[Ticket]:
                     
                     tickets_created.append(new_ticket)
                     print(f"[Email Account] ✅ Created ticket #{ticket_number} (ID: {ticket_id}) from {sender_email_addr} via {account_name}")
+                    _syslog('INFO', 'Email Account', f'Created ticket #{ticket_number}', f'From={sender_email_addr} | Subject={subject[:80]} | MsgID={message_id[:80]}', workspace_id)
                 
             except Exception as e:
                 print(f"[Email Account] Error processing email {email_id}: {e}")
+                _syslog('ERROR', 'Email Account', f'Error processing email', f'UID={email_id} | Error={str(e)[:200]}', workspace_id)
                 import traceback
                 traceback.print_exc()
                 continue
@@ -2076,6 +2105,7 @@ async def process_email_account(db: AsyncSession, account) -> List[Ticket]:
         
     except Exception as e:
         print(f"[Email Account] ❌ Error fetching emails for account {account_name}: {e}")
+        _syslog('ERROR', 'Email Account', f'Error fetching emails for {account_name}', str(e)[:200], workspace_id)
         import traceback
         traceback.print_exc()
         if mail:

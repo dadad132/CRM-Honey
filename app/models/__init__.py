@@ -40,6 +40,7 @@ from .task_extensions import (
 )
 from .user_behavior import UserBehavior, UserPreference, SmartSuggestion
 from .support_kb import SupportArticle, SupportConversation, SupportCategory
+from .system_log import SystemLog
 __all__ = [
     "Workspace",
     "User",
@@ -98,4 +99,5 @@ __all__ = [
     "SupportArticle",
     "SupportConversation",
     "SupportCategory",
+    "SystemLog",
 ]

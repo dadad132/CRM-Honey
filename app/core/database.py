@@ -101,6 +101,15 @@ async def lifespan(app):  # FastAPI lifespan
     except Exception as e:
         logger.warning(f"⚠️  Email-to-Ticket scheduler not started: {e}")
     
+    # Start system log cleanup scheduler (deletes logs older than 7 days)
+    try:
+        from app.core.system_logger import start_log_cleanup_scheduler, cleanup_old_logs
+        await cleanup_old_logs()  # Run once on startup
+        asyncio.create_task(start_log_cleanup_scheduler())
+        logger.info("✅ System log cleanup scheduler started")
+    except Exception as e:
+        logger.warning(f"⚠️  System log cleanup scheduler not started: {e}")
+    
     # Fix attachment paths from absolute to relative on startup
     try:
         import sqlite3
