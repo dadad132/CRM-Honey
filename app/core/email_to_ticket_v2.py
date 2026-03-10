@@ -959,7 +959,11 @@ class EmailToTicketService:
         
         # Save email attachments if any
         if attachments:
-            await save_email_attachments(db, ticket.id, attachments)
+            try:
+                await save_email_attachments(db, ticket.id, attachments)
+            except Exception as e:
+                print(f"[Email Attachment] Failed to save attachments for ticket {ticket.id}: {e}")
+                _syslog('ERROR', 'IMAP', 'Attachment save failed', f'Ticket={ticket.id} | Error={str(e)[:200]}')
         
         await db.commit()
         await db.refresh(ticket)
@@ -1028,8 +1032,12 @@ class EmailToTicketService:
         
         # Save email attachments if any (linked to both ticket and comment)
         if attachments:
-            await db.flush()  # Flush to get comment.id
-            await save_email_attachments(db, ticket.id, attachments, comment_id=comment.id)
+            try:
+                await db.flush()  # Flush to get comment.id
+                await save_email_attachments(db, ticket.id, attachments, comment_id=comment.id)
+            except Exception as e:
+                print(f"[Email Attachment] Failed to save attachments for ticket {ticket.id}: {e}")
+                _syslog('ERROR', 'IMAP', 'Attachment save failed (comment)', f'Ticket={ticket.id} | Error={str(e)[:200]}')
         
         await db.commit()
         await db.refresh(comment)
@@ -1571,8 +1579,12 @@ async def add_comment_from_email_for_account(
     
     # Save email attachments if any (linked to both ticket and comment)
     if attachments:
-        await db.flush()  # Flush to get comment.id
-        await save_email_attachments(db, ticket.id, attachments, comment_id=comment.id)
+        try:
+            await db.flush()  # Flush to get comment.id
+            await save_email_attachments(db, ticket.id, attachments, comment_id=comment.id)
+        except Exception as e:
+            print(f"[Email Attachment] Failed to save attachments for ticket {ticket.id}: {e}")
+            _syslog('ERROR', 'Email Account', 'Attachment save failed (comment)', f'Ticket={ticket.id} | Error={str(e)[:200]}')
     
     await db.commit()
     await db.refresh(comment)
@@ -2038,7 +2050,11 @@ async def process_email_account(db: AsyncSession, account) -> List[Ticket]:
                     
                     # Save email attachments if any
                     if email_attachments:
-                        await save_email_attachments(fresh_db, ticket_id, email_attachments)
+                        try:
+                            await save_email_attachments(fresh_db, ticket_id, email_attachments)
+                        except Exception as e:
+                            print(f"[Email Attachment] Failed to save attachments for ticket {ticket_id}: {e}")
+                            _syslog('ERROR', 'Email Account', 'Attachment save failed', f'Ticket={ticket_id} | Error={str(e)[:200]}', workspace_id)
                     
                     # Mark email as processed
                     processed = ProcessedMail(
