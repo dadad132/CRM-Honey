@@ -100,32 +100,42 @@ class EmailScheduler:
     async def _process_email_accounts(self):
         """Process emails for all active incoming email accounts (new multi-account)"""
         try:
+            # Load accounts in one session, then close it
+            # This avoids expire_on_commit issues when processing multiple accounts
             async with AsyncSession(engine) as db:
-                # Find all active email accounts
                 result = await db.execute(
                     select(IncomingEmailAccount).where(
                         IncomingEmailAccount.is_active == True
                     )
                 )
                 accounts = result.scalars().all()
-                
-                if accounts:
-                    print(f"[Email-to-Ticket] Found {len(accounts)} active incoming email account(s)")
-                
-                for account in accounts:
-                    try:
-                        tickets = await process_email_account(db, account)
+            
+            if not accounts:
+                return
+            
+            print(f"[Email-to-Ticket] Found {len(accounts)} active incoming email account(s)")
+            
+            # Process each account with its own fresh session
+            # Previously, all accounts shared one session and db.commit() after the
+            # first account expired all remaining account objects (expire_on_commit=True),
+            # causing MissingGreenlet errors on subsequent accounts
+            for account in accounts:
+                try:
+                    async with AsyncSession(engine) as account_db:
+                        tickets = await process_email_account(account_db, account)
                         if tickets:
                             timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
                             print(f"[{timestamp}] Email '{account.name}': Created {len(tickets)} ticket(s) from emails")
                         
                         # Update last_checked_at
                         account.last_checked_at = datetime.utcnow()
-                        db.add(account)
-                        await db.commit()
-                    except Exception as e:
-                        print(f"[Email-to-Ticket] Error processing email account '{account.name}': {e}")
-                        print(f"[Email-to-Ticket] Traceback: {traceback.format_exc()}")
+                        account_db.add(account)
+                        await account_db.commit()
+                except Exception as e:
+                    print(f"[Email-to-Ticket] Error processing email account '{account.name}': {e}")
+                    print(f"[Email-to-Ticket] Traceback: {traceback.format_exc()}")
+                    from app.core.system_logger import log_fire_and_forget
+                    log_fire_and_forget('ERROR', 'Scheduler', f'Error processing account: {account.name}', str(e)[:200])
         
         except Exception as e:
             if "no such table" in str(e).lower():
