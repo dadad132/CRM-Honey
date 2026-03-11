@@ -1159,7 +1159,6 @@ class EmailToTicketService:
                                 await mark_as_read_in_folder(email_id, folder)
                             except Exception as e:
                                 print(f"[IMAP] Warning: Could not mark email as read in {folder}: {e}")
-                            _syslog('DEBUG', 'IMAP', 'Already processed, skipping', f'MsgID={message_id[:80]}')
                             continue
                         
                         # Extract email info
@@ -1811,7 +1810,6 @@ async def process_email_account(db: AsyncSession, account) -> List[Ticket]:
                     )
                     if existing.scalar_one_or_none():
                         print(f"[Email Account] Email already processed, marking as read")
-                        _syslog('DEBUG', 'Email Account', 'Already processed, skipping', f'MsgID={message_id[:80]}', workspace_id)
                         if mail:
                             try:
                                 # Capture variables by value using default arguments to avoid closure bug

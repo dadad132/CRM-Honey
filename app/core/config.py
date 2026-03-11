@@ -29,7 +29,7 @@ class Settings(BaseSettings):
     update_check_interval: int = Field(86400, alias="UPDATE_CHECK_INTERVAL")
 
     # Email-to-Ticket Configuration
-    email_check_interval: int = Field(60, alias="EMAIL_CHECK_INTERVAL")  # Default: 1 minute (60 seconds)
+    email_check_interval: int = Field(120, alias="EMAIL_CHECK_INTERVAL")  # Default: 2 minutes (120 seconds)
 
     # Google OAuth Configuration
     google_client_id: str = Field("", alias="GOOGLE_CLIENT_ID")
