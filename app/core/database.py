@@ -193,6 +193,19 @@ async def lifespan(app):  # FastAPI lifespan
     except Exception as e:
         logger.warning(f"⚠️  Could not fix attachment paths: {e}")
     
+    # Seed IT Knowledge Base with common troubleshooting data (runs once if empty)
+    try:
+        from app.core.kb_seed import seed_knowledge_base
+        from sqlmodel import select as _sel
+        from app.models.workspace import Workspace
+        async with AsyncSession(engine) as _session:
+            ws = (await _session.execute(_sel(Workspace).limit(1))).scalar_one_or_none()
+            if ws:
+                await seed_knowledge_base(ws.id)
+                logger.info("✅ IT Knowledge Base seed check complete")
+    except Exception as e:
+        logger.warning(f"⚠️  Could not seed Knowledge Base: {e}")
+    
     yield
     
     # Cleanup on shutdown - execute graceful shutdown sequence
