@@ -16433,3 +16433,542 @@ async def use_template(
 
 
 # Calls feature removed - routes deleted
+
+
+# =====================================================
+# IT KNOWLEDGE BASE - Solutions, Diagnostics, Resolved Cases
+# =====================================================
+
+from app.models.knowledge_base import KBDiagnosticTree, KBResolvedCase
+
+
+@router.get('/knowledge-base', response_class=HTMLResponse)
+async def web_knowledge_base(
+    request: Request,
+    category: Optional[str] = None,
+    search: Optional[str] = None,
+    db: AsyncSession = Depends(get_session)
+):
+    """Main Knowledge Base / Solutions page"""
+    user = await get_current_user(request, db)
+
+    # Recent articles from SupportArticle
+    article_query = select(SupportArticle).where(
+        SupportArticle.workspace_id == user.workspace_id,
+        SupportArticle.is_active == True
+    )
+    if category:
+        article_query = article_query.where(SupportArticle.category == category)
+    article_query = article_query.order_by(SupportArticle.created_at.desc()).limit(12)
+    recent_articles = (await db.execute(article_query)).scalars().all()
+
+    # Recent resolved cases
+    case_query = select(KBResolvedCase).where(
+        KBResolvedCase.workspace_id == user.workspace_id
+    )
+    if category:
+        case_query = case_query.where(KBResolvedCase.category == category)
+    case_query = case_query.order_by(KBResolvedCase.created_at.desc()).limit(12)
+    recent_cases = (await db.execute(case_query)).scalars().all()
+
+    # Categories
+    categories = (await db.execute(
+        select(SupportCategory).where(
+            SupportCategory.workspace_id == user.workspace_id,
+            SupportCategory.is_active == True
+        ).order_by(SupportCategory.name)
+    )).scalars().all()
+
+    return templates.TemplateResponse('knowledge_base/index.html', {
+        'request': request,
+        'user': user,
+        'recent_articles': recent_articles,
+        'recent_cases': recent_cases,
+        'categories': categories,
+        'all_categories': categories,
+        'search_query': search or '',
+        'active_tab': 'search',
+    })
+
+
+@router.get('/knowledge-base/search', response_class=JSONResponse)
+async def web_kb_search(
+    request: Request,
+    q: str = '',
+    db: AsyncSession = Depends(get_session)
+):
+    """Fuzzy search across articles and resolved cases"""
+    user = await get_current_user(request, db)
+    if not q.strip():
+        return {'results': []}
+
+    search_term = q.strip()
+    keywords = [w for w in search_term.lower().split() if len(w) >= 2]
+    results = []
+
+    # Search SupportArticle
+    for kw in keywords:
+        pattern = f'%{kw}%'
+        articles = (await db.execute(
+            select(SupportArticle).where(
+                SupportArticle.workspace_id == user.workspace_id,
+                SupportArticle.is_active == True,
+                or_(
+                    SupportArticle.problem_title.ilike(pattern),
+                    SupportArticle.problem_description.ilike(pattern),
+                    SupportArticle.problem_keywords.ilike(pattern),
+                    SupportArticle.solution_steps.ilike(pattern),
+                )
+            ).order_by(SupportArticle.times_helpful.desc()).limit(10)
+        )).scalars().all()
+        for a in articles:
+            if not any(r['id'] == f'article-{a.id}' for r in results):
+                results.append({
+                    'id': f'article-{a.id}',
+                    'type': 'article',
+                    'title': a.problem_title,
+                    'description': a.problem_description[:200],
+                    'category': a.category,
+                    'tags': a.problem_keywords or '',
+                    'is_verified': a.is_verified,
+                    'helpful_votes': a.times_helpful,
+                    'url': f'/web/knowledge-base/article/{a.id}'
+                })
+
+    # Search KBResolvedCase
+    for kw in keywords:
+        pattern = f'%{kw}%'
+        cases = (await db.execute(
+            select(KBResolvedCase).where(
+                KBResolvedCase.workspace_id == user.workspace_id,
+                or_(
+                    KBResolvedCase.problem_title.ilike(pattern),
+                    KBResolvedCase.problem_description.ilike(pattern),
+                    KBResolvedCase.solution_steps.ilike(pattern),
+                    KBResolvedCase.error_message.ilike(pattern),
+                    KBResolvedCase.tags.ilike(pattern),
+                    KBResolvedCase.device_brand.ilike(pattern),
+                    KBResolvedCase.root_cause.ilike(pattern),
+                )
+            ).order_by(KBResolvedCase.helpful_votes.desc()).limit(10)
+        )).scalars().all()
+        for c in cases:
+            if not any(r['id'] == f'case-{c.id}' for r in results):
+                results.append({
+                    'id': f'case-{c.id}',
+                    'type': 'resolved_case',
+                    'title': c.problem_title,
+                    'description': c.problem_description[:200],
+                    'category': c.category,
+                    'tags': c.tags or '',
+                    'is_verified': c.is_verified,
+                    'helpful_votes': c.helpful_votes,
+                    'url': f'/web/knowledge-base/resolved/{c.id}'
+                })
+
+    return {'results': results[:20]}
+
+
+@router.get('/knowledge-base/article/{article_id}', response_class=HTMLResponse)
+async def web_kb_article_detail(
+    request: Request,
+    article_id: int,
+    db: AsyncSession = Depends(get_session)
+):
+    """View a single KB article"""
+    user = await get_current_user(request, db)
+    article = (await db.execute(
+        select(SupportArticle).where(
+            SupportArticle.id == article_id,
+            SupportArticle.workspace_id == user.workspace_id
+        )
+    )).scalar_one_or_none()
+    if not article:
+        raise HTTPException(status_code=404, detail="Article not found")
+
+    # Increment view count
+    article.times_shown += 1
+    await db.commit()
+
+    # Related articles (same category)
+    related_articles = (await db.execute(
+        select(SupportArticle).where(
+            SupportArticle.workspace_id == user.workspace_id,
+            SupportArticle.category == article.category,
+            SupportArticle.id != article.id,
+            SupportArticle.is_active == True
+        ).order_by(SupportArticle.times_helpful.desc()).limit(5)
+    )).scalars().all()
+
+    return templates.TemplateResponse('knowledge_base/article.html', {
+        'request': request,
+        'user': user,
+        'article': article,
+        'related_articles': related_articles,
+    })
+
+
+@router.post('/knowledge-base/article/{article_id}/rate')
+async def web_kb_article_rate(
+    request: Request,
+    article_id: int,
+    helpful: str = Form('true'),
+    db: AsyncSession = Depends(get_session)
+):
+    """Rate an article helpful/not helpful"""
+    user = await get_current_user(request, db)
+    article = (await db.execute(
+        select(SupportArticle).where(
+            SupportArticle.id == article_id,
+            SupportArticle.workspace_id == user.workspace_id
+        )
+    )).scalar_one_or_none()
+    if article:
+        if helpful == 'true':
+            article.times_helpful += 1
+        else:
+            article.times_not_helpful += 1
+        # Recalculate success rate
+        total = article.times_helpful + article.times_not_helpful
+        article.success_rate = (article.times_helpful / total * 100) if total > 0 else 0
+        await db.commit()
+    return RedirectResponse(url=f'/web/knowledge-base/article/{article_id}', status_code=303)
+
+
+@router.post('/knowledge-base/articles', response_class=JSONResponse)
+async def web_kb_create_article(
+    request: Request,
+    db: AsyncSession = Depends(get_session)
+):
+    """Create a new KB article (from the Add Solution modal)"""
+    user = await get_current_user(request, db)
+    data = await request.json()
+
+    problem_title = (data.get('problem_title') or '').strip()
+    problem_description = (data.get('problem_description') or '').strip()
+    category = (data.get('category') or '').strip()
+    solution_steps = (data.get('solution_steps') or '').strip()
+
+    if not problem_title or not problem_description or not category or not solution_steps:
+        return JSONResponse({'error': 'Missing required fields'}, status_code=400)
+
+    article = SupportArticle(
+        workspace_id=user.workspace_id,
+        problem_title=problem_title,
+        problem_description=problem_description,
+        problem_keywords=(data.get('keywords') or '').strip(),
+        category=category,
+        solution_steps=solution_steps,
+        solution_source='manual',
+        created_by_id=user.id,
+        is_active=True,
+    )
+    db.add(article)
+    await db.commit()
+    return {'ok': True, 'id': article.id}
+
+
+# --- Diagnostic Engine routes ---
+
+@router.get('/knowledge-base/diagnostic/start', response_class=JSONResponse)
+async def web_kb_diagnostic_start(
+    request: Request,
+    category: str = '',
+    db: AsyncSession = Depends(get_session)
+):
+    """Get root diagnostic node(s) for a category"""
+    user = await get_current_user(request, db)
+
+    # Find root nodes (parent_id is None) for this category
+    roots = (await db.execute(
+        select(KBDiagnosticTree).where(
+            KBDiagnosticTree.workspace_id == user.workspace_id,
+            KBDiagnosticTree.parent_id == None,
+            KBDiagnosticTree.is_active == True,
+            KBDiagnosticTree.category == category
+        ).order_by(KBDiagnosticTree.sort_order)
+    )).scalars().all()
+
+    if not roots:
+        return {'node': None, 'children': []}
+
+    # If single root, return it with its children
+    root = roots[0]
+    children = (await db.execute(
+        select(KBDiagnosticTree).where(
+            KBDiagnosticTree.parent_id == root.id,
+            KBDiagnosticTree.is_active == True
+        ).order_by(KBDiagnosticTree.sort_order)
+    )).scalars().all()
+
+    return {
+        'node': {
+            'id': root.id,
+            'title': root.title,
+            'node_type': root.node_type,
+            'question_text': root.question_text,
+            'solution_text': root.solution_text,
+        },
+        'children': [
+            {
+                'id': c.id,
+                'title': c.title,
+                'node_type': c.node_type,
+                'question_text': c.question_text,
+                'solution_text': c.solution_text,
+            } for c in children
+        ]
+    }
+
+
+@router.get('/knowledge-base/diagnostic/step/{node_id}', response_class=JSONResponse)
+async def web_kb_diagnostic_step(
+    request: Request,
+    node_id: int,
+    db: AsyncSession = Depends(get_session)
+):
+    """Get a diagnostic tree node and its children"""
+    user = await get_current_user(request, db)
+
+    node = (await db.execute(
+        select(KBDiagnosticTree).where(
+            KBDiagnosticTree.id == node_id,
+            KBDiagnosticTree.workspace_id == user.workspace_id
+        )
+    )).scalar_one_or_none()
+
+    if not node:
+        return {'node': None, 'children': []}
+
+    children = (await db.execute(
+        select(KBDiagnosticTree).where(
+            KBDiagnosticTree.parent_id == node.id,
+            KBDiagnosticTree.is_active == True
+        ).order_by(KBDiagnosticTree.sort_order)
+    )).scalars().all()
+
+    return {
+        'node': {
+            'id': node.id,
+            'title': node.title,
+            'node_type': node.node_type,
+            'question_text': node.question_text,
+            'solution_text': node.solution_text,
+        },
+        'children': [
+            {
+                'id': c.id,
+                'title': c.title,
+                'node_type': c.node_type,
+                'question_text': c.question_text,
+                'solution_text': c.solution_text,
+            } for c in children
+        ]
+    }
+
+
+@router.post('/knowledge-base/diagnostic/rate', response_class=JSONResponse)
+async def web_kb_diagnostic_rate(
+    request: Request,
+    db: AsyncSession = Depends(get_session)
+):
+    """Rate a diagnostic solution node"""
+    user = await get_current_user(request, db)
+    data = await request.json()
+    # Placeholder acknowledgment - could track per-node feedback in the future
+    return {'ok': True}
+
+
+# --- Resolved Cases routes ---
+
+@router.get('/knowledge-base/resolved-cases', response_class=HTMLResponse)
+async def web_kb_resolved_cases(
+    request: Request,
+    search: Optional[str] = None,
+    category: Optional[str] = None,
+    device_type: Optional[str] = None,
+    verified: Optional[str] = None,
+    db: AsyncSession = Depends(get_session)
+):
+    """List resolved cases"""
+    user = await get_current_user(request, db)
+
+    query = select(KBResolvedCase).where(
+        KBResolvedCase.workspace_id == user.workspace_id
+    )
+
+    if search:
+        pattern = f'%{search.strip()}%'
+        query = query.where(or_(
+            KBResolvedCase.problem_title.ilike(pattern),
+            KBResolvedCase.problem_description.ilike(pattern),
+            KBResolvedCase.solution_steps.ilike(pattern),
+            KBResolvedCase.error_message.ilike(pattern),
+            KBResolvedCase.tags.ilike(pattern),
+            KBResolvedCase.device_brand.ilike(pattern),
+            KBResolvedCase.ticket_number.ilike(pattern),
+        ))
+    if category:
+        query = query.where(KBResolvedCase.category == category)
+    if device_type:
+        query = query.where(KBResolvedCase.device_type == device_type)
+    if verified == 'yes':
+        query = query.where(KBResolvedCase.is_verified == True)
+
+    query = query.order_by(KBResolvedCase.created_at.desc()).limit(50)
+    cases = (await db.execute(query)).scalars().all()
+
+    return templates.TemplateResponse('knowledge_base/resolved_cases.html', {
+        'request': request,
+        'user': user,
+        'cases': cases,
+        'search_query': search or '',
+        'category_filter': category or '',
+        'device_filter': device_type or '',
+        'verified_filter': verified or '',
+    })
+
+
+@router.get('/knowledge-base/resolved-cases/new', response_class=HTMLResponse)
+async def web_kb_resolved_case_new(
+    request: Request,
+    db: AsyncSession = Depends(get_session)
+):
+    """Form to log a new resolved case"""
+    user = await get_current_user(request, db)
+    return templates.TemplateResponse('knowledge_base/resolved_new.html', {
+        'request': request,
+        'user': user,
+        'error': None,
+        'form_data': None,
+    })
+
+
+@router.post('/knowledge-base/resolved-cases/new')
+async def web_kb_resolved_case_create(
+    request: Request,
+    problem_title: str = Form(...),
+    problem_description: str = Form(...),
+    category: str = Form(...),
+    solution_steps: str = Form(...),
+    error_message: str = Form(''),
+    device_type: str = Form(''),
+    device_brand: str = Form(''),
+    device_model: str = Form(''),
+    connection_type: str = Form(''),
+    tags: str = Form(''),
+    root_cause: str = Form(''),
+    time_to_resolve: Optional[int] = Form(None),
+    ticket_number: str = Form(''),
+    db: AsyncSession = Depends(get_session)
+):
+    """Save a new resolved case"""
+    user = await get_current_user(request, db)
+
+    if not problem_title.strip() or not problem_description.strip() or not solution_steps.strip():
+        return templates.TemplateResponse('knowledge_base/resolved_new.html', {
+            'request': request,
+            'user': user,
+            'error': 'Problem title, description, and solution steps are required.',
+            'form_data': {
+                'problem_title': problem_title,
+                'problem_description': problem_description,
+                'category': category,
+                'solution_steps': solution_steps,
+                'error_message': error_message,
+                'device_type': device_type,
+                'device_brand': device_brand,
+                'device_model': device_model,
+                'connection_type': connection_type,
+                'tags': tags,
+                'root_cause': root_cause,
+                'time_to_resolve': time_to_resolve,
+                'ticket_number': ticket_number,
+            }
+        }, status_code=400)
+
+    case = KBResolvedCase(
+        workspace_id=user.workspace_id,
+        problem_title=problem_title.strip(),
+        problem_description=problem_description.strip(),
+        error_message=error_message.strip() or None,
+        category=category.strip(),
+        device_type=device_type.strip() or None,
+        device_brand=device_brand.strip() or None,
+        device_model=device_model.strip() or None,
+        connection_type=connection_type.strip() or None,
+        tags=tags.strip() or None,
+        solution_steps=solution_steps.strip(),
+        root_cause=root_cause.strip() or None,
+        time_to_resolve=time_to_resolve,
+        ticket_number=ticket_number.strip() or None,
+        resolved_by_id=user.id,
+        resolved_by_name=user.full_name or user.username,
+    )
+    db.add(case)
+    await db.commit()
+
+    request.session['success_message'] = 'Resolved case logged successfully! Thank you for contributing to the knowledge base.'
+    return RedirectResponse(url='/web/knowledge-base/resolved-cases', status_code=303)
+
+
+@router.get('/knowledge-base/resolved/{case_id}', response_class=HTMLResponse)
+async def web_kb_resolved_detail(
+    request: Request,
+    case_id: int,
+    db: AsyncSession = Depends(get_session)
+):
+    """View a resolved case in detail"""
+    user = await get_current_user(request, db)
+    case = (await db.execute(
+        select(KBResolvedCase).where(
+            KBResolvedCase.id == case_id,
+            KBResolvedCase.workspace_id == user.workspace_id
+        )
+    )).scalar_one_or_none()
+    if not case:
+        raise HTTPException(status_code=404, detail="Resolved case not found")
+
+    # Increment view count
+    case.times_viewed += 1
+    await db.commit()
+
+    # Related cases (same category)
+    related_cases = (await db.execute(
+        select(KBResolvedCase).where(
+            KBResolvedCase.workspace_id == user.workspace_id,
+            KBResolvedCase.category == case.category,
+            KBResolvedCase.id != case.id
+        ).order_by(KBResolvedCase.helpful_votes.desc()).limit(5)
+    )).scalars().all()
+
+    return templates.TemplateResponse('knowledge_base/resolved_detail.html', {
+        'request': request,
+        'user': user,
+        'case': case,
+        'related_cases': related_cases,
+    })
+
+
+@router.post('/knowledge-base/resolved/{case_id}/rate')
+async def web_kb_resolved_rate(
+    request: Request,
+    case_id: int,
+    helpful: str = Form('true'),
+    db: AsyncSession = Depends(get_session)
+):
+    """Rate a resolved case"""
+    user = await get_current_user(request, db)
+    case = (await db.execute(
+        select(KBResolvedCase).where(
+            KBResolvedCase.id == case_id,
+            KBResolvedCase.workspace_id == user.workspace_id
+        )
+    )).scalar_one_or_none()
+    if case:
+        if helpful == 'true':
+            case.helpful_votes += 1
+        else:
+            case.not_helpful_votes += 1
+        await db.commit()
+    return RedirectResponse(url=f'/web/knowledge-base/resolved/{case_id}', status_code=303)

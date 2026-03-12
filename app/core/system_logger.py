@@ -4,11 +4,9 @@ Logs are auto-cleaned after 7 days to keep DB size small.
 """
 
 import asyncio
-import traceback
 from datetime import datetime, timedelta
 from typing import Optional
 
-from sqlmodel import select, col
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from app.core.database import engine

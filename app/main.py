@@ -1,18 +1,16 @@
-from fastapi import FastAPI, Request, Depends, HTTPException
+from fastapi import FastAPI, Request
 # restart trigger: updated timestamp
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
-from fastapi.responses import HTMLResponse, JSONResponse
-from fastapi.templating import Jinja2Templates
+from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from pathlib import Path
 from starlette.middleware.sessions import SessionMiddleware
 from sqlmodel import select
-from sqlmodel.ext.asyncio.session import AsyncSession
 import os
 
 from app.core.config import get_settings
-from app.core.database import lifespan, get_session
+from app.core.database import lifespan
 from app.api.routes import auth as auth_routes
 from app.api.routes import users as users_routes
 from app.api.routes import projects as projects_routes
