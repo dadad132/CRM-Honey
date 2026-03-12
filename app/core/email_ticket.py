@@ -92,6 +92,69 @@ class EmailTicketService:
         
         return '\n'.join(cleaned_lines).strip()
     
+    def _html_to_text(self, html: str) -> str:
+        """Convert HTML email body to plain text"""
+        from html.parser import HTMLParser
+        
+        class _HTMLStripper(HTMLParser):
+            def __init__(self):
+                super().__init__()
+                self.text = []
+                self.skip = False
+                self.last_was_block = False
+                
+            def handle_starttag(self, tag, attrs):
+                if tag in ('script', 'style', 'head'):
+                    self.skip = True
+                elif tag == 'br':
+                    self.text.append('\n')
+                    self.last_was_block = True
+                elif tag in ('p', 'div', 'tr', 'blockquote'):
+                    if self.text and not self.last_was_block:
+                        self.text.append('\n')
+                    self.last_was_block = True
+                elif tag == 'li':
+                    self.text.append('\n• ')
+                    self.last_was_block = True
+                elif tag in ('td', 'th'):
+                    if self.text and self.text[-1] not in ('\n', ''):
+                        self.text.append('  ')
+                elif tag == 'a':
+                    pass  # just keep the link text
+                elif tag in ('h1', 'h2', 'h3', 'h4', 'h5', 'h6'):
+                    if self.text and not self.last_was_block:
+                        self.text.append('\n')
+                    self.last_was_block = True
+                    
+            def handle_endtag(self, tag):
+                if tag in ('script', 'style', 'head'):
+                    self.skip = False
+                elif tag in ('p', 'div', 'blockquote', 'table', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6'):
+                    if self.text and not self.last_was_block:
+                        self.text.append('\n')
+                    self.last_was_block = True
+                    
+            def handle_data(self, data):
+                if not self.skip:
+                    cleaned = data.strip()
+                    if cleaned:
+                        self.text.append(cleaned)
+                        self.last_was_block = False
+                    elif data and not self.last_was_block:
+                        if self.text and self.text[-1] not in ('\n', ''):
+                            self.text.append(' ')
+        
+        try:
+            parser = _HTMLStripper()
+            parser.feed(html)
+            text = ''.join(parser.text)
+            text = re.sub(r'\n{3,}', '\n\n', text)
+            text = re.sub(r' {3,}', '  ', text)
+            return text.strip()
+        except Exception:
+            # Fallback: regex strip all tags
+            return re.sub(r'<[^>]+>', '', html).strip()
+    
     def determine_priority(self, subject: str, body: str) -> str:
         """Auto-detect priority from email content"""
         content = (subject + ' ' + body).lower()
@@ -261,6 +324,7 @@ class EmailTicketService:
                     
                     # Extract body
                     body = ""
+                    html_body = ""
                     attachments = []
                     
                     if email_message.is_multipart():
@@ -268,10 +332,17 @@ class EmailTicketService:
                             content_type = part.get_content_type()
                             content_disposition = str(part.get("Content-Disposition", ""))
                             
-                            # Get email body
-                            if content_type == "text/plain" and "attachment" not in content_disposition:
+                            # Get email body (plain text preferred)
+                            if content_type == "text/plain" and "attachment" not in content_disposition and not body:
                                 try:
                                     body = part.get_payload(decode=True).decode('utf-8', errors='ignore')
+                                except:
+                                    pass
+                            
+                            # Capture HTML body as fallback
+                            elif content_type == "text/html" and "attachment" not in content_disposition and not html_body:
+                                try:
+                                    html_body = part.get_payload(decode=True).decode('utf-8', errors='ignore')
                                 except:
                                     pass
                             
@@ -286,10 +357,19 @@ class EmailTicketService:
                                     })
                     else:
                         # Simple email
+                        content_type = email_message.get_content_type()
                         try:
-                            body = email_message.get_payload(decode=True).decode('utf-8', errors='ignore')
+                            decoded = email_message.get_payload(decode=True).decode('utf-8', errors='ignore')
+                            if content_type == "text/html":
+                                html_body = decoded
+                            else:
+                                body = decoded
                         except:
                             body = str(email_message.get_payload())
+                    
+                    # If no plain text body, convert HTML to plain text
+                    if not body.strip() and html_body:
+                        body = self._html_to_text(html_body)
                     
                     emails.append({
                         'id': email_id.decode(),
