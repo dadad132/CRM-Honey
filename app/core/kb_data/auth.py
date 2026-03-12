@@ -357,6 +357,622 @@ ARTICLES = [
             "   - Remove and re-enroll biometric data"
         ),
     },
+    {
+        "category": "Account & Access",
+        "problem_title": "User cannot access network shares despite correct permissions",
+        "problem_description": "User has NTFS and share permissions but still gets 'Access Denied' when trying to access folders on the file server.",
+        "problem_keywords": "access denied, share permissions, ntfs permissions, network share, file server, access error, folder access",
+        "solution_steps": (
+            "1. Check effective permissions:\n"
+            "   - Right-click folder > Properties > Security > Advanced > Effective Access\n"
+            "   - Enter the username and check the effective permissions\n"
+            "   - Access = intersection of Share AND NTFS permissions (most restrictive wins)\n"
+            "2. Share permissions vs NTFS:\n"
+            "   - Share permissions (right-click > Sharing > Advanced Sharing > Permissions)\n"
+            "   - NTFS permissions (right-click > Properties > Security)\n"
+            "   - Both must allow the access type (Read, Write, Full Control)\n"
+            "3. Group membership:\n"
+            "   - AD group changes take effect after next logon\n"
+            "   - User must log off and log back on to get new group token\n"
+            "   - Check: whoami /groups (on the user's PC)\n"
+            "4. ABE (Access-Based Enumeration):\n"
+            "   - If enabled: Users can only see folders they have access to\n"
+            "   - Server Manager > File Services > check ABE settings\n"
+            "5. Broken inheritance:\n"
+            "   - Folder Properties > Security > Advanced > check inheritance\n"
+            "   - If inheritance is disabled: Permissions may be incomplete\n"
+            "   - Re-enable inheritance from parent folders\n"
+            "6. SID issues:\n"
+            "   - Deleted and recreated accounts have different SIDs\n"
+            "   - Old ACEs still reference the old SID (shows as unknown)\n"
+            "   - Remove old SID entries and re-add the new account\n"
+            "7. Network credentials: Windows Credential Manager may have cached wrong credentials"
+        ),
+    },
+    {
+        "category": "Account & Access",
+        "problem_title": "Azure AD device registration failed or stale",
+        "problem_description": "Device is not properly registered in Azure AD or shows stale registration. Conditional Access policies block access because device is unrecognized.",
+        "problem_keywords": "azure ad device, device registration, conditional access, device compliance, intune enrollment, hybrid join, aad join",
+        "solution_steps": (
+            "1. Check device registration status:\n"
+            "   - CMD: dsregcmd /status\n"
+            "   - Look for: AzureAdJoined: YES/NO, DomainJoined: YES/NO\n"
+            "   - WorkplaceJoined: YES/NO (personal device registered)\n"
+            "2. Common issues:\n"
+            "   - AzureAdJoined = NO: Device isn't registered\n"
+            "   - Device certificate missing or expired\n"
+            "   - Azure AD Connect sync issues (for hybrid join)\n"
+            "3. Re-register the device:\n"
+            "   - Settings > Accounts > Access work or school\n"
+            "   - Disconnect and reconnect to your organization\n"
+            "   - For Azure AD Join: May need to re-join the device\n"
+            "4. For Hybrid Azure AD Join:\n"
+            "   - Device must be in AD AND synced to Azure AD\n"
+            "   - Check Azure AD Connect: Sync Status, error logs\n"
+            "   - SCP (Service Connection Point) must be configured in AD\n"
+            "   - dsregcmd /debug for detailed troubleshooting\n"
+            "5. Stale device cleanup:\n"
+            "   - Azure Portal > Azure AD > Devices > filter by 'stale'\n"
+            "   - Delete stale device entries\n"
+            "   - Re-register the device from the client\n"
+            "6. Certificate issues:\n"
+            "   - certmgr.msc > Personal > Certificates > look for device cert\n"
+            "   - Issued by: MS-Organization-Access\n"
+            "   - If expired or missing: Re-register\n"
+            "7. Network: Device registration requires access to *.microsoftonline.com and device.login.microsoftonline.com"
+        ),
+    },
+    {
+        "category": "Account & Access",
+        "problem_title": "RADIUS authentication failing for Wi-Fi or VPN",
+        "problem_description": "Users cannot authenticate to enterprise Wi-Fi (WPA2-Enterprise) or VPN because RADIUS authentication is failing.",
+        "problem_keywords": "radius, wpa2 enterprise, nps, radius reject, eap, wifi auth, 802.1x wireless, radius server",
+        "solution_steps": (
+            "1. Check NPS server logs:\n"
+            "   - Event Viewer > Custom Views > Server Roles > Network Policy and Access Services\n"
+            "   - Look for Event IDs: 6272 (accept), 6273 (reject)\n"
+            "   - The reject reason code tells you exactly what failed\n"
+            "2. Common reject reasons:\n"
+            "   - Reason Code 16: Authentication failure (wrong password/cert)\n"
+            "   - Reason Code 22: Client doesn't match any NPS policy\n"
+            "   - Reason Code 48: NPS policy doesn't match connection request\n"
+            "   - Reason Code 65: Incorrectly configured EAP type\n"
+            "3. Certificate validation:\n"
+            "   - EAP-TLS: Both client and server need valid certificates\n"
+            "   - PEAP: Server needs a certificate trusted by the client\n"
+            "   - Check cert expiry and trust chain on both sides\n"
+            "4. NPS policy order:\n"
+            "   - Policies are evaluated top-down, first match wins\n"
+            "   - Ensure the correct policy matches before a deny-all policy\n"
+            "   - Connection Request Policies > Network Policies\n"
+            "5. RADIUS secret mismatch:\n"
+            "   - The shared secret on the AP/switch must match the RADIUS client in NPS\n"
+            "   - Re-enter the shared secret on both sides\n"
+            "   - Case-sensitive! Check for trailing spaces\n"
+            "6. Group membership:\n"
+            "   - NPS policy condition may require specific AD group membership\n"
+            "   - Verify the user is in the correct group\n"
+            "7. Test from the client: Remove the Wi-Fi profile, reconnect, and check for certificate prompts"
+        ),
+    },
+    {
+        "category": "Account & Access",
+        "problem_title": "Self-service password reset (SSPR) not working",
+        "problem_description": "Users cannot use the self-service password reset feature in Azure AD / Microsoft 365. SSPR page shows errors or doesn't appear.",
+        "problem_keywords": "sspr, self service, password reset, forgot password, reset password, azure ad password, microsoft 365 password",
+        "solution_steps": (
+            "1. Check SSPR is enabled:\n"
+            "   - Azure Portal > Azure AD > Password reset\n"
+            "   - 'Self service password reset enabled' = All or Selected\n"
+            "   - If 'Selected': User must be in the enabled group\n"
+            "2. User registration:\n"
+            "   - Users must register for SSPR at aka.ms/ssprsetup\n"
+            "   - Registration requires: Phone number, alternate email, or authenticator app\n"
+            "   - If not registered: 'Contact your admin' error appears\n"
+            "3. Authentication methods:\n"
+            "   - Azure AD > Password reset > Authentication methods\n"
+            "   - Set number of methods required (1 or 2)\n"
+            "   - Configure available methods: Phone, Email, Security Questions, App\n"
+            "4. For hybrid (on-premises AD + Azure AD):\n"
+            "   - Password writeback must be enabled in Azure AD Connect\n"
+            "   - Azure AD Connect > Optional features > Password writeback\n"
+            "   - Without this: SSPR changes Azure AD password but not on-premises\n"
+            "5. Licensing:\n"
+            "   - SSPR requires Azure AD Premium P1 or P2 license\n"
+            "   - Or Microsoft 365 Business Premium\n"
+            "   - Check user license assignment in the admin portal\n"
+            "6. Errors during reset:\n"
+            "   - 'Password doesn't meet policy': On-premises password policy is too strict\n"
+            "   - 'Contact your admin': User not enabled for SSPR or not registered\n"
+            "7. Audit: Azure AD > Password reset > Audit logs (shows all SSPR activity)"
+        ),
+    },
+    {
+        "category": "Account & Access",
+        "problem_title": "Service account password expired causing application failures",
+        "problem_description": "An application stopped working because the service account's password expired. Scheduled tasks, services, and integrations fail simultaneously.",
+        "problem_keywords": "service account, password expired, application failed, scheduled task, service logon, password expiry, managed account",
+        "solution_steps": (
+            "1. Identify the failed service account:\n"
+            "   - Check Event Viewer > System for service logon failures\n"
+            "   - Check Task Scheduler for failed tasks\n"
+            "   - services.msc > Look for services in 'Stopped' state\n"
+            "2. Reset the password:\n"
+            "   - Active Directory Users and Computers > find the account\n"
+            "   - Right-click > Reset Password\n"
+            "   - Update the password everywhere it's used\n"
+            "3. Update all places using the account:\n"
+            "   - Services: services.msc > Properties > Log On tab > update password\n"
+            "   - Scheduled Tasks: Task Scheduler > Properties > update credentials\n"
+            "   - IIS Application Pools: IIS Manager > App Pools > Advanced > Identity\n"
+            "   - SQL Server services: SQL Server Configuration Manager\n"
+            "4. Prevent future expiry:\n"
+            "   - AD account Properties > Account tab > 'Password never expires'\n"
+            "   - Better: Use Group Managed Service Accounts (gMSA)\n"
+            "   - gMSA: AD automatically manages the password\n"
+            "5. Set up gMSA:\n"
+            "   - PowerShell: New-ADServiceAccount -Name svc_app -DNSHostName svc.domain.com\n"
+            "   - Install on target server: Install-ADServiceAccount svc_app\n"
+            "   - Use 'svc_app$' as the service account\n"
+            "6. Password change notification:\n"
+            "   - Set up alerts for approaching password expiry\n"
+            "   - PowerShell: Get-ADUser -Filter * -Properties PasswordExpires\n"
+            "7. Document all service accounts and where they're used (critical!)"
+        ),
+    },
+    {
+        "category": "Account & Access",
+        "problem_title": "User profile size too large causing slow logon",
+        "problem_description": "User takes very long to log in because their roaming profile or redirected folders are too large. Login takes 5-15 minutes.",
+        "problem_keywords": "slow logon, roaming profile, profile size, user profile, slow login, profile load, redirected folders",
+        "solution_steps": (
+            "1. Check profile size:\n"
+            "   - C:\\Users\\username (local profile)\n"
+            "   - Right-click > Properties > Size\n"
+            "   - Profiles over 1 GB significantly slow logon\n"
+            "2. Common profile bloaters:\n"
+            "   - AppData\\Local\\Microsoft\\Outlook (large OST/PST files)\n"
+            "   - Desktop folder (users storing files on Desktop)\n"
+            "   - Downloads folder\n"
+            "   - Browser cache (AppData\\Local\\Google\\Chrome)\n"
+            "3. Folder Redirection:\n"
+            "   - Redirect Desktop, Documents, etc. to a network share\n"
+            "   - Group Policy > User Config > Windows Settings > Folder Redirection\n"
+            "   - Files stay on the server, not in the roaming profile\n"
+            "4. Exclude folders from roaming:\n"
+            "   - Group Policy > User Config > Admin Templates > System > User Profiles\n"
+            "   - 'Exclude directories in roaming profile'\n"
+            "   - Add: AppData\\Local (should always be excluded)\n"
+            "5. Profile cleanup:\n"
+            "   - Remove temporary files: %temp%, AppData\\Local\\Temp\n"
+            "   - Move large files off the Desktop to a network drive\n"
+            "   - Configure Disk Cleanup to run on profiles\n"
+            "6. Consider local profiles:\n"
+            "   - If roaming isn't needed: Switch to local profiles\n"
+            "   - Or use FSLogix Profile Containers (for VDI/RDS)\n"
+            "7. Profile quota: Set profile quota via Group Policy to limit size"
+        ),
+    },
+    {
+        "category": "Account & Access",
+        "problem_title": "OAuth / API token authentication errors",
+        "problem_description": "Application integration fails with OAuth errors like 'invalid_grant', 'token expired', or 'consent required'. API access stops working.",
+        "problem_keywords": "oauth, token, api auth, invalid grant, token expired, consent, bearer token, api key, refresh token",
+        "solution_steps": (
+            "1. Common OAuth errors:\n"
+            "   - invalid_grant: Refresh token expired or revoked\n"
+            "   - interaction_required: User must re-authenticate (consent changed)\n"
+            "   - invalid_client: App registration issues\n"
+            "   - AADSTS700003: Device code expired\n"
+            "2. Refresh token expired:\n"
+            "   - Azure AD refresh tokens expire after 90 days of inactivity\n"
+            "   - Revoked if password changed\n"
+            "   - Re-authenticate the application/user\n"
+            "3. App registration check:\n"
+            "   - Azure Portal > Azure AD > App registrations\n"
+            "   - Verify: Client ID, redirect URI, and API permissions\n"
+            "   - Check if client secret has expired (Certificates & secrets)\n"
+            "4. Consent issues:\n"
+            "   - Admin consent may be required for certain permissions\n"
+            "   - Azure Portal > Enterprise Applications > app > Permissions > Grant admin consent\n"
+            "5. Token validation:\n"
+            "   - Check the token at jwt.ms (paste the token)\n"
+            "   - Verify: aud (audience), iss (issuer), exp (expiry)\n"
+            "   - audience must match the API you're calling\n"
+            "6. Renew client secret:\n"
+            "   - App registration > Certificates & secrets > New client secret\n"
+            "   - Update the application configuration with the new secret\n"
+            "   - Secrets expire: Set a calendar reminder before expiry\n"
+            "7. Service principal: Ensure the Enterprise Application is enabled and not blocked"
+        ),
+    },
+    {
+        "category": "Account & Access",
+        "problem_title": "Remote Desktop 'account is disabled' or 'not allowed'",
+        "problem_description": "User gets 'Your account has been disabled' or 'The connection was denied because your user account is not authorized' when trying to RDP.",
+        "problem_keywords": "rdp denied, account disabled, rdp not allowed, remote desktop access, user not authorized, rdp permission",
+        "solution_steps": (
+            "1. Check account status:\n"
+            "   - Active Directory Users and Computers > find user > Properties > Account\n"
+            "   - Ensure 'Account is disabled' is NOT checked\n"
+            "   - Check: Account expiration date (Account expires field)\n"
+            "2. Remote Desktop Users group:\n"
+            "   - User must be in the 'Remote Desktop Users' group on the target machine\n"
+            "   - Or be a local Administrator\n"
+            "   - On target: Computer Management > Local Users > Groups > Remote Desktop Users\n"
+            "   - Add the user or their AD group\n"
+            "3. Group Policy:\n"
+            "   - Computer Config > Windows Settings > Security > Local Policies > User Rights\n"
+            "   - 'Allow log on through Remote Desktop Services' must include the user/group\n"
+            "   - 'Deny log on through Remote Desktop Services' must NOT include the user\n"
+            "4. NLA (Network Level Authentication):\n"
+            "   - System Properties > Remote > 'Allow connections only from computers running RDP with NLA'\n"
+            "   - If the client doesn't support NLA: Uncheck this (less secure)\n"
+            "5. RD Gateway:\n"
+            "   - If going through RD Gateway: User must be in the Gateway's authorization policy\n"
+            "   - RAP (Resource Authorization Policy) and CAP (Connection Authorization Policy)\n"
+            "6. Account lockout:\n"
+            "   - The account may be locked (not disabled)\n"
+            "   - AD account > 'Unlock account' checkbox\n"
+            "7. MFA: If Conditional Access requires MFA for RDP, use RD Gateway with MFA support"
+        ),
+    },
+    {
+        "category": "Account & Access",
+        "problem_title": "DNS-based authentication issues (SPN and delegation)",
+        "problem_description": "Kerberos authentication fails with SPN errors. Double-hop authentication doesn't work. Web apps can't pass credentials to backend databases.",
+        "problem_keywords": "spn, kerberos, delegation, double hop, service principal, constrained delegation, kerberos error",
+        "solution_steps": (
+            "1. Check SPN registration:\n"
+            "   - CMD: setspn -L accountname (list SPNs for the account)\n"
+            "   - Verify the correct SPN exists: HTTP/hostname, HTTP/hostname.domain.com\n"
+            "   - Missing SPN: setspn -A HTTP/hostname accountname\n"
+            "2. Duplicate SPN check:\n"
+            "   - Duplicate SPNs cause authentication failures\n"
+            "   - setspn -X (find duplicate SPNs in the domain)\n"
+            "   - Remove duplicates: setspn -D SPN accountname\n"
+            "3. Kerberos delegation (double-hop):\n"
+            "   - Problem: User > Web Server > SQL Server (credentials don't pass through)\n"
+            "   - AD: Service account > Delegation tab\n"
+            "   - Option 1: 'Trust this user for delegation to any service' (unconstrained - risky)\n"
+            "   - Option 2: 'Trust for delegation to specified services only' (constrained - recommended)\n"
+            "4. Constrained delegation setup:\n"
+            "   - On the middle-tier service account\n"
+            "   - Add the SPN of the back-end service (e.g., MSSQLSvc/server:1433)\n"
+            "   - Select 'Use any authentication protocol' if needed\n"
+            "5. Resource-Based Constrained Delegation (RBCD):\n"
+            "   - Modern approach: Configured on the back-end resource\n"
+            "   - PowerShell: Set-ADComputer backend -PrincipalsAllowedToDelegateToAccount frontend$\n"
+            "6. Kerberos event log:\n"
+            "   - Enable Kerberos logging: HKLM\\SYSTEM\\CurrentControlSet\\Control\\Lsa\\Kerberos\\Parameters\n"
+            "   - LogLevel = 1 (DWORD)\n"
+            "   - Check System event log for Kerberos errors\n"
+            "7. klist: Use 'klist tickets' to see current Kerberos tickets and verify TGT/TGS"
+        ),
+    },
+    {
+        "category": "Account & Access",
+        "problem_title": "Shared computer logon very slow with multiple profiles",
+        "problem_description": "Shared or multi-user computers have slow logons due to many user profiles cached on the machine. Disk space may also be low.",
+        "problem_keywords": "shared computer, multiple profiles, slow logon, profile cleanup, disk full, user profiles, shared pc",
+        "solution_steps": (
+            "1. Check user profiles on disk:\n"
+            "   - System Properties > Advanced > User Profiles > Settings\n"
+            "   - Shows all profiles and their size\n"
+            "   - Delete old profiles (select and Delete)\n"
+            "2. Automatic profile cleanup:\n"
+            "   - Group Policy > Computer Config > Admin Templates > System > User Profiles\n"
+            "   - 'Delete user profiles older than a specified number of days on system restart'\n"
+            "   - Set to 30-90 days depending on usage\n"
+            "3. Disk Cleanup:\n"
+            "   - cleanmgr > Clean up system files > Previous Windows installations\n"
+            "   - Delete temp files, Windows Update cache\n"
+            "4. Script cleanup:\n"
+            "   - PowerShell: Get-CimInstance -Class Win32_UserProfile | Where {-not $_.Special -and $_.LastUseTime -lt (Get-Date).AddDays(-60)} | Remove-CimInstance\n"
+            "   - Schedule as a maintenance task\n"
+            "5. Mandatory profiles:\n"
+            "   - For shared PCs: Use a mandatory profile\n"
+            "   - All users get the same profile, changes aren't saved\n"
+            "   - Create profile > rename NTUSER.DAT to NTUSER.MAN\n"
+            "6. Shared PC mode (Windows 10/11):\n"
+            "   - Settings > Accounts > Shared PC\n"
+            "   - Or Intune: Device restrictions > Shared PC\n"
+            "   - Automatically cleans up profiles\n"
+            "7. FSLogix: For VDI/RDS, use FSLogix Profile Containers (profiles on network)"
+        ),
+    },
+    {
+        "category": "Account & Access",
+        "problem_title": "Expired certificate blocking smart card or PIV logon",
+        "problem_description": "Smart card or PIV card logon fails because the certificate on the card has expired or the issuing CA certificate is expired.",
+        "problem_keywords": "smart card, piv, certificate expired, card logon, cac, smart card error, certificate logon, pki",
+        "solution_steps": (
+            "1. Check card certificate:\n"
+            "   - Insert the smart card > open Certificate Manager or card middleware\n"
+            "   - Check the certificate expiration date\n"
+            "   - If expired: Certificate needs renewal\n"
+            "2. Renew the certificate:\n"
+            "   - Contact your PKI/security team to issue a new certificate\n"
+            "   - May require physical visit to security office\n"
+            "   - Some systems support online renewal via the card middleware\n"
+            "3. CA certificate check:\n"
+            "   - The issuing CA's certificate must be trusted on the domain controller\n"
+            "   - Publish the CA cert in AD: certutil -dspublish ca-cert.cer\n"
+            "   - Or: Group Policy for certificate distribution\n"
+            "4. CRL/OCSP:\n"
+            "   - Domain controller checks if the card cert is revoked\n"
+            "   - CRL must be accessible: certutil -verify -urlfetch cert.cer\n"
+            "   - If CRL endpoint is unreachable: Logon fails\n"
+            "5. Domain controller certificate:\n"
+            "   - DCs need a 'Domain Controller Authentication' certificate\n"
+            "   - Check DC cert: certlm.msc > Personal > Certificates\n"
+            "   - If expired: Re-enroll from the CA\n"
+            "6. Smart card reader:\n"
+            "   - Device Manager > Smart card readers > check for errors\n"
+            "   - Try a different reader\n"
+            "   - Update reader drivers\n"
+            "7. Credential Manager: Delete any cached smart card credentials and retry"
+        ),
+    },
+    {
+        "category": "Account & Access",
+        "problem_title": "Account lockout source is unknown or difficult to find",
+        "problem_description": "A user's AD account keeps getting locked out but the source of the lockout is unknown. Need to identify which device or application is causing it.",
+        "problem_keywords": "lockout source, account lockout, find lockout, lockout investigation, bad password, lockout tool, pdce",
+        "solution_steps": (
+            "1. Find the PDC Emulator:\n"
+            "   - Account lockout events are forwarded to the PDC Emulator DC\n"
+            "   - PowerShell: Get-ADDomain | Select PDCEmulator\n"
+            "   - All investigation starts on this DC\n"
+            "2. Check Security Event Log on PDCe:\n"
+            "   - Event Viewer > Security > filter by Event ID 4740\n"
+            "   - Shows: 'Caller Computer Name' = the source of the lockout\n"
+            "   - Also check Event ID 4771 (Kerberos pre-auth failed) and 4776 (NTLM)\n"
+            "3. Microsoft Account Lockout Tools:\n"
+            "   - Download 'Account Lockout and Management Tools' from Microsoft\n"
+            "   - LockoutStatus.exe: Shows lockout status on all DCs\n"
+            "   - EventCombMT.exe: Search event logs across multiple DCs\n"
+            "4. Common lockout sources:\n"
+            "   - Old mapped drives with cached credentials\n"
+            "   - Mobile devices with old password (ActiveSync)\n"
+            "   - Scheduled tasks running as the user\n"
+            "   - Saved RDP connections with old password\n"
+            "   - Credential Manager entries\n"
+            "5. On the source machine:\n"
+            "   - Open Credential Manager > remove old entries for the user\n"
+            "   - Check scheduled tasks running as the user\n"
+            "   - Check services running as the user\n"
+            "   - Check browser saved passwords\n"
+            "6. Increase lockout threshold temporarily:\n"
+            "   - While investigating, increase the threshold to avoid disruption\n"
+            "   - Default Policy > Account Lockout Policy > Account lockout threshold\n"
+            "7. NetLogon logging: Enable on the DC for detailed auth failure logs"
+        ),
+    },
+    {
+        "category": "Account & Access",
+        "problem_title": "LDAP or LDAPS connection issues from applications",
+        "problem_description": "Applications that use LDAP for authentication or directory queries fail to connect. LDAPS (secure LDAP) connections are refused.",
+        "problem_keywords": "ldap, ldaps, ldap connection, directory service, active directory ldap, ldap bind, ldap ssl, port 389",
+        "solution_steps": (
+            "1. Test LDAP connectivity:\n"
+            "   - LDAP: Port 389 (unencrypted) or Port 636 (LDAPS/SSL)\n"
+            "   - Test-NetConnection -ComputerName dc.domain.com -Port 389\n"
+            "   - Test-NetConnection -ComputerName dc.domain.com -Port 636\n"
+            "2. LDAP bind test:\n"
+            "   - ldp.exe (built into Windows RSAT)\n"
+            "   - Connection > Connect > server: dc.domain.com, port: 389\n"
+            "   - Connection > Bind > enter credentials\n"
+            "   - For LDAPS: Check SSL box, port 636\n"
+            "3. LDAPS certificate:\n"
+            "   - LDAPS requires a certificate on the domain controller\n"
+            "   - The DC needs a cert with the DC's FQDN in the subject\n"
+            "   - certlm.msc > Personal > Certificates on the DC\n"
+            "   - Issue from internal CA or install a third-party cert\n"
+            "4. Certificate trust:\n"
+            "   - The application/client must trust the CA that issued the DC cert\n"
+            "   - Import the Root CA cert on the client machine\n"
+            "   - For Linux/Java apps: Import into the Java trust store or OS CA bundle\n"
+            "5. Channel binding and signing:\n"
+            "   - Microsoft is enforcing LDAP signing and channel binding\n"
+            "   - Applications must support signed LDAP or use LDAPS\n"
+            "   - Check: Group Policy > LDAP server signing requirements\n"
+            "6. Firewall:\n"
+            "   - Ensure ports 389 (LDAP), 636 (LDAPS), 3268/3269 (Global Catalog) are open\n"
+            "7. Application config: Verify the LDAP URL format: ldap://dc.domain.com or ldaps://dc.domain.com:636"
+        ),
+    },
+    {
+        "category": "Account & Access",
+        "problem_title": "Fine-grained password policy not applying to users",
+        "problem_description": "Password policy configured for a security group in AD is not being enforced. Users in the group still follow the default domain policy.",
+        "problem_keywords": "password policy, fine grained, pso, password settings, adsi edit, password length, password complexity, granular",
+        "solution_steps": (
+            "1. Check FGPP requirements:\n"
+            "   - Domain must be Windows Server 2008+ functional level\n"
+            "   - FGPPs apply to: Users and Global Security Groups only\n"
+            "   - Do NOT work on OUs directly (apply to groups in the OU instead)\n"
+            "2. View existing FGPPs:\n"
+            "   - AD Administrative Center > domain > System > Password Settings Container\n"
+            "   - Or PowerShell: Get-ADFineGrainedPasswordPolicy -Filter *\n"
+            "   - Check: Precedence, Applies To, and policy settings\n"
+            "3. Check which PSO applies to a user:\n"
+            "   - PowerShell: Get-ADUserResultantPasswordPolicy username\n"
+            "   - If null: Default Domain Policy applies\n"
+            "   - If a PSO name: That FGPP is in effect\n"
+            "4. Common issues:\n"
+            "   - PSO applied to a Distribution Group (must be Security Group)\n"
+            "   - PSO applied to an OU (doesn't work - must be group or user)\n"
+            "   - Precedence conflict: Lower number = higher priority\n"
+            "5. Create or modify FGPP:\n"
+            "   - AD Administrative Center > Password Settings Container > New\n"
+            "   - Set: Minimum length, complexity, lockout threshold, etc.\n"
+            "   - Set precedence (1 = highest priority)\n"
+            "   - 'Directly Applies To': Add the security group\n"
+            "6. Group nesting:\n"
+            "   - FGPPs do NOT apply through nested groups\n"
+            "   - The user must be a DIRECT member of the group\n"
+            "7. After changes: User must change their password for the new policy to take full effect"
+        ),
+    },
+    {
+        "category": "Account & Access",
+        "problem_title": "Cross-domain or cross-forest authentication failures",
+        "problem_description": "Users from a trusted domain or forest cannot authenticate to resources. Trust relationship errors or access denied to cross-domain resources.",
+        "problem_keywords": "trust, cross domain, cross forest, trust relationship, forest trust, domain trust, external trust, selective auth",
+        "solution_steps": (
+            "1. Verify trust status:\n"
+            "   - Active Directory Domains and Trusts > right-click domain > Properties > Trusts\n"
+            "   - Select the trust > Validate\n"
+            "   - Or PowerShell: Get-ADTrust -Filter *\n"
+            "2. Test trust:\n"
+            "   - nltest /sc_verify:trustedDomain (from a DC)\n"
+            "   - netdom verify /domain:trustedDomain\n"
+            "   - Should show 'The command completed successfully'\n"
+            "3. Common trust issues:\n"
+            "   - DNS resolution between domains must work both ways\n"
+            "   - Conditional forwarders must be configured\n"
+            "   - Firewall between domains must allow AD ports (88, 389, 445, 135, etc.)\n"
+            "4. Trust password reset:\n"
+            "   - netdom trust localDomain /domain:remoteDomain /resetOnTrustedSide /passwordT:*\n"
+            "   - Then: netdom trust localDomain /domain:remoteDomain /resetOnTrustingSide /passwordT:*\n"
+            "5. Selective authentication:\n"
+            "   - If the trust uses Selective Authentication\n"
+            "   - Users must be explicitly granted 'Allowed to Authenticate' permission\n"
+            "   - On the target server's AD computer object > Security > Add 'Allowed to Authenticate'\n"
+            "6. SID filtering:\n"
+            "   - External trusts enable SID filtering by default\n"
+            "   - Can block access if SID history is used\n"
+            "   - netdom trust /enableSIDHistory:yes (if needed)\n"
+            "7. Name suffix routing: For forest trusts, ensure the UPN suffixes are routed properly"
+        ),
+    },
+    {
+        "category": "Account & Access",
+        "problem_title": "Azure AD application registration and consent issues",
+        "problem_description": "Third-party or custom applications can't get Azure AD tokens. Admin consent required errors appear or application permissions aren't working.",
+        "problem_keywords": "app registration, azure ad app, admin consent, api permission, oauth, app consent, enterprise app",
+        "solution_steps": (
+            "1. Check the error message:\n"
+            "   - 'AADSTS65001: Admin consent required': App needs admin approval\n"
+            "   - 'AADSTS700016: Application not found': Wrong App ID or tenant\n"
+            "   - Azure AD > Enterprise Applications > find the app\n"
+            "2. Admin consent:\n"
+            "   - Azure Portal > Azure AD > Enterprise Applications > select app\n"
+            "   - Permissions tab > Grant admin consent\n"
+            "   - Or: Global admin visits the consent URL\n"
+            "3. App registration review:\n"
+            "   - Azure AD > App Registrations > check redirect URIs\n"
+            "   - Verify API permissions are correct\n"
+            "   - Check client secret/certificate hasn't expired\n"
+            "4. User consent settings:\n"
+            "   - Azure AD > Enterprise Applications > Consent and Permissions\n"
+            "   - 'Allow user consent for apps': Controls if users can approve apps themselves\n"
+            "   - Restrict to admin-approved apps for security\n"
+            "5. Token issues: Check that the required scopes are granted and not just requested"
+        ),
+    },
+    {
+        "category": "Account & Access",
+        "problem_title": "Self-service group management and access review failures",
+        "problem_description": "Users can't request group membership, group owners don't receive approval requests, or Azure AD access reviews are not completing.",
+        "problem_keywords": "group management, access review, group membership, group approval, self-service group, azure ad group, entitlement",
+        "solution_steps": (
+            "1. Self-service group settings:\n"
+            "   - Azure AD > Groups > General > Self-service group management\n"
+            "   - 'Owners can manage group membership requests': Must be Yes\n"
+            "   - 'Restrict user ability to access groups': check settings\n"
+            "2. Group approval workflow:\n"
+            "   - Group must have an owner to approve requests\n"
+            "   - Azure AD > Groups > select group > Owners\n"
+            "   - Add at least two owners for redundancy\n"
+            "3. Access reviews:\n"
+            "   - Azure AD > Identity Governance > Access Reviews\n"
+            "   - Check: Is the review started? Are reviewers assigned?\n"
+            "   - Reviewers get email notification (check spam)\n"
+            "4. Review not completing:\n"
+            "   - Check: Review end date hasn't passed\n"
+            "   - If reviewers don't respond: Configure auto-apply of recommendations\n"
+            "   - Settings > Auto apply results to resource\n"
+            "5. Entitlement management: Use Access Packages for structured resource request workflows"
+        ),
+    },
+    {
+        "category": "Account & Access",
+        "problem_title": "Cached credentials causing login to wrong account",
+        "problem_description": "Windows Credential Manager has stored old or incorrect credentials. User keeps authenticating with the wrong account to network resources or web services.",
+        "problem_keywords": "cached credentials, credential manager, saved password, wrong credentials, stored password, windows credentials",
+        "solution_steps": (
+            "1. Open Credential Manager:\n"
+            "   - Control Panel > Credential Manager\n"
+            "   - Or: Start > search 'Credential Manager'\n"
+            "   - Shows: Web Credentials and Windows Credentials\n"
+            "2. Windows Credentials:\n"
+            "   - Look for entries pointing to the problematic server/service\n"
+            "   - Click the entry > Remove\n"
+            "   - Common entries: network shares, RDP connections, Exchange\n"
+            "3. Web Credentials:\n"
+            "   - Stored by browsers and apps\n"
+            "   - Look for the service URL and remove old entries\n"
+            "4. Command line:\n"
+            "   - cmdkey /list (shows all stored credentials)\n"
+            "   - cmdkey /delete:targetname (remove specific credential)\n"
+            "   - Useful for scripting credential cleanup\n"
+            "5. After clearing: Access the resource again and enter the correct credentials when prompted"
+        ),
+    },
+    {
+        "category": "Account & Access",
+        "problem_title": "Windows Hello for Business provisioning failures",
+        "problem_description": "Windows Hello for Business PIN or biometric setup fails during provisioning. Users get errors during OOBE or when trying to set up Hello in Settings.",
+        "problem_keywords": "windows hello, hello for business, pin provisioning, biometric, hello error, hello setup, hello enrollment",
+        "solution_steps": (
+            "1. Check requirements:\n"
+            "   - Azure AD joined or Hybrid Azure AD joined device\n"
+            "   - User must have MFA registered\n"
+            "   - TPM 2.0 chip (recommended)\n"
+            "   - Windows 10/11 Pro or Enterprise\n"
+            "2. Common errors:\n"
+            "   - 'Something went wrong' during PIN setup: MFA not completed\n"
+            "   - 'An error happened during PIN setup': TPM issue or network\n"
+            "   - Run: dsregcmd /status to check device registration state\n"
+            "3. TPM issues:\n"
+            "   - Device Manager > Security Devices > check TPM\n"
+            "   - tpm.msc to view TPM status\n"
+            "   - Clear TPM in BIOS as last resort (will reset Hello)\n"
+            "4. Policy:\n"
+            "   - Intune: Device Configuration > Windows Hello for Business\n"
+            "   - GPO: Computer Config > Admin Templates > Windows Hello for Business\n"
+            "   - Check for conflicting policies\n"
+            "5. Re-provision: Delete existing Hello container and re-provision from Settings > Accounts > Sign-in options"
+        ),
+    },
+    {
+        "category": "Account & Access",
+        "problem_title": "Group Policy Preferences drive mapping not applying",
+        "problem_description": "Network drive mappings configured via Group Policy Preferences don't appear for users. Drive letters are missing or map to the wrong location.",
+        "problem_keywords": "drive mapping, gpp, group policy preferences, mapped drive, network drive, drive letter, map drive gpo",
+        "solution_steps": (
+            "1. Check GPP configuration:\n"
+            "   - GPMC > GPO > User Config > Preferences > Windows Settings > Drive Maps\n"
+            "   - Verify: Drive letter, UNC path, reconnect setting, label\n"
+            "   - Action: 'Replace' is recommended (deletes and recreates)\n"
+            "2. Item-level targeting:\n"
+            "   - GPP supports targeting by security group, OU, IP range, etc.\n"
+            "   - Check: Common tab > Item-level targeting\n"
+            "   - Is the user in the targeted group?\n"
+            "3. Credential issue:\n"
+            "   - If UNC path requires different credentials (cross-domain):\n"
+            "   - GPP drive maps run as the user, can't specify different creds\n"
+            "   - Solution: Use netuse or cmdkey for cross-domain shares\n"
+            "4. gpresult check:\n"
+            "   - gpresult /r (shows applied GPOs including Preferences)\n"
+            "   - gpresult /h report.html for detailed HTML report\n"
+            "   - Look for drive map entries in the Preferences section\n"
+            "5. Server availability: Verify the file server and share path are accessible from the user's workstation"
+        ),
+    },
 ]
 
 DIAGNOSTIC_TREE = {

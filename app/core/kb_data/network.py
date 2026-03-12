@@ -541,6 +541,614 @@ ARTICLES = [
             "   - Check if MAC filtering is blocking your device"
         ),
     },
+    {
+        "category": "Network",
+        "problem_title": "Slow file transfer speed on local network",
+        "problem_description": "Transferring files between computers on the same network is extremely slow. Getting only a fraction of the expected LAN speed.",
+        "problem_keywords": "slow transfer, file copy slow, smb slow, network speed, lan speed, copy over network, nas slow",
+        "solution_steps": (
+            "1. Check link speed:\n"
+            "   - Control Panel > Network > adapter > Status\n"
+            "   - Should show 1.0 Gbps for gigabit (not 100 Mbps)\n"
+            "   - If 100 Mbps: Cable is Cat5 (needs Cat5e/Cat6) or port is 100M\n"
+            "2. Check for duplex mismatch:\n"
+            "   - Adapter Properties > Advanced > Speed & Duplex\n"
+            "   - Set to 'Auto Negotiation' or '1.0 Gbps Full Duplex'\n"
+            "3. SMB tuning:\n"
+            "   - Enable SMB Multichannel: Set-SmbClientConfiguration -EnableMultiChannel $true\n"
+            "   - Check SMB version: Get-SmbConnection (should be 3.x)\n"
+            "   - Disable SMB signing if not needed: Group Policy > Network > Microsoft Network Client\n"
+            "4. Large Send Offload:\n"
+            "   - Device Manager > NIC > Advanced > Large Send Offload V2 > Enabled\n"
+            "   - Enable Jumbo Frames (9014) if switch supports it\n"
+            "5. Disable bandwidth throttling apps:\n"
+            "   - QoS policies, antivirus scanning during transfer, OneDrive sync\n"
+            "6. Use Robocopy for large transfers:\n"
+            "   - robocopy source dest /MT:16 /Z (multi-threaded, restartable)\n"
+            "7. Check switches/cables: Faulty cable or switch port can negotiate at lower speed"
+        ),
+    },
+    {
+        "category": "Network",
+        "problem_title": "Cannot access websites by name but IP works",
+        "problem_description": "Websites fail to load by domain name (e.g., google.com) but work when using IP addresses directly. Internal applications may also fail.",
+        "problem_keywords": "dns resolution, website by name, dns not resolving, nslookup, dns server, name resolution, domain name",
+        "solution_steps": (
+            "1. Confirm DNS issue:\n"
+            "   - ping 8.8.8.8 (should work - proves connectivity)\n"
+            "   - ping google.com (should fail - proves DNS issue)\n"
+            "   - nslookup google.com (check if DNS resolves)\n"
+            "2. Check DNS settings:\n"
+            "   - ipconfig /all > look at DNS Servers\n"
+            "   - If blank or wrong: Set manually\n"
+            "   - Adapter Properties > IPv4 > DNS: 8.8.8.8 / 8.8.4.4\n"
+            "3. Flush DNS cache:\n"
+            "   - ipconfig /flushdns\n"
+            "   - ipconfig /registerdns\n"
+            "4. Check hosts file:\n"
+            "   - C:\\Windows\\System32\\drivers\\etc\\hosts\n"
+            "   - Verify no incorrect entries blocking sites\n"
+            "   - Malware can add entries to redirect traffic\n"
+            "5. Test with nslookup:\n"
+            "   - nslookup google.com 8.8.8.8 (test with Google DNS directly)\n"
+            "   - If this works but default DNS fails: Internal DNS server issue\n"
+            "6. DNS client service:\n"
+            "   - services.msc > 'DNS Client' > should be Running\n"
+            "   - Restart the service\n"
+            "7. Try: netsh winsock reset and restart the computer"
+        ),
+    },
+    {
+        "category": "Network",
+        "problem_title": "Network adapter keeps disconnecting and reconnecting",
+        "problem_description": "Ethernet or Wi-Fi adapter drops the connection and reconnects repeatedly every few minutes. May show 'Network cable unplugged' briefly.",
+        "problem_keywords": "network disconnect, adapter dropping, cable unplugged, reconnecting, intermittent, connection drops, unstable",
+        "solution_steps": (
+            "1. Check physical connections:\n"
+            "   - Reseat the Ethernet cable at both ends\n"
+            "   - Try a different cable\n"
+            "   - Try a different switch port\n"
+            "2. Disable power management:\n"
+            "   - Device Manager > Network adapter > Properties > Power Management\n"
+            "   - Uncheck 'Allow the computer to turn off this device to save power'\n"
+            "3. Update or rollback driver:\n"
+            "   - Device Manager > Network adapter > Update Driver\n"
+            "   - If issue started after update: Roll Back Driver\n"
+            "   - Download the latest driver from the manufacturer\n"
+            "4. Disable Energy Efficient Ethernet:\n"
+            "   - Device Manager > NIC > Advanced > Energy Efficient Ethernet > Disabled\n"
+            "   - Also try: Green Ethernet > Disabled\n"
+            "5. For Wi-Fi:\n"
+            "   - Forget the network and reconnect\n"
+            "   - Change Wi-Fi band: Try 5 GHz instead of 2.4 GHz\n"
+            "   - Disable 'Connect automatically' to other networks\n"
+            "   - Set network as Metered to prevent Windows updates during connection\n"
+            "6. Check Event Viewer:\n"
+            "   - System log > filter by source 'e1express' or 'Netwtw' (NIC driver)\n"
+            "   - Look for error patterns and timestamps\n"
+            "7. Replace the NIC if hardware failure is suspected"
+        ),
+    },
+    {
+        "category": "Network",
+        "problem_title": "VLAN or network segmentation issues",
+        "problem_description": "Device cannot communicate across VLANs or subnets. Can ping devices on the same VLAN but not on different VLANs.",
+        "problem_keywords": "vlan, subnet, inter-vlan, routing, network segment, can't reach, different subnet, gateway",
+        "solution_steps": (
+            "1. Check default gateway:\n"
+            "   - ipconfig > verify the default gateway is correct for the VLAN\n"
+            "   - Each VLAN/subnet needs its own gateway (usually the router/L3 switch)\n"
+            "   - If gateway is wrong: Reconfigure IP or fix DHCP scope\n"
+            "2. Verify routing:\n"
+            "   - From the device: tracert <target IP on other VLAN>\n"
+            "   - If stops at gateway: The router isn't routing between VLANs\n"
+            "   - Check router/L3 switch routing configuration\n"
+            "3. Check switch VLAN configuration:\n"
+            "   - Verify the port is assigned to the correct VLAN\n"
+            "   - Access ports vs trunk ports: Access for endpoints, trunk for switches\n"
+            "   - Native VLAN mismatch can cause issues\n"
+            "4. Firewall/ACL rules:\n"
+            "   - Inter-VLAN communication may be blocked by ACLs on the router\n"
+            "   - Check firewall rules that filter between subnets\n"
+            "5. DHCP relay:\n"
+            "   - If DHCP server is on a different VLAN: IP helper-address is needed\n"
+            "   - Without relay: Devices in that VLAN get no IP from DHCP\n"
+            "6. Test from the gateway:\n"
+            "   - Can the router ping both VLANs?\n"
+            "   - Check 'ip routing' is enabled on L3 switch\n"
+            "7. Common issue: VLAN tagging on the PC port should be untagged (access mode)"
+        ),
+    },
+    {
+        "category": "Network",
+        "problem_title": "Wi-Fi connected but very slow speed",
+        "problem_description": "Connected to Wi-Fi with strong signal but internet speeds are extremely slow. Speed test shows much lower than expected.",
+        "problem_keywords": "slow wifi, wifi speed, wireless slow, wifi connected slow, bad wifi, slow internet wifi, 2.4ghz",
+        "solution_steps": (
+            "1. Run a speed test:\n"
+            "   - Compare Wi-Fi speed vs wired speed on the same network\n"
+            "   - If wired is also slow: Issue is the internet connection, not Wi-Fi\n"
+            "2. Check Wi-Fi band:\n"
+            "   - 2.4 GHz: Slower, more interference, longer range\n"
+            "   - 5 GHz: Faster, less interference, shorter range\n"
+            "   - Connect to the 5 GHz network if available\n"
+            "3. Channel congestion:\n"
+            "   - Use a Wi-Fi analyzer app to check channel congestion\n"
+            "   - Change router channel to a less congested one\n"
+            "   - 2.4 GHz: Use channels 1, 6, or 11 only\n"
+            "4. Check for bandwidth hogs:\n"
+            "   - Task Manager > Performance > Open Resource Monitor > Network\n"
+            "   - Look for apps/processes using bandwidth (updates, cloud sync)\n"
+            "5. Router placement:\n"
+            "   - Move closer to router or access point\n"
+            "   - Check signal strength: netsh wlan show interfaces\n"
+            "   - >70% signal: Good, <50%: May cause slow speeds\n"
+            "6. Wireless adapter:\n"
+            "   - Check adapter speed: Device Manager > Wi-Fi > Advanced > Wireless Mode\n"
+            "   - Set to 802.11ac or 802.11ax if supported\n"
+            "   - Update Wi-Fi adapter driver\n"
+            "7. Reset the router: Sometimes a simple reboot clears congestion"
+        ),
+    },
+    {
+        "category": "Network",
+        "problem_title": "802.1X authentication failure on wired network",
+        "problem_description": "Computer cannot connect to the wired network due to 802.1X authentication failure. Network shows 'No internet' or 'Identifying' indefinitely.",
+        "problem_keywords": "802.1x, network authentication, eap, wired auth, nac, dot1x, port based, network access, certificate",
+        "solution_steps": (
+            "1. Check 802.1X settings:\n"
+            "   - Network adapter Properties > Authentication tab\n"
+            "   - If tab is missing: Enable '802.1X Authentication' in services\n"
+            "   - Wired AutoConfig service must be running\n"
+            "2. Authentication method:\n"
+            "   - Settings > Authentication method > typically EAP-TLS or PEAP\n"
+            "   - EAP-TLS: Requires a valid client certificate\n"
+            "   - PEAP: Uses username/password with server certificate\n"
+            "3. Certificate issues (EAP-TLS):\n"
+            "   - Open certmgr.msc > Personal > Certificates\n"
+            "   - Check the machine certificate is valid and not expired\n"
+            "   - Check the root CA certificate is in Trusted Root CAs\n"
+            "4. Check the RADIUS server:\n"
+            "   - NPS/RADIUS logs on the server side\n"
+            "   - Event Viewer on the server: Network Policy and Access Services\n"
+            "   - Common: Certificate mismatch, user not in correct group\n"
+            "5. Switch port configuration:\n"
+            "   - Verify the switch port has 802.1X configured correctly\n"
+            "   - Check if the port is in 'err-disabled' state\n"
+            "   - Try a different switch port\n"
+            "6. Bypass for troubleshooting:\n"
+            "   - Have network admin temporarily disable 802.1X on the port\n"
+            "   - If connection works: Focus on certificate/credentials\n"
+            "7. Re-enroll the certificate through Group Policy or SCEP"
+        ),
+    },
+    {
+        "category": "Network",
+        "problem_title": "Network shares intermittently unavailable",
+        "problem_description": "Mapped network drives or UNC paths work sometimes and fail other times. May show 'The network path was not found' intermittently.",
+        "problem_keywords": "network share intermittent, mapped drive drops, smb timeout, network path not found, share access, unc path",
+        "solution_steps": (
+            "1. Check SMB connectivity:\n"
+            "   - net use (list current connections)\n"
+            "   - Test-NetConnection -ComputerName server -Port 445\n"
+            "   - If port 445 is intermittently blocked: Firewall issue\n"
+            "2. SMB keepalive:\n"
+            "   - Idle SMB connections may be dropped by firewalls or servers\n"
+            "   - Registry: HKLM\\SYSTEM\\CurrentControlSet\\Services\\LanmanWorkstation\\Parameters\n"
+            "   - KeepConn (DWORD): Set to 600 (seconds)\n"
+            "3. Reconnect mapped drives:\n"
+            "   - Right-click mapped drive > Disconnect\n"
+            "   - Remap with 'Reconnect at sign-in' checked\n"
+            "   - Or use a logon script: net use Z: \\\\server\\share /persistent:yes\n"
+            "4. DNS resolution:\n"
+            "   - The server name may resolve intermittently\n"
+            "   - nslookup servername > verify consistent IP\n"
+            "   - Add a static entry in hosts file as workaround\n"
+            "5. Check the file server:\n"
+            "   - Server may be under heavy load or running out of connections\n"
+            "   - Check server Event Viewer for SMB errors\n"
+            "   - Get-SmbSession on the server to see active connections\n"
+            "6. Disable SMB signing if not required (can improve performance):\n"
+            "   - Group Policy: Microsoft Network Client > Digitally sign communications\n"
+            "7. Update SMB client: Ensure latest Windows updates are applied"
+        ),
+    },
+    {
+        "category": "Network",
+        "problem_title": "Captive portal not loading on public Wi-Fi",
+        "problem_description": "Connected to a public Wi-Fi (hotel, airport, coffee shop) but the login/captive portal page doesn't appear and there's no internet access.",
+        "problem_keywords": "captive portal, public wifi, hotel wifi, login page, wifi portal, redirect, guest wifi, no portal",
+        "solution_steps": (
+            "1. Trigger the portal manually:\n"
+            "   - Open a browser and go to http://neverssl.com or http://captive.apple.com\n"
+            "   - These HTTP (not HTTPS) sites often trigger the redirect\n"
+            "   - Try: http://1.1.1.1 or http://192.168.1.1\n"
+            "2. DNS may be blocking the redirect:\n"
+            "   - If using custom DNS (8.8.8.8): Temporarily switch to DHCP-provided DNS\n"
+            "   - Adapter Properties > IPv4 > 'Obtain DNS server address automatically'\n"
+            "   - Reconnect to the network\n"
+            "3. Browser issues:\n"
+            "   - Try a different browser\n"
+            "   - Clear browser cache and cookies\n"
+            "   - Disable extensions that might block redirects\n"
+            "4. VPN interference:\n"
+            "   - Disconnect any VPN before connecting to captive portal\n"
+            "   - VPN may prevent the redirect from working\n"
+            "   - Connect to VPN after completing the portal login\n"
+            "5. Flush DNS and renew IP:\n"
+            "   - ipconfig /release\n"
+            "   - ipconfig /flushdns\n"
+            "   - ipconfig /renew\n"
+            "6. Forget and reconnect:\n"
+            "   - Forget the Wi-Fi network\n"
+            "   - Reconnect and wait for the portal to appear\n"
+            "7. Ask front desk for direct login URL if portal still won't load"
+        ),
+    },
+    {
+        "category": "Network",
+        "problem_title": "IPv6 connectivity issues",
+        "problem_description": "IPv6 shows 'No network access' in network adapter status. Some websites or services that prefer IPv6 are slow or fail to load.",
+        "problem_keywords": "ipv6, no network access, ipv6 connectivity, dual stack, ipv6 not working, ipv6 dns, slaac",
+        "solution_steps": (
+            "1. Check IPv6 status:\n"
+            "   - ipconfig /all > look for IPv6 Address and Default Gateway\n"
+            "   - If only fe80:: (link-local): No IPv6 routing\n"
+            "   - Should have a global address (2xxx:: or prefix from ISP)\n"
+            "2. Test IPv6:\n"
+            "   - ping ::1 (loopback - tests IPv6 stack)\n"
+            "   - ping ipv6.google.com\n"
+            "   - Visit https://test-ipv6.com for detailed diagnostics\n"
+            "3. If ISP doesn't support IPv6:\n"
+            "   - 'No network access' for IPv6 is normal if ISP is IPv4-only\n"
+            "   - This doesn't affect IPv4 connectivity\n"
+            "   - Can disable IPv6 on the adapter to avoid confusion\n"
+            "4. If IPv6 should work but doesn't:\n"
+            "   - Check router: Is IPv6 enabled? (Router admin page)\n"
+            "   - Check firewall: Windows Firewall may block ICMPv6\n"
+            "   - DHCPv6 or SLAAC must be working on the network\n"
+            "5. Reset IPv6:\n"
+            "   - netsh interface ipv6 reset\n"
+            "   - Restart the computer\n"
+            "6. Prefer IPv4 over IPv6 (if IPv6 causes slowness):\n"
+            "   - Registry: HKLM\\SYSTEM\\CurrentControlSet\\Services\\Tcpip6\\Parameters\n"
+            "   - DisabledComponents (DWORD): 0x20 (prefer IPv4)\n"
+            "7. Don't disable IPv6 entirely unless absolutely necessary (Microsoft supported)"
+        ),
+    },
+    {
+        "category": "Network",
+        "problem_title": "DNS round robin or load balancing not working as expected",
+        "problem_description": "Multiple servers behind DNS round robin but traffic is not distributing evenly. Some servers get most of the traffic while others are idle.",
+        "problem_keywords": "dns round robin, load balancing, dns distribution, server load, uneven traffic, dns cache, ttl",
+        "solution_steps": (
+            "1. Understand DNS round robin limitations:\n"
+            "   - DNS round robin rotates IP addresses in DNS responses\n"
+            "   - It does NOT check server health or current load\n"
+            "   - Clients/resolvers may cache one IP and reuse it\n"
+            "2. Check TTL:\n"
+            "   - nslookup -type=A hostname (shows TTL)\n"
+            "   - Lower TTL = more frequent DNS queries = better distribution\n"
+            "   - Set TTL to 60-300 seconds for round robin\n"
+            "3. Client-side DNS caching:\n"
+            "   - Windows DNS client caches IP addresses\n"
+            "   - ipconfig /flushdns on client (temporary fix)\n"
+            "   - Intermediate DNS resolvers also cache\n"
+            "4. Verify round robin is configured:\n"
+            "   - On DNS server: Check that round robin is enabled\n"
+            "   - Windows DNS: DNS Manager > Server Properties > Advanced > Enable round robin\n"
+            "   - Also enable 'Enable netmask ordering'\n"
+            "5. Better alternatives:\n"
+            "   - Use a proper load balancer (HAProxy, F5, Azure LB)\n"
+            "   - Load balancers offer health checks and session persistence\n"
+            "   - Consider cloud load balancing (AWS ELB, Azure Application Gateway)\n"
+            "6. Monitor server load:\n"
+            "   - Check each server's active connections and response times\n"
+            "   - Uneven distribution is normal with DNS round robin"
+        ),
+    },
+    {
+        "category": "Network",
+        "problem_title": "Double NAT causing connectivity issues",
+        "problem_description": "Two routers on the network causing double NAT. Port forwarding doesn't work, gaming/VoIP has issues, and VPN connections fail.",
+        "problem_keywords": "double nat, two routers, port forwarding not working, nat issue, cgnat, modem router, bridge mode",
+        "solution_steps": (
+            "1. Identify double NAT:\n"
+            "   - tracert 8.8.8.8 > if you see two private IPs (192.168.x.x) in the path\n"
+            "   - Check router WAN IP: If it's 192.168.x.x or 10.x.x.x, you're behind another NAT\n"
+            "2. Common cause:\n"
+            "   - ISP modem/router combo + your own router = two NAT layers\n"
+            "   - ISP using CGNAT (Carrier-Grade NAT) - 100.64.x.x range\n"
+            "3. Solution 1 - Bridge mode:\n"
+            "   - Set ISP modem/router to Bridge Mode or Passthrough\n"
+            "   - This disables the ISP router's NAT and lets your router handle everything\n"
+            "   - Access ISP router (usually 192.168.0.1 or 192.168.1.1)\n"
+            "4. Solution 2 - DMZ:\n"
+            "   - On the ISP router: Set your router's WAN IP as the DMZ host\n"
+            "   - This forwards all traffic to your router\n"
+            "5. Solution 3 - Remove one router:\n"
+            "   - Use only the ISP modem/router and disable your router\n"
+            "   - Or request a modem-only device from ISP\n"
+            "6. For CGNAT:\n"
+            "   - Contact ISP to request a public IP address\n"
+            "   - Some ISPs charge extra for a static/public IP\n"
+            "   - Alternative: Use a VPN service with port forwarding\n"
+            "7. Port forwarding must be configured on BOTH routers in double NAT"
+        ),
+    },
+    {
+        "category": "Network",
+        "problem_title": "Wake-on-LAN (WOL) not working",
+        "problem_description": "Cannot wake a remote computer using Wake-on-LAN magic packets. Computer stays off or doesn't respond to WOL commands.",
+        "problem_keywords": "wake on lan, wol, magic packet, remote wake, power on remote, wake up pc, wol not working",
+        "solution_steps": (
+            "1. Enable WOL in BIOS:\n"
+            "   - Restart > BIOS/UEFI > Power Settings or Advanced\n"
+            "   - Enable 'Wake on LAN' or 'Power On by PCI-E/PCI'\n"
+            "   - May be called 'Wake on Magic Packet'\n"
+            "2. Enable WOL in Windows:\n"
+            "   - Device Manager > Network adapter > Properties\n"
+            "   - Power Management tab: Check 'Allow this device to wake the computer'\n"
+            "   - Also check 'Only allow a magic packet to wake the computer'\n"
+            "   - Advanced tab: 'Wake on Magic Packet' > Enabled\n"
+            "3. Disable Fast Startup:\n"
+            "   - Fast Startup puts the PC in a hybrid shutdown state that may prevent WOL\n"
+            "   - Power Options > Choose what power buttons do > Turn off fast startup\n"
+            "4. Network requirements:\n"
+            "   - WOL works over Ethernet only (not Wi-Fi typically)\n"
+            "   - The sending device must be on the same subnet (or use directed broadcast)\n"
+            "   - Note the target PC's MAC address (ipconfig /all)\n"
+            "5. Send the magic packet:\n"
+            "   - Use a WOL tool or PowerShell script\n"
+            "   - The packet must contain the MAC address repeated\n"
+            "6. Cross-subnet WOL:\n"
+            "   - Configure directed broadcast on the router\n"
+            "   - ip directed-broadcast on the target VLAN interface\n"
+            "   - Send magic packet to the subnet broadcast address\n"
+            "7. Test: Shutdown the PC (not hibernate) and send WOL from another device"
+        ),
+    },
+    {
+        "category": "Network",
+        "problem_title": "ARP table issues causing communication failures",
+        "problem_description": "Devices on the same network can't communicate or have intermittent connectivity due to stale or incorrect ARP cache entries.",
+        "problem_keywords": "arp, arp cache, arp table, arp poisoning, ip conflict, mac address, arp -a, communication failure",
+        "solution_steps": (
+            "1. View ARP table:\n"
+            "   - arp -a (shows IP to MAC mappings)\n"
+            "   - Check if the target IP resolves to the correct MAC address\n"
+            "   - If wrong MAC: ARP cache is stale or poisoned\n"
+            "2. Clear ARP cache:\n"
+            "   - arp -d * (clear all ARP entries, requires admin)\n"
+            "   - netsh interface ip delete arpcache\n"
+            "   - ARP cache refreshes automatically, but clearing forces re-resolution\n"
+            "3. IP conflict detection:\n"
+            "   - Two devices with the same IP will show different MACs\n"
+            "   - arp -a | find 'target IP' and verify MAC consistency\n"
+            "   - Use: arping or nmap to detect duplicate IPs\n"
+            "4. ARP poisoning/spoofing:\n"
+            "   - Malware can send fake ARP responses to redirect traffic\n"
+            "   - Use Dynamic ARP Inspection (DAI) on managed switches\n"
+            "   - Check for unusual ARP entries: arp -a (same MAC for multiple IPs)\n"
+            "5. Static ARP entries:\n"
+            "   - For critical servers: arp -s <IP> <MAC> (static entry)\n"
+            "   - Prevents poisoning for that specific IP\n"
+            "6. Gratuitous ARP:\n"
+            "   - When IP changes or after failover, gratuitous ARP updates are needed\n"
+            "   - Some devices may not send them, causing stale entries\n"
+            "7. Reduce ARP timeout: netsh interface ipv4 set subinterface <idx> mtu=1500"
+        ),
+    },
+    {
+        "category": "Network",
+        "problem_title": "MTU size causing packet fragmentation issues",
+        "problem_description": "Certain websites or applications fail to load while others work. Caused by MTU path mismatch leading to packet fragmentation or black-holing.",
+        "problem_keywords": "mtu, packet fragmentation, mtu mismatch, jumbo frame, path mtu, mtu discovery, packet size",
+        "solution_steps": (
+            "1. Test for MTU issues:\n"
+            "   - ping target -f -l 1472 (test with 1472 byte payload + 28 byte header = 1500)\n"
+            "   - If 'Packet needs to be fragmented': MTU is lower than 1500\n"
+            "   - Reduce size until ping works: ping target -f -l 1400\n"
+            "   - Add 28 to the working value = your MTU\n"
+            "2. Common MTU sizes:\n"
+            "   - Ethernet: 1500 (standard)\n"
+            "   - PPPoE: 1492 (common for DSL)\n"
+            "   - VPN tunnels: 1400-1460 (overhead reduces available space)\n"
+            "3. Set MTU on the interface:\n"
+            "   - netsh interface ipv4 set subinterface \"Ethernet\" mtu=1400 store=persistent\n"
+            "   - Or in the router: Typically in WAN/Internet settings\n"
+            "4. VPN MTU issues:\n"
+            "   - VPN adds headers, reducing effective MTU\n"
+            "   - Set MTU on VPN adapter to 1300-1400\n"
+            "   - Or configure VPN server to adjust MSS clamping\n"
+            "5. Path MTU Discovery (PMTUD):\n"
+            "   - Windows uses PMTUD to find the optimal MTU\n"
+            "   - Firewalls blocking ICMP 'Fragmentation Needed' messages break PMTUD\n"
+            "   - Ensure ICMP Type 3 Code 4 is allowed through firewalls\n"
+            "6. Jumbo frames:\n"
+            "   - 9000 MTU for iSCSI or NAS traffic\n"
+            "   - ALL devices in the path must support jumbo frames\n"
+            "   - One device with 1500 MTU breaks the chain"
+        ),
+    },
+    {
+        "category": "Network",
+        "problem_title": "Network printer not found after IP change",
+        "problem_description": "Network printer is unreachable after the printer's IP address changed via DHCP renewal. Users get 'printer offline' errors.",
+        "problem_keywords": "printer ip change, printer offline, printer ip, dhcp printer, printer not found, static ip printer",
+        "solution_steps": (
+            "1. Find the printer's new IP:\n"
+            "   - Print a configuration page from the printer's control panel\n"
+            "   - Check DHCP server leases for the printer's MAC address\n"
+            "   - Scan the network: arp -a or use Advanced IP Scanner\n"
+            "2. Update the printer port:\n"
+            "   - Devices and Printers > right-click printer > Printer Properties\n"
+            "   - Ports tab > select the port > Configure Port\n"
+            "   - Update the IP address to the new one\n"
+            "3. Prevent future changes - set a static IP on the printer:\n"
+            "   - Access printer web interface (http://printer-ip)\n"
+            "   - Network settings > IPv4 > Manual/Static\n"
+            "   - Set an IP outside the DHCP range\n"
+            "4. Or use DHCP reservation:\n"
+            "   - On the DHCP server: Create a reservation for the printer's MAC\n"
+            "   - This always assigns the same IP via DHCP\n"
+            "5. Use hostname instead of IP:\n"
+            "   - Create printer port using the printer's hostname\n"
+            "   - Hostname doesn't change with IP, so this is more resilient\n"
+            "6. For print servers:\n"
+            "   - Update the printer port on the print server\n"
+            "   - Clients connected via print server don't need changes\n"
+            "7. Batch update: PowerShell can update printer ports across multiple PCs"
+        ),
+    },
+    {
+        "category": "Network",
+        "problem_title": "Network discovery not showing other computers",
+        "problem_description": "File Explorer's Network view doesn't show other computers on the network. Cannot browse to other PCs even though ping works.",
+        "problem_keywords": "network discovery, computers not showing, browse network, network view, smb browse, workgroup, netbios",
+        "solution_steps": (
+            "1. Enable Network Discovery:\n"
+            "   - Settings > Network & Internet > Advanced sharing settings\n"
+            "   - Turn on 'Network discovery'\n"
+            "   - Turn on 'File and printer sharing'\n"
+            "   - Apply for the correct profile (Private or Domain)\n"
+            "2. Check the network profile:\n"
+            "   - Settings > Network > Ethernet/Wi-Fi > Properties\n"
+            "   - Set to 'Private' (not Public)\n"
+            "   - Public profile disables discovery by default\n"
+            "3. Required services:\n"
+            "   - Function Discovery Provider Host: Running\n"
+            "   - Function Discovery Resource Publication: Running\n"
+            "   - SSDP Discovery: Running\n"
+            "   - UPnP Device Host: Running\n"
+            "4. SMB 1.0 (legacy):\n"
+            "   - Older devices may need SMB 1.0 for discovery\n"
+            "   - Windows Features > SMB 1.0/CIFS File Sharing Support\n"
+            "   - Enable 'SMB 1.0/CIFS Client' only (not server)\n"
+            "   - Note: SMB 1.0 has security risks\n"
+            "5. WSD (Web Services for Devices):\n"
+            "   - Windows 10+ uses WSD instead of NetBIOS for discovery\n"
+            "   - Ensure WSD is not blocked by firewall\n"
+            "6. Direct access still works:\n"
+            "   - \\\\computername or \\\\IP-address in File Explorer\n"
+            "   - Discovery just affects the browsing view\n"
+            "7. Workgroup: All PCs should be in the same workgroup name"
+        ),
+    },
+    {
+        "category": "Network",
+        "problem_title": "SSL/TLS certificate errors in browser",
+        "problem_description": "Websites show 'Your connection is not private', NET::ERR_CERT errors, or 'This site is not secure' warnings in the browser.",
+        "problem_keywords": "ssl error, certificate error, not secure, tls error, err_cert, privacy error, https warning, certificate",
+        "solution_steps": (
+            "1. Check the date/time:\n"
+            "   - Incorrect system date/time causes certificate errors\n"
+            "   - Settings > Time & Language > Set time automatically\n"
+            "   - Sync now with time server\n"
+            "2. Specific error codes:\n"
+            "   - NET::ERR_CERT_DATE_INVALID: Certificate expired or system date wrong\n"
+            "   - NET::ERR_CERT_AUTHORITY_INVALID: Untrusted CA (self-signed or internal)\n"
+            "   - NET::ERR_CERT_COMMON_NAME_INVALID: Domain name mismatch\n"
+            "3. For internal/corporate sites:\n"
+            "   - Import the company's Root CA certificate\n"
+            "   - certmgr.msc > Trusted Root Certification Authorities > Import\n"
+            "   - Should be deployed via Group Policy in domain environments\n"
+            "4. Browser-specific:\n"
+            "   - Chrome: chrome://settings > Security > Manage certificates\n"
+            "   - Firefox uses its own certificate store: Options > Privacy > View Certificates\n"
+            "   - Import the CA cert in Firefox separately\n"
+            "5. SSL inspection / proxy:\n"
+            "   - Corporate proxy may intercept HTTPS (SSL inspection)\n"
+            "   - The proxy CA cert must be trusted on the client\n"
+            "   - Check certificate details: Is the issuer your company or the actual site?\n"
+            "6. Clear SSL state:\n"
+            "   - Internet Options > Content > Clear SSL state\n"
+            "   - Clear browser cache\n"
+            "7. If the certificate is legitimately expired: Contact the website owner"
+        ),
+    },
+    {
+        "category": "Network",
+        "problem_title": "Port forwarding not working on router",
+        "problem_description": "Configured port forwarding on the router but external users cannot reach the internal service. Internal access works fine.",
+        "problem_keywords": "port forwarding, port forward, nat, open port, router port, port not working, external access, port map",
+        "solution_steps": (
+            "1. Verify port forwarding config:\n"
+            "   - Log into router > Port Forwarding section\n"
+            "   - External port, Internal IP, Internal port, Protocol (TCP/UDP/Both)\n"
+            "   - Internal IP must be the correct server IP\n"
+            "2. Check from external:\n"
+            "   - Use a port checker (canyouseeme.org) from outside your network\n"
+            "   - Or ask someone external to test\n"
+            "   - Testing from inside your network may not work (hairpin NAT)\n"
+            "3. Common issues:\n"
+            "   - Double NAT: Check for two routers (see double NAT article)\n"
+            "   - ISP blocking ports: ISPs often block port 80, 443, 25\n"
+            "   - CGNAT: ISP uses 100.64.x.x range, port forwarding won't work\n"
+            "4. Windows Firewall:\n"
+            "   - The server's Windows Firewall must allow the port\n"
+            "   - Windows Firewall > Inbound Rules > New Rule > Port\n"
+            "5. Service must be listening:\n"
+            "   - On the server: netstat -an | find ':PORT'\n"
+            "   - The service must be listening on 0.0.0.0:PORT (not 127.0.0.1)\n"
+            "6. Static IP for the server:\n"
+            "   - If the server IP changes, port forward breaks\n"
+            "   - Set a static IP or DHCP reservation\n"
+            "7. Dynamic DNS: If your public IP changes, use a DDNS service"
+        ),
+    },
+    {
+        "category": "Network",
+        "problem_title": "Network printer discovery not finding printers on the network",
+        "problem_description": "Network printer discovery in Windows fails to find printers. Printers aren't visible in 'Add a printer' wizard despite being on the same network and powered on.",
+        "problem_keywords": "printer discovery, find printer, network printer, add printer, printer not found, printer browse, wsd, printer search",
+        "solution_steps": (
+            "1. Basic connectivity:\n"
+            "   - Ping the printer's IP address\n"
+            "   - Print a network configuration page from the printer itself\n"
+            "   - Verify printer and PC are on the same subnet/VLAN\n"
+            "2. Discovery protocols:\n"
+            "   - WSD (Web Services for Devices): Must be enabled on printer\n"
+            "   - SNMP: Enable SNMP on printer for discovery\n"
+            "   - Check: 'Network discovery' is ON in Windows (Advanced sharing settings)\n"
+            "3. Firewall:\n"
+            "   - Windows Firewall may block printer discovery\n"
+            "   - Enable: Network Discovery firewall rules\n"
+            "   - Check: mDNS, SNMP (UDP 161), WSD ports are not blocked\n"
+            "4. Add printer manually:\n"
+            "   - Add Printer > 'The printer that I want isn't listed'\n"
+            "   - Select 'Add a printer using TCP/IP address'\n"
+            "   - Enter printer's IP address directly\n"
+            "5. DNS entry: For reliable access, create a DNS A record for the printer (e.g., printer-floor2.company.local) rather than relying on discovery"
+        ),
+    },
+    {
+        "category": "Network",
+        "problem_title": "802.1X network authentication failures",
+        "problem_description": "Wired or wireless 802.1X network authentication failing. Devices can't connect to the corporate network, get placed in guest VLAN, or show certificate errors during authentication.",
+        "problem_keywords": "802.1x, radius, network authentication, nac, eap, certificate auth, nps, dot1x, wired authentication",
+        "solution_steps": (
+            "1. Check client-side config:\n"
+            "   - Network adapter properties > Authentication tab\n"
+            "   - Enable IEEE 802.1X authentication\n"
+            "   - Verify EAP type matches server config (PEAP, EAP-TLS)\n"
+            "2. Certificate issues:\n"
+            "   - EAP-TLS: Client needs valid computer/user certificate\n"
+            "   - PEAP: Client needs to trust the RADIUS server's certificate\n"
+            "   - Check: Certificate expiration, CA trust chain\n"
+            "   - certutil -store my (list personal certificates)\n"
+            "3. RADIUS/NPS server:\n"
+            "   - NPS event log: Security log on RADIUS server\n"
+            "   - Common: Reason Code 16 (authentication failed)\n"
+            "   - Check: Network Policy conditions match the connecting client\n"
+            "   - Verify: Shared secret matches between switch and NPS\n"
+            "4. Switch/AP config:\n"
+            "   - Verify RADIUS server IP and shared secret on switch\n"
+            "   - Check: Authentication port (1812) and accounting port (1813)\n"
+            "   - Guest VLAN: Ensure fallback VLAN is configured\n"
+            "5. Group Policy: Deploy 802.1X settings via GPO (Computer Config > Windows Settings > Security > Wired/Wireless Network Policies)"
+        ),
+    },
 ]
 
 DIAGNOSTIC_TREE = {

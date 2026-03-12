@@ -431,6 +431,621 @@ ARTICLES = [
             "   - Settings > Apps > Microsoft Store > Advanced Options > Reset"
         ),
     },
+    {
+        "category": "Software",
+        "problem_title": "Microsoft Teams chat messages not sending or delayed",
+        "problem_description": "Teams messages show a spinning circle, fail to send, or arrive delayed. Chat functionality is broken while calls may still work.",
+        "problem_keywords": "teams chat, message not sent, teams delay, chat failed, teams spinning, chat not working, teams message",
+        "solution_steps": (
+            "1. Check Teams service status:\n"
+            "   - Visit https://status.office365.com or admin.microsoft.com\n"
+            "   - Check for Teams service incidents\n"
+            "   - Teams outages affect chat before other features\n"
+            "2. Clear Teams cache:\n"
+            "   - Fully quit Teams (right-click tray icon > Quit)\n"
+            "   - Delete: %appdata%\\Microsoft\\Teams\\Cache\n"
+            "   - Delete: %appdata%\\Microsoft\\Teams\\blob_storage\n"
+            "   - Delete: %appdata%\\Microsoft\\Teams\\databases\n"
+            "   - Restart Teams\n"
+            "3. For new Teams (Teams 2.0):\n"
+            "   - Cache location: %localappdata%\\Packages\\MSTeams_8wekyb3d8bbwe\\LocalCache\n"
+            "   - Clear the LocalCache folder\n"
+            "4. Network check:\n"
+            "   - Teams requires WebSocket connections\n"
+            "   - Proxy/firewall may block Teams endpoints\n"
+            "   - Required: *.teams.microsoft.com, *.skype.com on ports 80 and 443\n"
+            "5. Sign out and back in:\n"
+            "   - Teams > Profile > Sign Out\n"
+            "   - Restart Teams and sign in again\n"
+            "6. Reinstall Teams:\n"
+            "   - Uninstall Teams from Settings > Apps\n"
+            "   - Delete remaining cache folders\n"
+            "   - Download and install latest version\n"
+            "7. Use Teams Web (teams.microsoft.com) as a temporary workaround"
+        ),
+    },
+    {
+        "category": "Software",
+        "problem_title": "Application crashes with 'insufficient memory' error",
+        "problem_description": "Applications crash with out-of-memory errors even though the system has available RAM. Common with large Excel files, CAD, or media editing software.",
+        "problem_keywords": "out of memory, insufficient memory, memory error, ram full, low memory, virtual memory, page file",
+        "solution_steps": (
+            "1. Check memory usage:\n"
+            "   - Task Manager > Performance > Memory\n"
+            "   - Note: Total, In use, and Available\n"
+            "   - If Available is very low: Close other applications\n"
+            "2. 32-bit vs 64-bit application:\n"
+            "   - 32-bit applications can only use ~3.5 GB of RAM total\n"
+            "   - Even on a 64-bit system with 32 GB RAM\n"
+            "   - Install the 64-bit version of the application if available\n"
+            "   - Check: Task Manager > Details > shows '32 bit' next to process name\n"
+            "3. Virtual memory / Page file:\n"
+            "   - System Properties > Advanced > Performance > Settings > Advanced\n"
+            "   - Virtual Memory > Change\n"
+            "   - Set a custom size: Initial = 1.5x RAM, Maximum = 3x RAM\n"
+            "   - Or let Windows manage it automatically\n"
+            "4. Close memory-heavy apps:\n"
+            "   - Task Manager > sort by Memory usage\n"
+            "   - Browser tabs are major memory consumers\n"
+            "   - Close unused applications and browser tabs\n"
+            "5. Memory leaks:\n"
+            "   - If memory usage increases over time until crash\n"
+            "   - Application has a memory leak - check for updates/patches\n"
+            "   - Restart the application periodically as workaround\n"
+            "6. Large file handling:\n"
+            "   - Excel: Split large files, use Power Query for data\n"
+            "   - Images/Video: Close other editing sessions\n"
+            "7. Upgrade RAM if consistently running out of memory during normal work"
+        ),
+    },
+    {
+        "category": "Software",
+        "problem_title": "Software license deactivated or activation server unreachable",
+        "problem_description": "Software shows 'license expired' or 'activation failed' even though the license is valid. Cannot reach the activation server.",
+        "problem_keywords": "license expired, activation failed, license server, software license, activation server, license key, deactivated",
+        "solution_steps": (
+            "1. Check license validity:\n"
+            "   - Verify the license hasn't genuinely expired\n"
+            "   - Check purchase/renewal dates with the vendor\n"
+            "   - For subscription: Verify payment is current\n"
+            "2. Network connectivity to activation server:\n"
+            "   - Can the PC reach the internet? Check basic connectivity\n"
+            "   - Firewall/proxy may block the activation server URL\n"
+            "   - Whitelist the vendor's activation URLs\n"
+            "3. System clock:\n"
+            "   - If the system date/time is wrong, licenses may appear expired\n"
+            "   - Settings > Time & Language > Set time automatically\n"
+            "   - Sync with time server\n"
+            "4. Re-activate:\n"
+            "   - Deactivate the license first (if possible)\n"
+            "   - Re-enter the license key\n"
+            "   - Some software limits activations per key\n"
+            "5. Hardware changes:\n"
+            "   - Some licenses are tied to hardware (MAC address, CPU, motherboard)\n"
+            "   - Hardware changes (new NIC, motherboard) may invalidate activation\n"
+            "   - Contact vendor to transfer the license\n"
+            "6. For on-premises license servers:\n"
+            "   - Check if the license server is running\n"
+            "   - Verify the client can reach the server on the required port\n"
+            "   - Check server logs for license checkout failures\n"
+            "7. Contact the vendor's support with your license key and error for reactivation"
+        ),
+    },
+    {
+        "category": "Software",
+        "problem_title": "PDF files won't open or display incorrectly",
+        "problem_description": "PDF files show blank pages, fail to open, or display garbled text. May affect specific PDFs or all PDF files.",
+        "problem_keywords": "pdf won't open, pdf blank, pdf error, adobe reader, pdf display, pdf corrupt, pdf viewer",
+        "solution_steps": (
+            "1. Try a different PDF viewer:\n"
+            "   - If using Edge/Chrome: Try Adobe Acrobat Reader\n"
+            "   - If using Adobe Reader: Try Edge, Chrome, or Foxit Reader\n"
+            "   - This determines if the issue is the viewer or the file\n"
+            "2. Update the PDF viewer:\n"
+            "   - Adobe Reader: Help > Check for Updates\n"
+            "   - Chrome: Updates automatically\n"
+            "   - Edge: Updates with Windows Update\n"
+            "3. Repair Adobe Reader:\n"
+            "   - Help > Repair Installation\n"
+            "   - Or: Settings > Apps > Adobe Acrobat > Modify > Repair\n"
+            "4. Set default PDF app:\n"
+            "   - Settings > Apps > Default Apps > Choose by file type\n"
+            "   - Find .pdf > select preferred viewer\n"
+            "5. Protected Mode:\n"
+            "   - Adobe Reader: Edit > Preferences > Security (Enhanced)\n"
+            "   - If PDFs from network fail: Uncheck 'Enable Protected Mode at startup'\n"
+            "   - Also check: 'Enable Enhanced Security' may block some features\n"
+            "6. Corrupted PDF:\n"
+            "   - If only one PDF fails: The file may be corrupted or incomplete\n"
+            "   - Re-download or request the file again\n"
+            "   - Partial downloads cause blank/broken PDFs\n"
+            "7. Browser PDF viewer: If downloading PDFs from Chrome: Settings > Privacy > Site settings > PDF documents > Download instead of open"
+        ),
+    },
+    {
+        "category": "Software",
+        "problem_title": "AutoCAD or design software extremely slow or freezing",
+        "problem_description": "CAD/design software (AutoCAD, Revit, SolidWorks) runs very slowly, freezes during operations, or takes long to open files.",
+        "problem_keywords": "autocad slow, cad freeze, solidworks slow, revit slow, design software, 3d software slow, rendering slow",
+        "solution_steps": (
+            "1. Check system requirements:\n"
+            "   - CAD software has specific GPU/RAM requirements\n"
+            "   - AutoCAD: Certified GPU list at autodesk.com\n"
+            "   - Minimum: 16 GB RAM, SSD, dedicated GPU\n"
+            "2. GPU driver:\n"
+            "   - Install the Studio/Professional driver (not Game Ready)\n"
+            "   - NVIDIA: nvidia.com/drivers > Professional\n"
+            "   - AMD: AMD Pro drivers\n"
+            "   - CAD software relies heavily on GPU acceleration\n"
+            "3. Hardware acceleration:\n"
+            "   - AutoCAD: Options > System > Graphics Performance\n"
+            "   - Ensure hardware acceleration is ON\n"
+            "   - If it's off with a dedicated GPU: Driver issue\n"
+            "4. File optimization:\n"
+            "   - Purge unused elements: PURGE command in AutoCAD\n"
+            "   - Audit the drawing: AUDIT command\n"
+            "   - Reduce xrefs and imported geometry\n"
+            "5. Disk performance:\n"
+            "   - Work from a local SSD, not network drive\n"
+            "   - Copy files locally, edit, then save back to network\n"
+            "   - Temp files: Set temp directory to SSD\n"
+            "6. Antivirus exclusions:\n"
+            "   - Exclude .dwg, .rvt, .sldprt file extensions\n"
+            "   - Exclude the application folder and temp directory\n"
+            "   - Real-time scanning significantly impacts CAD performance\n"
+            "7. Reset the application to defaults if settings may be corrupted"
+        ),
+    },
+    {
+        "category": "Software",
+        "problem_title": "Windows Defender conflicts with third-party software",
+        "problem_description": "Windows Defender blocks or quarantines legitimate software. Application files are deleted or executables won't run due to false positive detections.",
+        "problem_keywords": "defender block, false positive, quarantine, exclusion, defender conflict, antivirus block, windows security",
+        "solution_steps": (
+            "1. Check quarantine:\n"
+            "   - Windows Security > Virus & threat protection > Protection history\n"
+            "   - Look for recent 'Quarantined' or 'Blocked' items\n"
+            "   - Click the item to see details and file path\n"
+            "2. Restore from quarantine:\n"
+            "   - In Protection history > click the item > Actions > Restore\n"
+            "   - File will be restored to original location\n"
+            "3. Add an exclusion:\n"
+            "   - Windows Security > Virus & threat protection > Manage settings\n"
+            "   - Scroll to Exclusions > Add or remove exclusions\n"
+            "   - Add: File, Folder, File type, or Process exclusion\n"
+            "   - Recommended: Exclude the application folder\n"
+            "4. Submit false positive to Microsoft:\n"
+            "   - microsoft.com/wdsi > Submit a file for analysis\n"
+            "   - Reports help Microsoft fix the false positive in future updates\n"
+            "5. Controlled folder access:\n"
+            "   - If apps can't save files: Look at 'Ransomware protection'\n"
+            "   - Controlled folder access > Allow an app through\n"
+            "   - Add the application executable\n"
+            "6. Real-time protection:\n"
+            "   - Temporarily toggle off for testing (turns back on automatically)\n"
+            "   - If the app works with it off: Need a specific exclusion\n"
+            "   - Do NOT leave real-time protection disabled permanently\n"
+            "7. Group Policy: Admins can manage exclusions centrally via GPO or Intune"
+        ),
+    },
+    {
+        "category": "Software",
+        "problem_title": "Chrome or browser using too much RAM and CPU",
+        "problem_description": "Web browser consumes excessive RAM (multiple GB) and high CPU even with few tabs. System becomes sluggish due to browser resource consumption.",
+        "problem_keywords": "chrome ram, browser memory, chrome slow, high cpu browser, too many tabs, browser resources, chrome cpu",
+        "solution_steps": (
+            "1. Check per-tab usage:\n"
+            "   - Chrome: Shift+Esc opens Chrome Task Manager\n"
+            "   - Shows memory and CPU per tab and extension\n"
+            "   - Sort by Memory to find the biggest consumers\n"
+            "2. Close unnecessary tabs:\n"
+            "   - Each tab uses 50-300 MB of RAM\n"
+            "   - 20+ tabs can easily consume 4+ GB\n"
+            "   - Use tab groups or bookmark unused tabs\n"
+            "3. Disable extensions:\n"
+            "   - chrome://extensions > disable unused extensions\n"
+            "   - Ad blockers, password managers, and dev tools use resources\n"
+            "   - Keep only essential extensions\n"
+            "4. Chrome settings:\n"
+            "   - Settings > Performance > Memory Saver: Enable\n"
+            "   - This hibernates inactive tabs\n"
+            "   - Settings > Performance > Energy Saver: Enable on battery\n"
+            "5. Hardware acceleration:\n"
+            "   - Settings > System > Use hardware acceleration: Toggle\n"
+            "   - ON: Offloads rendering to GPU (usually better)\n"
+            "   - OFF: May help if GPU driver is problematic\n"
+            "6. Clear browsing data:\n"
+            "   - Ctrl+Shift+Del > Clear cache, cookies, browsing data\n"
+            "   - Accumulated cache can slow down the browser\n"
+            "7. Try browser alternatives: Edge uses less RAM than Chrome, Firefox is also efficient"
+        ),
+    },
+    {
+        "category": "Software",
+        "problem_title": "Visual Studio Code or IDE very slow to start",
+        "problem_description": "Code editor or IDE takes very long to start, is sluggish when editing, or extensions cause freezes.",
+        "problem_keywords": "vscode slow, ide slow, visual studio slow, code editor, extensions slow, intellisense slow, ide freeze",
+        "solution_steps": (
+            "1. Disable unused extensions:\n"
+            "   - Extensions view > disable extensions you don't actively use\n"
+            "   - Use workspace-specific extensions (only enabled for relevant projects)\n"
+            "   - Check: @installed in extensions search\n"
+            "2. Check which extensions are slow:\n"
+            "   - VS Code: Ctrl+Shift+P > 'Developer: Show Running Extensions'\n"
+            "   - Shows activation time per extension\n"
+            "   - Anything above 1000ms significantly impacts startup\n"
+            "3. Large workspace:\n"
+            "   - Exclude unnecessary folders from search/watchers\n"
+            "   - .vscode/settings.json: 'files.exclude' and 'files.watcherExclude'\n"
+            "   - Exclude: node_modules, .git, build, dist, venv\n"
+            "4. Settings optimization:\n"
+            "   - Disable minimap: 'editor.minimap.enabled': false\n"
+            "   - Reduce file watchers: 'files.watcherExclude'\n"
+            "   - Disable telemetry: 'telemetry.telemetryLevel': 'off'\n"
+            "5. VS Code cache:\n"
+            "   - Corrupted cache can slow down VS Code\n"
+            "   - Delete: %appdata%\\Code\\Cache\n"
+            "   - Delete: %appdata%\\Code\\CachedData\n"
+            "6. For Visual Studio (not Code):\n"
+            "   - devenv /SafeMode (start without extensions)\n"
+            "   - Clear component cache: %localappdata%\\Microsoft\\VisualStudio\n"
+            "7. Hardware: SSD is essential for IDE performance - HDD causes major slowdowns"
+        ),
+    },
+    {
+        "category": "Software",
+        "problem_title": "QuickBooks database server manager not running",
+        "problem_description": "QuickBooks multi-user mode doesn't work because the Database Server Manager service is stopped or not installed on the server.",
+        "problem_keywords": "quickbooks database, server manager, multi-user, quickbooks server, qbdbmgrn, quickbooks service, database manager",
+        "solution_steps": (
+            "1. Check the service:\n"
+            "   - services.msc > look for 'QuickBooksDBXX' (XX = year/version)\n"
+            "   - Should be Running and set to Automatic\n"
+            "   - If stopped: Right-click > Start\n"
+            "2. Install Database Server Manager:\n"
+            "   - On the server/host PC: Run QuickBooks installer\n"
+            "   - Select 'Custom' installation\n"
+            "   - Check 'Database Server Manager' option\n"
+            "3. Firewall ports:\n"
+            "   - QuickBooks needs these ports open:\n"
+            "   - TCP 8019 (QB 2020+), dynamic ports for older versions\n"
+            "   - QuickBooks Database Server Manager port\n"
+            "   - Run QuickBooks File Doctor to auto-configure firewall\n"
+            "4. Scan folders:\n"
+            "   - Open QuickBooks Database Server Manager\n"
+            "   - Scan the folder where company files (.QBW) are stored\n"
+            "   - This creates the .ND file needed for multi-user access\n"
+            "5. Permissions:\n"
+            "   - The QBDataServiceUserXX user needs full control over the company file folder\n"
+            "   - Right-click folder > Properties > Security > Edit > Add the QB user\n"
+            "6. File location:\n"
+            "   - Company file should be on a local or mapped drive (not UNC path)\n"
+            "   - Do NOT host the file on a NAS without official support\n"
+            "7. QuickBooks File Doctor: Download from Intuit - fixes most connectivity issues"
+        ),
+    },
+    {
+        "category": "Software",
+        "problem_title": "Java application not running or wrong Java version",
+        "problem_description": "Java application fails to start or shows 'unsupported version' errors. Multiple Java versions installed cause conflicts.",
+        "problem_keywords": "java version, jre, jdk, java not found, java error, wrong java, java conflict, java update",
+        "solution_steps": (
+            "1. Check installed Java versions:\n"
+            "   - CMD: java -version (shows default version)\n"
+            "   - Control Panel > Programs > look for Java entries\n"
+            "   - Multiple versions may be installed\n"
+            "2. Common version issues:\n"
+            "   - App requires Java 8 but Java 11+ is installed\n"
+            "   - App requires 64-bit but 32-bit Java is default\n"
+            "   - Check application requirements documentation\n"
+            "3. Set Java version:\n"
+            "   - JAVA_HOME environment variable: System > Advanced > Environment Variables\n"
+            "   - Set JAVA_HOME to the correct JDK/JRE path\n"
+            "   - Update PATH to include %JAVA_HOME%\\bin\n"
+            "4. Multiple Java installations:\n"
+            "   - Remove unneeded Java versions from Control Panel\n"
+            "   - Keep only the versions required by your applications\n"
+            "   - Java Control Panel > Java tab shows installed JREs\n"
+            "5. Java Control Panel settings:\n"
+            "   - Security tab: Adjust security level if legacy apps are blocked\n"
+            "   - Exception Site List: Add trusted application URLs\n"
+            "6. Web browser Java (NPAPI):\n"
+            "   - Modern browsers no longer support Java applets\n"
+            "   - Use Internet Explorer 11 if Java applets are required\n"
+            "   - Better: Ask vendor for a non-Java alternative\n"
+            "7. Classpath issues: Set CLASSPATH environment variable if application requires specific JARs"
+        ),
+    },
+    {
+        "category": "Software",
+        "problem_title": "VPN client software connection drops repeatedly",
+        "problem_description": "VPN client connects but disconnects after a few minutes. Connection is unstable and reconnecting doesn't help long-term.",
+        "problem_keywords": "vpn disconnect, vpn drops, vpn unstable, vpn reconnect, vpn client, vpn timeout, vpn connection",
+        "solution_steps": (
+            "1. Check VPN client version:\n"
+            "   - Update to the latest version of the VPN client\n"
+            "   - Common clients: Cisco AnyConnect, GlobalProtect, FortiClient, WireGuard\n"
+            "   - Older versions may have bugs causing disconnects\n"
+            "2. Network stability:\n"
+            "   - VPN drops often caused by underlying network instability\n"
+            "   - Test with ping -t to an external IP while on VPN\n"
+            "   - Watch for timeouts or high latency spikes\n"
+            "3. Timeout settings:\n"
+            "   - VPN server may have an idle timeout\n"
+            "   - Keep the connection active with periodic traffic\n"
+            "   - Check VPN client: Settings > Keepalive/Dead Peer Detection\n"
+            "4. MTU issues:\n"
+            "   - VPN adds overhead, reducing effective MTU\n"
+            "   - Try reducing MTU on the VPN adapter to 1300-1400\n"
+            "   - netsh interface ipv4 set subinterface \"VPN Adapter\" mtu=1300\n"
+            "5. Conflict with other software:\n"
+            "   - Multiple VPN clients installed can conflict\n"
+            "   - Windows Firewall or third-party firewall blocking VPN traffic\n"
+            "   - Disable/uninstall other VPN clients\n"
+            "6. Power management:\n"
+            "   - Wi-Fi adapter power saving can disconnect VPN\n"
+            "   - Device Manager > Wi-Fi > Power Management > uncheck 'Allow turn off'\n"
+            "7. Try a different protocol: Switch between IKEv2, OpenVPN, WireGuard, or SSL"
+        ),
+    },
+    {
+        "category": "Software",
+        "problem_title": "Printer driver software conflicts or spooler errors",
+        "problem_description": "Print spooler crashes or shows errors after installing printer software. Multiple printer drivers may conflict with each other.",
+        "problem_keywords": "print spooler, spooler error, spooler crash, printer driver conflict, spooler service, print driver, spoolsv",
+        "solution_steps": (
+            "1. Restart Print Spooler:\n"
+            "   - services.msc > 'Print Spooler' > Restart\n"
+            "   - Or CMD: net stop spooler; net start spooler\n"
+            "2. Clear the print queue:\n"
+            "   - Stop the Print Spooler service\n"
+            "   - Delete all files in: C:\\Windows\\System32\\spool\\PRINTERS\n"
+            "   - Start the Print Spooler service\n"
+            "3. Remove conflicting drivers:\n"
+            "   - printmanagement.msc > All Drivers\n"
+            "   - Remove duplicate or old drivers\n"
+            "   - Particularly watch for multiple versions of the same manufacturer\n"
+            "4. Clean driver installation:\n"
+            "   - Remove printer from Settings > Devices > Printers\n"
+            "   - Remove driver from Print Management\n"
+            "   - Uninstall printer software from Settings > Apps\n"
+            "   - Restart and install fresh\n"
+            "5. Type 3 vs Type 4 drivers:\n"
+            "   - Type 3: Runs in spooler process (crash affects all printers)\n"
+            "   - Type 4: Isolated (crash affects only that printer)\n"
+            "   - When possible, use Type 4 drivers\n"
+            "6. Event Viewer:\n"
+            "   - System > source 'Print' or 'Spooler'\n"
+            "   - Check which driver/DLL is causing the crash\n"
+            "7. Driver isolation: Print Management > Driver > Isolated (runs driver in separate process)"
+        ),
+    },
+    {
+        "category": "Software",
+        "problem_title": "Antivirus scan taking too long or high CPU",
+        "problem_description": "Full antivirus scan takes hours, consumes 100% CPU, and makes the system unusable during scanning.",
+        "problem_keywords": "antivirus slow, scan slow, antivirus cpu, scan taking long, defender scan, full scan, antivirus performance",
+        "solution_steps": (
+            "1. Schedule scans for off-hours:\n"
+            "   - Windows Security > Virus & threat protection > Scan options\n"
+            "   - Task Scheduler > Microsoft > Windows > Windows Defender\n"
+            "   - Modify trigger to run at night or during lunch\n"
+            "2. Use Quick Scan instead of Full:\n"
+            "   - Quick Scan checks common malware locations only\n"
+            "   - Full Scan checks every file on every drive (hours)\n"
+            "   - Quick Scan daily + Full Scan weekly is sufficient\n"
+            "3. Exclude safe folders:\n"
+            "   - Large data drives with known-safe content\n"
+            "   - Development folders (node_modules, .git, build)\n"
+            "   - Virtual machine disk files\n"
+            "   - Windows Security > Virus & threat > Manage settings > Exclusions\n"
+            "4. Limit CPU usage:\n"
+            "   - PowerShell: Set-MpPreference -ScanAvgCPULoadFactor 50 (limit to 50%)\n"
+            "   - Default is 50%, but it can be set lower for less impact\n"
+            "   - Lower value = longer scan but less performance impact\n"
+            "5. SSD vs HDD:\n"
+            "   - Full scans on HDD take much longer than SSD\n"
+            "   - If multiple drives: Larger drives take proportionally longer\n"
+            "6. Third-party antivirus:\n"
+            "   - Check the antivirus settings for similar CPU/scheduling controls\n"
+            "   - Ensure only ONE antivirus is active (don't run two simultaneously)\n"
+            "7. Group Policy: Admins can set scan schedules and CPU limits via GPO"
+        ),
+    },
+    {
+        "category": "Software",
+        "problem_title": "Office 365 apps not updating or update errors",
+        "problem_description": "Microsoft 365 apps show 'Update Failed' or are stuck on an old version. Automatic updates don't seem to work.",
+        "problem_keywords": "office update, office 365 update, update failed, office version, click to run, office outdated, update error",
+        "solution_steps": (
+            "1. Check current version:\n"
+            "   - Any Office app > File > Account\n"
+            "   - Shows: Version and Build number\n"
+            "   - Update Channel: Monthly, Semi-Annual, etc.\n"
+            "2. Manual update:\n"
+            "   - File > Account > Update Options > Update Now\n"
+            "   - If greyed out: Updates may be managed by IT\n"
+            "3. Update from command line:\n"
+            "   - Open elevated CMD\n"
+            "   - cd \"C:\\Program Files\\Common Files\\Microsoft Shared\\ClickToRun\"\n"
+            "   - OfficeC2RClient.exe /update user\n"
+            "4. Click-to-Run service:\n"
+            "   - services.msc > 'Microsoft Office Click-to-Run Service'\n"
+            "   - Must be Running and set to Automatic\n"
+            "   - Restart the service if stuck\n"
+            "5. Network issues:\n"
+            "   - Updates download from Office CDN (officecdn.microsoft.com)\n"
+            "   - Ensure this URL isn't blocked by proxy/firewall\n"
+            "   - Large updates (~1-2 GB) may fail on slow connections\n"
+            "6. Repair Office:\n"
+            "   - Settings > Apps > Microsoft 365 > Modify > Quick Repair\n"
+            "   - If that fails: Online Repair (requires internet)\n"
+            "7. Group Policy: Update channel and frequency can be set by admins via GPO or Intune"
+        ),
+    },
+    {
+        "category": "Software",
+        "problem_title": "Database application (SQL/Access) connection timeout",
+        "problem_description": "Application shows database connection timeout errors. Queries that used to work now fail with timeout exceptions.",
+        "problem_keywords": "database timeout, sql timeout, connection timeout, query timeout, database slow, sql connection, access database",
+        "solution_steps": (
+            "1. Connection vs Query timeout:\n"
+            "   - Connection timeout: Can't establish the connection at all\n"
+            "   - Query timeout: Connected but query takes too long\n"
+            "   - Different solutions for each\n"
+            "2. Connection timeout:\n"
+            "   - Check if the database server is reachable: ping servername\n"
+            "   - Check port: Test-NetConnection -ComputerName server -Port 1433 (SQL)\n"
+            "   - Firewall rules on the server may block connections\n"
+            "3. Query timeout:\n"
+            "   - The query is running too long\n"
+            "   - Increase timeout in application/connection string\n"
+            "   - Optimize the query: Add indexes, reduce data returned\n"
+            "4. SQL Server specific:\n"
+            "   - SQL Server Configuration Manager > TCP/IP must be enabled\n"
+            "   - SQL Browser service must be running for named instances\n"
+            "   - Check if SQL Server is set to allow remote connections\n"
+            "5. Access database:\n"
+            "   - Compact and Repair the database: Database Tools > Compact and Repair\n"
+            "   - Large Access files (>1 GB) become very slow\n"
+            "   - Consider migrating to SQL Server or Azure SQL\n"
+            "6. Network latency:\n"
+            "   - High latency between app and database causes timeouts\n"
+            "   - tracert to the database server\n"
+            "   - VPN connections add latency\n"
+            "7. Increase timeout: Connection string > 'Connection Timeout=60' or 'CommandTimeout=120'"
+        ),
+    },
+    {
+        "category": "Software",
+        "problem_title": "Windows font rendering or DPI scaling issues in applications",
+        "problem_description": "Applications display blurry text, tiny fonts, or oversized UI elements due to DPI scaling. Common on high-resolution (4K) monitors.",
+        "problem_keywords": "dpi scaling, blurry text, font rendering, 4k scaling, high dpi, fuzzy text, small text, display scaling",
+        "solution_steps": (
+            "1. Windows DPI scaling:\n"
+            "   - Settings > System > Display > Scale and layout\n"
+            "   - Recommended: 100% (1080p), 125% (1440p), 150-200% (4K)\n"
+            "   - Use the recommended percentage\n"
+            "2. Per-application DPI fix:\n"
+            "   - Right-click the application .exe > Properties > Compatibility\n"
+            "   - 'Change high DPI settings'\n"
+            "   - Check 'Override high DPI scaling behavior'\n"
+            "   - Scaling performed by: System (Enhanced)\n"
+            "3. ClearType:\n"
+            "   - Search 'ClearType' > 'Adjust ClearType text'\n"
+            "   - Follow the wizard to tune font rendering\n"
+            "   - Rerun after changing monitors\n"
+            "4. Mixed DPI monitors:\n"
+            "   - Windows handles mixed DPI monitors poorly for some apps\n"
+            "   - Try: Settings > Display > Advanced scaling settings\n"
+            "   - 'Let Windows try to fix apps so they're not blurry'\n"
+            "5. Specific application fixes:\n"
+            "   - Java apps: -Dsun.java2d.dpiaware=false\n"
+            "   - Older .NET apps: Add dpiAware manifest\n"
+            "   - Electron apps: Usually DPI-aware by default\n"
+            "6. Remote Desktop:\n"
+            "   - RDP scaling issues: See Remote Desktop scaling article\n"
+            "7. Sign out and back in after changing scaling (some apps require it)"
+        ),
+    },
+    {
+        "category": "Software",
+        "problem_title": "Java Runtime Environment version conflicts or not detected",
+        "problem_description": "Applications requiring Java fail to launch, show 'Java not found' errors, or use the wrong Java version despite having JRE/JDK installed.",
+        "problem_keywords": "java, jre, jdk, java version, java not found, java runtime, java conflict, java home",
+        "solution_steps": (
+            "1. Check installed Java versions:\n"
+            "   - Command Prompt: java -version\n"
+            "   - PowerShell: Get-Command java | Format-List\n"
+            "   - Check both: C:\\Program Files\\Java and C:\\Program Files (x86)\\Java\n"
+            "2. JAVA_HOME environment variable:\n"
+            "   - System Properties > Environment Variables\n"
+            "   - Set JAVA_HOME to correct JDK/JRE path\n"
+            "   - Add %JAVA_HOME%\\bin to PATH\n"
+            "3. PATH order matters:\n"
+            "   - Multiple Java installations: PATH determines which runs\n"
+            "   - Move desired Java path entry above others\n"
+            "   - Remove old Java paths from PATH\n"
+            "4. 32-bit vs 64-bit:\n"
+            "   - Some apps require 32-bit Java specifically\n"
+            "   - Both can coexist: Program Files (64-bit), Program Files (x86) (32-bit)\n"
+            "5. Clean install: Uninstall all Java versions, reboot, install only the required version(s)"
+        ),
+    },
+    {
+        "category": "Software",
+        "problem_title": "Windows Store apps fail to install or update",
+        "problem_description": "Microsoft Store apps won't install, update, or download. Store shows error codes, gets stuck on 'Pending' or 'Starting download', or Store itself won't open.",
+        "problem_keywords": "microsoft store, windows store, store error, app install, store pending, store download, wsreset, store update",
+        "solution_steps": (
+            "1. Reset Microsoft Store cache:\n"
+            "   - Win+R > wsreset.exe > click OK\n"
+            "   - Wait for blank command window to close and Store to open\n"
+            "2. Check Windows Update:\n"
+            "   - Store apps depend on Windows Update service\n"
+            "   - Settings > Update & Security > Check for updates\n"
+            "   - Install all pending updates\n"
+            "3. Re-register Store:\n"
+            "   - PowerShell (Admin):\n"
+            "   - Get-AppxPackage Microsoft.WindowsStore | Foreach {Add-AppxPackage -Register \"$($_.InstallLocation)\\AppxManifest.xml\" -DisableDevelopmentMode}\n"
+            "4. Check account:\n"
+            "   - Sign out and back into Microsoft Store\n"
+            "   - Ensure using correct Microsoft account\n"
+            "   - Check: Settings > Accounts > Email & accounts\n"
+            "5. Group Policy: Computer Config > Admin Templates > Windows Components > Store > check if 'Turn off the Store' is enabled (common in enterprise)"
+        ),
+    },
+    {
+        "category": "Software",
+        "problem_title": "Software license activation or deactivation failures",
+        "problem_description": "Software product activation fails, shows 'license expired' or 'activation limit reached'. Need to transfer license to new computer or reactivate after hardware change.",
+        "problem_keywords": "license activation, product key, activation failed, license expired, license transfer, deactivate license, activation limit, product activation",
+        "solution_steps": (
+            "1. Common activation errors:\n"
+            "   - 'Activation limit reached': Deactivate on old machine first\n"
+            "   - 'Invalid product key': Check for typos, correct edition\n"
+            "   - 'License expired': Renew subscription or enter new key\n"
+            "2. Windows activation:\n"
+            "   - Settings > Update & Security > Activation\n"
+            "   - slmgr /ato (force activation attempt)\n"
+            "   - slmgr /dlv (display license info)\n"
+            "   - KMS: Ensure network connectivity to KMS server\n"
+            "3. Office activation:\n"
+            "   - File > Account > Activation status\n"
+            "   - Sign out and sign back in with licensed account\n"
+            "   - cscript ospp.vbs /dstatus (check license status)\n"
+            "4. Transfer license:\n"
+            "   - Deactivate on old machine before activating on new\n"
+            "   - Some software: Online portal to manage device activations\n"
+            "5. Contact vendor: If self-service fails, contact software vendor support with proof of purchase for manual activation reset"
+        ),
+    },
+    {
+        "category": "Software",
+        "problem_title": "Browser extensions causing performance or security issues",
+        "problem_description": "Browser runs slowly, displays unwanted ads, redirects searches, or shows security warnings after installing extensions. Potentially unwanted extensions affecting browser behavior.",
+        "problem_keywords": "browser extension, chrome extension, edge addon, browser slow, adware, browser redirect, unwanted extension, browser hijack",
+        "solution_steps": (
+            "1. Identify problematic extensions:\n"
+            "   - Chrome: chrome://extensions/\n"
+            "   - Edge: edge://extensions/\n"
+            "   - Firefox: about:addons\n"
+            "   - Disable all extensions, re-enable one at a time\n"
+            "2. Remove suspicious extensions:\n"
+            "   - Look for: recently installed, unfamiliar names\n"
+            "   - Check permissions: Extensions requesting excessive access\n"
+            "   - Remove anything you didn't intentionally install\n"
+            "3. Reset browser:\n"
+            "   - Chrome: Settings > Reset settings > Restore to defaults\n"
+            "   - Edge: Settings > Reset settings\n"
+            "   - This removes extensions and resets settings but keeps bookmarks\n"
+            "4. Enterprise policy:\n"
+            "   - Group Policy: Force-install approved extensions only\n"
+            "   - Block extension installs: ExtensionInstallBlocklist = *\n"
+            "   - Allowlist specific extensions: ExtensionInstallAllowlist\n"
+            "5. Anti-malware scan: Run full scan with Windows Defender or enterprise AV to catch browser-hijacking malware"
+        ),
+    },
 ]
 
 DIAGNOSTIC_TREE = {

@@ -416,6 +416,628 @@ ARTICLES = [
             "   - Ensure 'Run in compatibility mode' is NOT checked"
         ),
     },
+    {
+        "category": "Email & Outlook",
+        "problem_title": "Outlook keeps asking for credentials after password change",
+        "problem_description": "After changing domain or Microsoft 365 password, Outlook repeatedly asks for the old password, and entering the new one doesn't work.",
+        "problem_keywords": "password change, credentials, credential manager, outlook password, login loop, reauthenticate",
+        "solution_steps": (
+            "1. Clear stored credentials:\n"
+            "   - Control Panel > Credential Manager > Windows Credentials\n"
+            "   - Remove all entries related to 'MicrosoftOffice', 'outlook', or 'Microsoft365'\n"
+            "   - Also check 'Generic Credentials' section\n"
+            "2. Close and reopen Outlook:\n"
+            "   - After clearing credentials, fully close Outlook\n"
+            "   - Check Task Manager to ensure OUTLOOK.EXE is not running\n"
+            "   - Reopen Outlook - it should prompt for the new password\n"
+            "3. Check Outlook profile:\n"
+            "   - Control Panel > Mail > Show Profiles\n"
+            "   - Select the profile > Properties > Email Accounts\n"
+            "   - Verify the account settings are correct\n"
+            "4. Modern Authentication:\n"
+            "   - Ensure Modern Authentication is enabled (replaces basic auth)\n"
+            "   - Registry: HKCU\\SOFTWARE\\Microsoft\\Office\\16.0\\Common\\Identity\n"
+            "   - EnableADAL = 1, Version = 1\n"
+            "5. Sign out of Office:\n"
+            "   - Any Office app > File > Account > Sign Out\n"
+            "   - Sign back in with the new password\n"
+            "6. Remove cached tokens:\n"
+            "   - Delete: %localappdata%\\Microsoft\\TokenBroker\\Cache\n"
+            "   - Delete: %localappdata%\\Microsoft\\IdentityCache\n"
+            "7. If domain-joined: Lock/unlock or sign out/sign in to update domain credentials"
+        ),
+    },
+    {
+        "category": "Email & Outlook",
+        "problem_title": "Outlook calendar meeting invitations not being received",
+        "problem_description": "Meeting invitations sent to users are not appearing in their inbox or calendar. Organizers see no response from the invitee.",
+        "problem_keywords": "meeting invite, calendar invite, meeting not received, invitation missing, rsvp, calendar meeting, organizer",
+        "solution_steps": (
+            "1. Check Deleted Items and Junk:\n"
+            "   - Meeting invites may be caught by spam filters\n"
+            "   - Check Junk Email folder\n"
+            "   - Check Deleted Items (some rules may auto-delete)\n"
+            "2. Outlook rule check:\n"
+            "   - File > Rules & Alerts > check all rules\n"
+            "   - A rule may be moving or deleting calendar invites\n"
+            "   - Look for rules that apply to 'sent to distribution list' or 'from specific sender'\n"
+            "3. Auto-processing settings:\n"
+            "   - File > Options > Calendar > Auto Accept/Decline\n"
+            "   - If auto-decline is enabled for recurring meetings, disable it\n"
+            "   - Delegates may be processing invites on behalf of the user\n"
+            "4. Delegate settings:\n"
+            "   - File > Account Settings > Delegate Access\n"
+            "   - If a delegate has 'Send meeting requests to delegates only'\n"
+            "   - Change to 'Both delegate and me'\n"
+            "5. Exchange transport rules:\n"
+            "   - An Exchange admin transport rule may be blocking invites\n"
+            "   - Check Exchange Admin Center > Mail Flow > Rules\n"
+            "6. Mailbox size:\n"
+            "   - If mailbox is full, new items (including invites) can't be delivered\n"
+            "   - Check mailbox size: File > Info > Mailbox Settings\n"
+            "7. Resend the invitation: Ask the organizer to cancel and resend"
+        ),
+    },
+    {
+        "category": "Email & Outlook",
+        "problem_title": "Outlook email signatures not displaying correctly",
+        "problem_description": "Email signatures show broken images, wrong formatting, or don't appear at all. Signature looks different to recipients than in compose window.",
+        "problem_keywords": "signature, email signature, signature broken, signature image, html signature, signature not showing",
+        "solution_steps": (
+            "1. Check signature settings:\n"
+            "   - File > Options > Mail > Signatures\n"
+            "   - Verify the correct signature is assigned for New Messages and Replies\n"
+            "   - Check the signature preview - does it look correct?\n"
+            "2. Message format:\n"
+            "   - HTML format preserves formatting and images\n"
+            "   - Plain Text strips all formatting\n"
+            "   - File > Options > Mail > Compose messages in: HTML\n"
+            "   - Check: Replying to plain text emails may strip signature formatting\n"
+            "3. Broken images in signature:\n"
+            "   - Images should be hosted online, not embedded from local paths\n"
+            "   - Replace file:///C:/path with https://hosted/image.png\n"
+            "   - Upload images to a web server or SharePoint\n"
+            "   - Reduce image size (max 100-200 KB)\n"
+            "4. Signature files:\n"
+            "   - Located in: %appdata%\\Microsoft\\Signatures\\\n"
+            "   - .htm (HTML), .rtf (Rich Text), .txt (Plain Text)\n"
+            "   - Edit the .htm file directly if needed\n"
+            "5. Signature not appearing on replies:\n"
+            "   - Signatures must be set for both 'New messages' and 'Replies/forwards'\n"
+            "   - Check both dropdowns in Signature settings\n"
+            "6. Corporate signatures:\n"
+            "   - If using Exchange transport rules for signatures, Outlook signature may conflict\n"
+            "   - Check with IT if server-side signatures are enforced\n"
+            "7. Reset signature: Delete files in the Signatures folder and recreate"
+        ),
+    },
+    {
+        "category": "Email & Outlook",
+        "problem_title": "Outlook add-ins causing crashes or slowness",
+        "problem_description": "Outlook runs slowly, freezes, or crashes due to problematic add-ins. Performance degrades over time as add-ins accumulate.",
+        "problem_keywords": "outlook slow, add-in, addin, outlook freeze, com add-in, disabled add-in, outlook crash plugin",
+        "solution_steps": (
+            "1. Check for disabled add-ins:\n"
+            "   - File > Options > Add-ins\n"
+            "   - Look at 'Disabled Application Add-ins' at the bottom\n"
+            "   - Outlook auto-disables add-ins that cause slow startup\n"
+            "2. Start in Safe Mode:\n"
+            "   - Hold Ctrl while clicking Outlook icon (confirm Safe Mode)\n"
+            "   - Or: outlook.exe /safe\n"
+            "   - If Outlook works in Safe Mode: Add-in issue confirmed\n"
+            "3. Disable all add-ins:\n"
+            "   - File > Options > Add-ins > Manage: COM Add-ins > Go\n"
+            "   - Uncheck all add-ins > OK\n"
+            "   - Restart Outlook and test\n"
+            "4. Re-enable one at a time:\n"
+            "   - Enable one add-in, restart Outlook, test\n"
+            "   - Repeat until the problematic add-in is found\n"
+            "   - Common culprits: older CRM plugins, fax add-ins, PDF printers\n"
+            "5. Check startup time:\n"
+            "   - File > Options > Add-ins\n"
+            "   - Each add-in shows its load time\n"
+            "   - Anything over 1000ms significantly affects startup\n"
+            "6. Update or remove the add-in:\n"
+            "   - Check for an updated version from the vendor\n"
+            "   - If no longer needed: Uninstall completely from Control Panel\n"
+            "7. Outlook performance: Also check file size (PST/OST > 10GB can be slow)"
+        ),
+    },
+    {
+        "category": "Email & Outlook",
+        "problem_title": "Email stuck in Drafts folder and won't send",
+        "problem_description": "Emails get saved to Drafts instead of being sent. Clicking Send appears to work but the email moves to Drafts, not Sent Items.",
+        "problem_keywords": "email stuck drafts, won't send, draft folder, email not sending, send fails, saved to drafts",
+        "solution_steps": (
+            "1. Check Send/Receive:\n"
+            "   - Click Send/Receive > Send All\n"
+            "   - Check Send/Receive tab > Send/Receive Groups > Define\n"
+            "   - Ensure 'Send mail items' is checked\n"
+            "2. Work Offline mode:\n"
+            "   - Send/Receive tab > check if 'Work Offline' is highlighted\n"
+            "   - If enabled: Click to disable (return to online mode)\n"
+            "   - Status bar should show 'Connected' not 'Working Offline'\n"
+            "3. Check the outgoing server:\n"
+            "   - File > Account Settings > Account > Change Account\n"
+            "   - Outgoing server settings and authentication\n"
+            "   - For Microsoft 365: smtp.office365.com, Port 587, STARTTLS\n"
+            "4. Large attachment:\n"
+            "   - Emails with large attachments may fail silently\n"
+            "   - Check attachment size (Exchange default limit: 25 MB)\n"
+            "   - Reduce attachment size or use OneDrive/SharePoint link\n"
+            "5. Corrupted email:\n"
+            "   - Open the draft > Select All > Copy\n"
+            "   - Create a new email > Paste\n"
+            "   - Delete the original draft and send the new one\n"
+            "6. Outlook profile issue:\n"
+            "   - Create a new Outlook profile and test sending\n"
+            "   - Control Panel > Mail > Show Profiles > Add\n"
+            "7. Check Outbox: If emails are in Outbox (not Drafts), different issue - check connectivity"
+        ),
+    },
+    {
+        "category": "Email & Outlook",
+        "problem_title": "Shared mailbox not showing in Outlook",
+        "problem_description": "A shared mailbox that was granted in Office 365 or Exchange doesn't appear in Outlook. User has permissions but can't see the mailbox.",
+        "problem_keywords": "shared mailbox, shared email, mailbox not showing, permissions, exchange mailbox, office 365 shared",
+        "solution_steps": (
+            "1. Auto-mapping (Exchange/M365):\n"
+            "   - Shared mailboxes with Full Access should auto-map in Outlook\n"
+            "   - Takes 15-60 minutes after permission is granted\n"
+            "   - Restart Outlook after waiting\n"
+            "2. Manually add the shared mailbox:\n"
+            "   - File > Account Settings > Account Settings\n"
+            "   - Select the account > Change > More Settings > Advanced\n"
+            "   - Add > enter the shared mailbox name/email\n"
+            "   - OK > Next > Finish and restart Outlook\n"
+            "3. In Outlook on the web:\n"
+            "   - Right-click folder list > 'Add shared folder'\n"
+            "   - Enter the shared mailbox email address\n"
+            "4. Check permissions:\n"
+            "   - Admin must grant 'Full Access' permission in Exchange Admin Center\n"
+            "   - PowerShell: Get-MailboxPermission shared@domain.com\n"
+            "   - Add: Add-MailboxPermission -Identity shared@domain.com -User user@domain.com -AccessRights FullAccess\n"
+            "5. If auto-mapping was disabled:\n"
+            "   - Remove-MailboxPermission and re-add with -AutoMapping $true\n"
+            "   - Or add manually as in step 2\n"
+            "6. Cached mode:\n"
+            "   - If shared mailbox is large, may take time to download in Cached Mode\n"
+            "   - File > Account Settings > Change > Cached Exchange Mode > Download shared folders\n"
+            "7. License: Shared mailboxes in M365 don't need a license unless over 50 GB"
+        ),
+    },
+    {
+        "category": "Email & Outlook",
+        "problem_title": "Outlook calendar time zones showing wrong times",
+        "problem_description": "Calendar events display at wrong times. Meeting times appear different than what the organizer sent. Time zone confusion.",
+        "problem_keywords": "time zone, calendar wrong time, meeting time, time offset, utc, timezone, outlook time",
+        "solution_steps": (
+            "1. Check Outlook time zone:\n"
+            "   - File > Options > Calendar > Time zones\n"
+            "   - Verify the correct time zone is selected\n"
+            "   - Should match your actual location\n"
+            "2. Check Windows time zone:\n"
+            "   - Settings > Time & Language > Date & Time\n"
+            "   - Verify time zone matches Outlook's setting\n"
+            "   - Enable 'Set time zone automatically' if traveling\n"
+            "3. Multiple time zones:\n"
+            "   - Outlook can show up to 3 time zones on the calendar\n"
+            "   - File > Options > Calendar > Time zones > Show a second/third time zone\n"
+            "   - Useful for teams across time zones\n"
+            "4. Meeting organizer's time zone:\n"
+            "   - If the organizer is in a different time zone, Outlook converts\n"
+            "   - Open the meeting > check the recurrence > time zone listed\n"
+            "   - If wrong: Ask organizer to update with correct time zone\n"
+            "5. Recurring meetings:\n"
+            "   - Recurring meetings set in one time zone may show wrong after DST changes\n"
+            "   - Delete the series and recreate with the correct time zone\n"
+            "6. Daylight Saving Time:\n"
+            "   - Ensure Windows updates are current (DST rules may change)\n"
+            "   - Old Outlook versions may have wrong DST data\n"
+            "   - Microsoft releases timezone update tools for Exchange\n"
+            "7. iCalendar imports: .ics files may have time zone issues - verify VTIMEZONE in the file"
+        ),
+    },
+    {
+        "category": "Email & Outlook",
+        "problem_title": "Outlook formatting lost when replying or forwarding",
+        "problem_description": "Email formatting (fonts, colors, tables) gets stripped or changed when replying to or forwarding messages. HTML formatting converts to plain text.",
+        "problem_keywords": "formatting lost, reply format, forward format, plain text, html email, font change, outlook format",
+        "solution_steps": (
+            "1. Check message format:\n"
+            "   - When composing: Format Text tab > check HTML/Plain Text/Rich Text\n"
+            "   - Should be HTML for most emails\n"
+            "   - If Plain Text: Change to HTML\n"
+            "2. Default format setting:\n"
+            "   - File > Options > Mail > Compose messages in this format: HTML\n"
+            "   - Also check: 'Use stationery to change default fonts and styles'\n"
+            "3. Reply format:\n"
+            "   - File > Options > Mail > Replies and forwards\n"
+            "   - 'When replying to a message' > check format\n"
+            "   - If 'Reply using the format of the original message': Will match sender's format\n"
+            "4. Read as Plain Text:\n"
+            "   - File > Options > Trust Center > Trust Center Settings > Email Security\n"
+            "   - Uncheck 'Read all standard mail in plain text'\n"
+            "   - This forces all emails to plain text on receipt\n"
+            "5. Exchange transport rules:\n"
+            "   - Admin transport rules may convert HTML to plain text\n"
+            "   - Check Exchange Admin Center > Mail Flow > Rules\n"
+            "6. Digital signatures:\n"
+            "   - S/MIME signed emails may display differently\n"
+            "   - Some email clients strip formatting from signed messages\n"
+            "7. Recipient's email client: Some clients don't support HTML fully"
+        ),
+    },
+    {
+        "category": "Email & Outlook",
+        "problem_title": "Outlook AutoComplete or address suggestions not working",
+        "problem_description": "Outlook doesn't suggest email addresses when typing in the To field. Previously used contacts don't appear in autocomplete list.",
+        "problem_keywords": "autocomplete, auto complete, address suggestion, contact suggest, outlook to field, address cache, nk2",
+        "solution_steps": (
+            "1. Check AutoComplete setting:\n"
+            "   - File > Options > Mail\n"
+            "   - Ensure 'Use Auto-Complete List to suggest names' is checked\n"
+            "2. AutoComplete cache:\n"
+            "   - Outlook stores suggestions in: %localappdata%\\Microsoft\\Outlook\\RoamCache\n"
+            "   - Stream_Autocomplete_*.dat file contains the cache\n"
+            "   - If corrupted: Delete the .dat files and let Outlook rebuild\n"
+            "3. Clear and rebuild:\n"
+            "   - File > Options > Mail > 'Empty Auto-Complete List' button\n"
+            "   - This clears all suggestions - will rebuild as you send emails\n"
+            "4. Outlook profile:\n"
+            "   - AutoComplete is tied to the Outlook profile\n"
+            "   - New profile = fresh AutoComplete cache\n"
+            "   - Moving to new PC: Copy the RoamCache folder\n"
+            "5. Exchange/M365:\n"
+            "   - Some AutoComplete data syncs with Exchange\n"
+            "   - Toggle Cached Mode off and on to refresh\n"
+            "   - File > Account Settings > Change > Cached Exchange Mode\n"
+            "6. GAL (Global Address List):\n"
+            "   - Suggestions also come from the corporate address book\n"
+            "   - If GAL not loading: Ctrl+Shift+B to open Address Book\n"
+            "   - Check the correct address list is selected\n"
+            "7. Search issues: Also check Outlook search indexing if contacts aren't found"
+        ),
+    },
+    {
+        "category": "Email & Outlook",
+        "problem_title": "Emails delayed or arriving late",
+        "problem_description": "Emails take minutes or hours to arrive instead of being delivered immediately. Both internal and external emails are delayed.",
+        "problem_keywords": "email delay, late delivery, slow email, email queue, delayed delivery, mail flow, email slow",
+        "solution_steps": (
+            "1. Check if it's all emails or specific:\n"
+            "   - Internal to internal: Exchange server issue\n"
+            "   - Internal to external: Outbound mail flow\n"
+            "   - External to internal: Inbound mail flow or spam filtering\n"
+            "2. Outlook Send/Receive frequency:\n"
+            "   - Send/Receive tab > Send/Receive Groups > Define\n"
+            "   - Schedule: Every 5 minutes (or less)\n"
+            "   - Manual: Click Send/Receive All Folders\n"
+            "3. Cached Mode sync:\n"
+            "   - In Cached Mode, press F9 to force sync\n"
+            "   - Check status bar: should show 'All folders are up to date'\n"
+            "   - If stuck: Try disabling and re-enabling Cached Mode\n"
+            "4. Exchange queue:\n"
+            "   - Admin: Exchange Management Shell > Get-Queue\n"
+            "   - Check for queued messages and retry reasons\n"
+            "   - Exchange Admin Center > Mail Flow > Message Trace\n"
+            "5. Spam/security filtering:\n"
+            "   - Third-party spam filters (Barracuda, Mimecast, etc.) can delay emails\n"
+            "   - Check the spam filter dashboard for greylisting or delays\n"
+            "   - Microsoft 365: Message Trace in Exchange Admin Center\n"
+            "6. MX record issues:\n"
+            "   - nslookup -type=mx domain.com (check MX records)\n"
+            "   - If MX points to wrong server: Update DNS\n"
+            "7. Deferred delivery: Check if 'Do not deliver before' is set on the message"
+        ),
+    },
+    {
+        "category": "Email & Outlook",
+        "problem_title": "Outlook contact photos not displaying",
+        "problem_description": "Contact photos are missing in Outlook emails and contact cards. Photos uploaded in Microsoft 365 or Active Directory don't appear.",
+        "problem_keywords": "contact photo, profile picture, outlook photo, avatar, contact image, people photo, user photo",
+        "solution_steps": (
+            "1. Check the photo source:\n"
+            "   - Microsoft 365: Photo is in Azure AD / Microsoft 365 profile\n"
+            "   - On-premises: Photo is in Active Directory (thumbnailPhoto attribute)\n"
+            "   - The photo must be uploaded to the correct source\n"
+            "2. Update photo in M365:\n"
+            "   - User: Go to outlook.office.com > click profile > Change photo\n"
+            "   - Admin: Microsoft 365 Admin Center > Users > Edit user photo\n"
+            "   - PowerShell: Set-UserPhoto -Identity user@domain.com -PictureData ([System.IO.File]::ReadAllBytes('photo.jpg'))\n"
+            "3. Sync delay:\n"
+            "   - Photo changes can take 24-48 hours to sync across all services\n"
+            "   - Restart Outlook and clear the Outlook cache to speed up\n"
+            "4. Cached Mode:\n"
+            "   - Photos may not display in Cached Mode offline\n"
+            "   - File > Account Settings > Change > 'Download Shared Folders'\n"
+            "5. Photo size:\n"
+            "   - Maximum recommended: 648x648 pixels\n"
+            "   - File size: Under 100 KB for AD, up to 4 MB for M365\n"
+            "   - Must be JPEG format\n"
+            "6. Outlook People pane:\n"
+            "   - View > People Pane > Normal\n"
+            "   - If disabled: Photos won't show in reading pane\n"
+            "7. For external contacts: Photos display only if the sender's organization publishes them"
+        ),
+    },
+    {
+        "category": "Email & Outlook",
+        "problem_title": "Cannot open hyperlinks from Outlook emails",
+        "problem_description": "Clicking links in Outlook emails gives an error 'Your organization's policies are preventing us from completing this action' or links don't open at all.",
+        "problem_keywords": "hyperlink, outlook link, can't open link, organization policy, link error, default browser, url blocked",
+        "solution_steps": (
+            "1. Set default browser:\n"
+            "   - Settings > Apps > Default Apps > Web browser\n"
+            "   - Select a browser (Chrome, Edge, Firefox)\n"
+            "   - If no default is set, Outlook can't open links\n"
+            "2. Registry fix:\n"
+            "   - HKCU\\SOFTWARE\\Classes\\.html > Default = htmlfile\n"
+            "   - HKCU\\SOFTWARE\\Classes\\htmlfile\\shell\\open\\command > Default = \"browser_path\" \"%1\"\n"
+            "3. Internet Explorer cleanup:\n"
+            "   - Even if not used, IE settings affect Outlook link handling\n"
+            "   - Internet Options > Programs > Reset Web Settings\n"
+            "   - Internet Options > Advanced > Reset\n"
+            "4. Group Policy restriction:\n"
+            "   - IT may have blocked URL access from Outlook\n"
+            "   - Check: User Config > Admin Templates > Microsoft Outlook > Security\n"
+            "   - 'Block hyperlinks' or Safe Links policies\n"
+            "5. Safe Links (Microsoft 365):\n"
+            "   - ATP Safe Links rewrites URLs for scanning\n"
+            "   - If misconfigured, links may be blocked\n"
+            "   - Check with admin: Exchange Online Protection > Safe Links policies\n"
+            "6. Repair Office:\n"
+            "   - Settings > Apps > Microsoft Office > Modify > Online Repair\n"
+            "   - This fixes broken file associations\n"
+            "7. Workaround: Copy the link (right-click > Copy Hyperlink) and paste in browser"
+        ),
+    },
+    {
+        "category": "Email & Outlook",
+        "problem_title": "Outlook email recall not working",
+        "problem_description": "Attempted to recall a sent email but the recall failed. Recipients still see the original message.",
+        "problem_keywords": "recall email, recall message, retract email, undo send, recall failed, message recall",
+        "solution_steps": (
+            "1. Recall limitations:\n"
+            "   - Only works with Exchange/M365 (not POP/IMAP)\n"
+            "   - Both sender and recipient must be on the same Exchange organization\n"
+            "   - Does NOT work for external recipients\n"
+            "2. How to recall:\n"
+            "   - Sent Items > open the message > Message tab > Actions > Recall This Message\n"
+            "   - Choose: Delete unread copies or Replace with new message\n"
+            "3. Why recall fails:\n"
+            "   - Recipient already read the message\n"
+            "   - Recipient uses a non-Exchange email client (OWA may work differently)\n"
+            "   - Message was moved from Inbox by a rule\n"
+            "   - Cached Mode: Recall depends on server processing\n"
+            "4. Recall on mobile:\n"
+            "   - Cannot initiate a recall from Outlook mobile\n"
+            "   - Must use Outlook desktop to recall\n"
+            "5. Better alternative - Delay delivery:\n"
+            "   - File > Options > Mail > Send/Receive\n"
+            "   - Or create a rule: Apply rule > defer delivery by X minutes\n"
+            "   - Gives a window to cancel before the email actually sends\n"
+            "6. Microsoft 365 Undo Send:\n"
+            "   - Outlook on the web has an 'Undo Send' button (brief 10-second window)\n"
+            "   - Settings > Mail > Compose and reply > Undo send\n"
+            "7. Always double-check recipients and content before sending important emails"
+        ),
+    },
+    {
+        "category": "Email & Outlook",
+        "problem_title": "PST file too large or needs to be split",
+        "problem_description": "Outlook PST file has grown very large causing slow performance, risk of corruption, or exceeding size limits.",
+        "problem_keywords": "pst large, pst size, split pst, pst corrupt, archive pst, pst limit, data file size",
+        "solution_steps": (
+            "1. Check PST size:\n"
+            "   - File > Account Settings > Data Files\n"
+            "   - Note the file path and size\n"
+            "   - Outlook 2010+: Maximum 50 GB for PST/OST\n"
+            "   - Performance degrades noticeably above 10 GB\n"
+            "2. Archive old emails:\n"
+            "   - File > Info > Cleanup Tools > Archive\n"
+            "   - Select folders and date (e.g., older than 1 year)\n"
+            "   - Creates a separate archive.pst file\n"
+            "3. Auto-Archive settings:\n"
+            "   - File > Options > Advanced > AutoArchive Settings\n"
+            "   - Run AutoArchive every X days\n"
+            "   - Move old items to archive file\n"
+            "4. Compact the PST:\n"
+            "   - After deleting/archiving, PST doesn't shrink automatically\n"
+            "   - File > Account Settings > Data Files > select PST > Settings > Compact Now\n"
+            "   - This reclaims space from deleted items\n"
+            "5. Empty Deleted Items:\n"
+            "   - Permanently delete items in Deleted Items and Junk folders\n"
+            "   - Then compact the PST (step 4)\n"
+            "6. Split manually:\n"
+            "   - Create a new PST: Home > New Items > More Items > Outlook Data File\n"
+            "   - Drag/move folders from old PST to new PST\n"
+            "   - Organize by year or category\n"
+            "7. Repair corrupted PST: scanpst.exe (Inbox Repair Tool) in Office install directory"
+        ),
+    },
+    {
+        "category": "Email & Outlook",
+        "problem_title": "Email bouncing with 550 5.7.1 relay denied error",
+        "problem_description": "Emails to certain recipients bounce back with '550 5.7.1 Unable to relay' or 'Relay access denied' error.",
+        "problem_keywords": "relay denied, 550 error, unable to relay, relay access, smtp relay, bounced email, 5.7.1",
+        "solution_steps": (
+            "1. Understanding the error:\n"
+            "   - 'Relay denied' means the SMTP server refuses to forward the email\n"
+            "   - The server only accepts mail for domains it's configured to handle\n"
+            "2. Check recipient address:\n"
+            "   - Verify the email address is correct (no typos)\n"
+            "   - Check for extra spaces or hidden characters\n"
+            "3. SMTP authentication:\n"
+            "   - Ensure Outlook is configured to authenticate with the mail server\n"
+            "   - File > Account Settings > Change > More Settings > Outgoing Server\n"
+            "   - Check 'My outgoing server requires authentication'\n"
+            "4. For on-premises Exchange:\n"
+            "   - Exchange receive connectors may need 'Relay' permission\n"
+            "   - Check: Exchange Management Console > Server Configuration > Hub Transport\n"
+            "   - Receive Connector > Properties > Permission Groups\n"
+            "5. For applications/devices sending email:\n"
+            "   - Printers, scanners, LOB apps need SMTP relay configured\n"
+            "   - Option 1: SMTP client submission (requires authentication)\n"
+            "   - Option 2: Direct send to Exchange/M365 (MX record)\n"
+            "   - Option 3: Configure an SMTP relay connector\n"
+            "6. M365 SMTP relay:\n"
+            "   - Configure a connector in Exchange Online for the sending IP\n"
+            "   - Or use SMTP AUTH with smtp.office365.com:587\n"
+            "7. SPF record: Ensure sending IP is in the SPF record for the domain"
+        ),
+    },
+    {
+        "category": "Email & Outlook",
+        "problem_title": "Outlook notification sounds or pop-ups not working",
+        "problem_description": "Outlook doesn't show desktop alerts or play notification sounds when new emails arrive. Notifications stopped after an update.",
+        "problem_keywords": "notification, outlook alert, desktop alert, new mail sound, outlook notification, popup alert, notification sound",
+        "solution_steps": (
+            "1. Check Outlook notification settings:\n"
+            "   - File > Options > Mail > Message arrival section\n"
+            "   - Enable: 'Display a Desktop Alert'\n"
+            "   - Enable: 'Play a sound'\n"
+            "   - Enable: 'Show an envelope icon in the taskbar'\n"
+            "2. Windows notification settings:\n"
+            "   - Settings > System > Notifications\n"
+            "   - Scroll down to 'Outlook' > ensure notifications are On\n"
+            "   - Enable: Show notification banners, Play a sound\n"
+            "3. Focus Assist (Do Not Disturb):\n"
+            "   - Settings > System > Focus Assist\n"
+            "   - If enabled: Set to Off or add Outlook to priority list\n"
+            "   - Check automatic rules (during certain hours, presenting, etc.)\n"
+            "4. Inbox rules:\n"
+            "   - Rules that move emails to subfolders may bypass Inbox notifications\n"
+            "   - Notifications typically only fire for Inbox delivery\n"
+            "   - File > Rules & Alerts > check if rules move emails silently\n"
+            "5. Sound settings:\n"
+            "   - Control Panel > Sound > Sounds tab\n"
+            "   - Scroll to 'Microsoft Outlook' > 'New Mail Notification'\n"
+            "   - Ensure a sound is assigned and 'Play Windows Startup sound' is not interfering\n"
+            "6. Multiple accounts:\n"
+            "   - Notifications may only work for the default account\n"
+            "   - Check per-account notification settings\n"
+            "7. Restart Outlook and check for Office updates"
+        ),
+    },
+    {
+        "category": "Email & Outlook",
+        "problem_title": "Cannot delete or move emails in Outlook",
+        "problem_description": "Outlook gives errors when trying to delete or move emails. Messages return to their original folder after being moved.",
+        "problem_keywords": "can't delete email, move error, message not deleted, outlook error, mailbox errors, move fails",
+        "solution_steps": (
+            "1. Clean Deleted Items:\n"
+            "   - If Deleted Items is full or corrupted, deletes may fail\n"
+            "   - Right-click Deleted Items > Empty Folder\n"
+            "   - Also: Recover Deleted Items if available\n"
+            "2. Mailbox quota:\n"
+            "   - If mailbox is over quota, operations are restricted\n"
+            "   - File > Info > Mailbox Settings shows size/quota\n"
+            "   - Delete large emails or empty trash to free space\n"
+            "3. Cached Mode sync issue:\n"
+            "   - Changes made offline may conflict with server\n"
+            "   - Switch to Online Mode temporarily:\n"
+            "   - File > Account Settings > Change > uncheck Cached Exchange Mode\n"
+            "   - Try deleting/moving, then re-enable Cached Mode\n"
+            "4. Repair data file:\n"
+            "   - Close Outlook\n"
+            "   - For PST: Run scanpst.exe and repair\n"
+            "   - For OST: Rename to .ost.bak, reopen Outlook to recreate\n"
+            "5. Permissions:\n"
+            "   - For shared mailboxes: You may not have delete permission\n"
+            "   - Full Access is needed for delete operations\n"
+            "   - Check with admin\n"
+            "6. Folder properties:\n"
+            "   - Right-click the folder > Properties > check for read-only\n"
+            "   - Repair folder: Right-click > Properties > Clear Offline Items\n"
+            "7. Last resort: Create new OST file by resetting Outlook profile"
+        ),
+    },
+    {
+        "category": "Email & Outlook",
+        "problem_title": "Phishing or spoofed emails getting through to inbox",
+        "problem_description": "Users receiving phishing emails that appear to come from internal addresses or known contacts. Spam filters not catching spoofed messages.",
+        "problem_keywords": "phishing, spoofed email, spam, fake email, impersonation, phishing email, spoof protection",
+        "solution_steps": (
+            "1. Check email headers:\n"
+            "   - Open the suspicious email > File > Properties > Internet Headers\n"
+            "   - Check 'From' vs 'Return-Path' and 'Received' headers\n"
+            "   - Spoofed emails often have mismatched sender domains\n"
+            "2. Report the phishing:\n"
+            "   - Home > Junk > Report as Phishing (Outlook)\n"
+            "   - Or forward to the IT security team\n"
+            "   - Microsoft: Report via Report Message add-in\n"
+            "3. Verify SPF, DKIM, DMARC:\n"
+            "   - Check the message headers for authentication results\n"
+            "   - spf=pass/fail, dkim=pass/fail, dmarc=pass/fail\n"
+            "   - If these fail: The domain's email authentication is misconfigured\n"
+            "4. Admin: Configure email authentication:\n"
+            "   - SPF: DNS TXT record specifying allowed sending servers\n"
+            "   - DKIM: Cryptographic signing of outbound emails\n"
+            "   - DMARC: Policy for handling SPF/DKIM failures (quarantine/reject)\n"
+            "5. Anti-phishing policies (M365):\n"
+            "   - Security Center > Threat Policies > Anti-phishing\n"
+            "   - Enable impersonation protection for key users/domains\n"
+            "   - Enable mailbox intelligence\n"
+            "6. User training:\n"
+            "   - Hover over links before clicking (check actual URL)\n"
+            "   - Don't enter credentials on unexpected login pages\n"
+            "   - Verify unusual requests through a separate channel\n"
+            "7. External email tag: Configure Exchange to tag external emails with [EXTERNAL]"
+        ),
+    },
+    {
+        "category": "Email & Outlook",
+        "problem_title": "Outlook delegates and shared mailbox permission issues",
+        "problem_description": "Outlook delegate access not working correctly. Delegates can't see calendar, send on behalf permissions not functioning, or shared mailbox shows permission errors.",
+        "problem_keywords": "delegate, send on behalf, shared mailbox permission, calendar delegate, outlook delegate, mailbox access, full access, send as",
+        "solution_steps": (
+            "1. Types of mailbox permissions:\n"
+            "   - Full Access: Can open and read all mail\n"
+            "   - Send As: Sends appearing as the mailbox (From: field)\n"
+            "   - Send on Behalf: Sends showing 'on behalf of'\n"
+            "   - Delegate: Calendar/inbox access with send on behalf\n"
+            "2. Grant permissions (Exchange Admin):\n"
+            "   - EAC > Recipients > Mailboxes > Mailbox delegation\n"
+            "   - PowerShell: Add-MailboxPermission -Identity shared@co.com -User user@co.com -AccessRights FullAccess\n"
+            "   - Add-RecipientPermission -Identity shared@co.com -Trustee user@co.com -AccessRights SendAs\n"
+            "3. Outlook delegate setup:\n"
+            "   - File > Account Settings > Delegate Access\n"
+            "   - Add delegate, set permissions per folder\n"
+            "   - 'Delegate receives copies of meeting requests'\n"
+            "4. Auto-mapping:\n"
+            "   - Full Access: Mailbox auto-appears in Outlook (auto-mapping)\n"
+            "   - To disable: Remove and re-add with -AutoMapping $false\n"
+            "   - Manual add: File > Account Settings > Account Settings > Change > More Settings > Advanced > Add mailbox\n"
+            "5. Propagation: Permission changes can take up to 60 minutes in Exchange Online. Run Outlook in Online mode during testing"
+        ),
+    },
+    {
+        "category": "Email & Outlook",
+        "problem_title": "Email attachment size limits and large file sending",
+        "problem_description": "Emails with attachments being rejected due to size limits. Users can't send or receive large files via email, getting 'attachment size exceeds the allowable limit' or NDR errors.",
+        "problem_keywords": "attachment size, email size limit, large attachment, file too large, attachment limit, email size, send large file, attachment rejected",
+        "solution_steps": (
+            "1. Default size limits:\n"
+            "   - Exchange Online: 25MB per message (including encoding overhead)\n"
+            "   - Exchange on-premises: Default 10MB, configurable\n"
+            "   - Actual file: ~33% larger after Base64 encoding\n"
+            "   - So 25MB limit = roughly 18-19MB file attachment\n"
+            "2. Check current limits:\n"
+            "   - Exchange Online: Get-Mailbox user@co.com | Select MaxSendSize, MaxReceiveSize\n"
+            "   - Transport rule limits: Get-TransportRule | Select MaxMessageSize\n"
+            "   - Connector limits may also restrict size\n"
+            "3. Increase limits (on-premises):\n"
+            "   - Mailbox: Set-Mailbox -MaxSendSize 50MB -MaxReceiveSize 50MB\n"
+            "   - Connector: Set-SendConnector / Set-ReceiveConnector\n"
+            "   - Global: Set-TransportConfig -MaxSendSize 50MB\n"
+            "4. Alternative for large files:\n"
+            "   - OneDrive/SharePoint: Share link instead of attachment\n"
+            "   - Outlook: 'Attach > Browse web locations' uses OneDrive\n"
+            "   - This also avoids mailbox bloat\n"
+            "5. Recipient limits: Even if you increase your send limit, the recipient's server may reject large messages (Gmail: 25MB, many corporate: 10-15MB)"
+        ),
+    },
 ]
 
 DIAGNOSTIC_TREE = {

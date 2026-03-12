@@ -491,6 +491,641 @@ ARTICLES = [
             "8. For front panel jacks (desktop): Check internal cable from case to motherboard"
         ),
     },
+    {
+        "category": "Hardware",
+        "problem_title": "CMOS battery dead or BIOS settings keep resetting",
+        "problem_description": "Computer loses BIOS settings after powering off. Date/time resets, boot order changes back to default, or 'CMOS checksum error' appears.",
+        "problem_keywords": "cmos battery, bios reset, cmos error, bios settings lost, date reset, cmos checksum, cr2032",
+        "solution_steps": (
+            "1. Symptoms of dead CMOS battery:\n"
+            "   - Date/time resets to a past date on every boot\n"
+            "   - BIOS settings revert to defaults after power off\n"
+            "   - 'CMOS Checksum Error' on boot\n"
+            "   - System may beep or show warnings\n"
+            "2. Replace the CMOS battery:\n"
+            "   - Power off and unplug the computer\n"
+            "   - Open the case and locate the CR2032 battery on the motherboard\n"
+            "   - Note the orientation (+/- side)\n"
+            "   - Remove the old battery and insert a new CR2032\n"
+            "3. After replacement:\n"
+            "   - Power on, enter BIOS (Del/F2 during boot)\n"
+            "   - Reconfigure settings: boot order, date/time, SATA mode\n"
+            "   - Save and exit\n"
+            "4. Battery life:\n"
+            "   - CMOS batteries last 3-7 years typically\n"
+            "   - Desktop PCs: Easy to replace (accessible on motherboard)\n"
+            "   - Laptops: May be soldered or require disassembly\n"
+            "5. If settings still reset after new battery:\n"
+            "   - Check the battery holder for corrosion, clean with isopropyl alcohol\n"
+            "   - Motherboard damage possible if the holder is broken\n"
+            "6. BIOS update:\n"
+            "   - Flash the BIOS to latest version from motherboard manufacturer\n"
+            "   - Corrupted BIOS can also cause settings loss"
+        ),
+    },
+    {
+        "category": "Hardware",
+        "problem_title": "Computer randomly shuts down without warning",
+        "problem_description": "PC powers off suddenly without any blue screen or warning. May happen during heavy use, or seemingly at random.",
+        "problem_keywords": "random shutdown, sudden power off, pc turns off, unexpected shutdown, no warning, power failure, shuts off",
+        "solution_steps": (
+            "1. Check for overheating:\n"
+            "   - Download HWMonitor or Core Temp\n"
+            "   - CPU temps above 95-100°C trigger emergency shutdown\n"
+            "   - GPU temps above 100-110°C also cause shutdowns\n"
+            "   - Clean fans and heatsinks with compressed air\n"
+            "2. Power supply (PSU) issues:\n"
+            "   - Insufficient wattage for the components\n"
+            "   - Aging PSU with failing capacitors\n"
+            "   - Check: Does it happen under heavy load (gaming, rendering)?\n"
+            "   - Try a different/higher wattage PSU to test\n"
+            "3. Check Event Viewer:\n"
+            "   - System log > look for 'Kernel-Power' Event ID 41\n"
+            "   - This indicates unexpected shutdown (no clean shutdown event)\n"
+            "4. RAM issues:\n"
+            "   - Run Windows Memory Diagnostic (mdsched.exe)\n"
+            "   - Or run MemTest86 overnight\n"
+            "   - Try removing one stick at a time\n"
+            "5. Power outlet:\n"
+            "   - Loose power cable or faulty outlet\n"
+            "   - Use a UPS (Uninterruptible Power Supply)\n"
+            "   - Avoid daisy-chaining power strips\n"
+            "6. Check power settings:\n"
+            "   - Settings > Power & Sleep > ensure not set to turn off\n"
+            "   - powercfg /energy to check power configuration\n"
+            "7. For laptops: Test with AC power only (remove battery if possible)"
+        ),
+    },
+    {
+        "category": "Hardware",
+        "problem_title": "Docking station not detecting all peripherals",
+        "problem_description": "USB docking station or Thunderbolt dock doesn't detect all connected monitors, USB devices, or network adapter. Some peripherals work but others don't.",
+        "problem_keywords": "docking station, dock, thunderbolt dock, usb dock, peripherals, dock not working, displaylink, dock monitors",
+        "solution_steps": (
+            "1. Power and connections:\n"
+            "   - Ensure the dock has its power adapter connected (most docks need external power)\n"
+            "   - Check the cable between laptop and dock (USB-C/Thunderbolt cable)\n"
+            "   - Try a different USB-C/Thunderbolt port on the laptop\n"
+            "2. Dock firmware:\n"
+            "   - Check manufacturer website for dock firmware updates\n"
+            "   - Dell, Lenovo, HP all have dock firmware update utilities\n"
+            "   - Firmware updates fix many compatibility issues\n"
+            "3. Drivers:\n"
+            "   - DisplayLink docks: Install/update DisplayLink driver\n"
+            "   - Thunderbolt docks: Install Thunderbolt driver and approve the device\n"
+            "   - Check Device Manager for any 'Unknown Device' entries\n"
+            "4. Monitor issues:\n"
+            "   - Check dock's video output limits (some only support 1 external monitor)\n"
+            "   - USB-C docks may support fewer monitors than Thunderbolt docks\n"
+            "   - Resolution/refresh rate may be limited through dock\n"
+            "5. USB devices:\n"
+            "   - Try connecting USB device directly to laptop (bypass dock)\n"
+            "   - If works directly: Dock USB hub may have power or bandwidth issue\n"
+            "   - Avoid using high-bandwidth devices through dock USB hubs\n"
+            "6. Ethernet:\n"
+            "   - Dock ethernet adapter needs drivers (usually auto-install)\n"
+            "   - Check Device Manager > Network Adapters for dock NIC\n"
+            "   - Some docks have Realtek or ASIX NIC requiring specific drivers\n"
+            "7. Reset dock: Disconnect power and laptop cable for 30 seconds, reconnect power first then laptop"
+        ),
+    },
+    {
+        "category": "Hardware",
+        "problem_title": "Laptop lid close action not working correctly",
+        "problem_description": "Laptop doesn't sleep, hibernate, or stay on when the lid is closed as configured. May sleep at wrong times or not wake when reopened.",
+        "problem_keywords": "lid close, laptop lid, close lid, sleep on close, hibernate lid, lid action, laptop wake",
+        "solution_steps": (
+            "1. Configure lid close action:\n"
+            "   - Control Panel > Power Options > Choose what closing the lid does\n"
+            "   - Set for both 'On battery' and 'Plugged in'\n"
+            "   - Options: Do nothing, Sleep, Hibernate, Shut down\n"
+            "2. If laptop sleeps when it shouldn't:\n"
+            "   - Set lid close action to 'Do nothing'\n"
+            "   - Also check: Power Options > Change plan settings > Advanced\n"
+            "   - Look for 'Display' > 'Turn off display on lid close'\n"
+            "3. External monitor clamshell mode:\n"
+            "   - To use laptop with lid closed and external monitor:\n"
+            "   - Set lid close action to 'Do nothing'\n"
+            "   - Must have external keyboard and mouse connected\n"
+            "   - Connect external monitor before closing lid\n"
+            "4. Won't wake when lid opens:\n"
+            "   - Check: Power Options > Change plan settings > Advanced\n"
+            "   - Power buttons and lid > Lid open action\n"
+            "   - Update chipset and ACPI drivers\n"
+            "5. Lid switch:\n"
+            "   - The lid has a magnetic sensor that detects open/close\n"
+            "   - If malfunctioning: May falsely trigger sleep\n"
+            "   - Check if a magnet (case, phone) near the laptop triggers it\n"
+            "6. BIOS: Some laptops have lid-related ACPI settings in BIOS\n"
+            "7. Group Policy: In domain environments, power settings may be enforced"
+        ),
+    },
+    {
+        "category": "Hardware",
+        "problem_title": "Hard drive clicking sound or unusual noises",
+        "problem_description": "Hard drive is making clicking, grinding, or buzzing noises. Drive may still be working or may be failing to read/write data.",
+        "problem_keywords": "hdd clicking, hard drive noise, grinding sound, click of death, drive clicking, hard drive dying, hdd sound",
+        "solution_steps": (
+            "1. Identify the sound:\n"
+            "   - Clicking (repetitive): Head crash or failing read/write heads\n"
+            "   - Grinding: Physical contact between heads and platter\n"
+            "   - Buzzing/whining: Motor issue or normal spindle noise\n"
+            "   - Single click on power up: Normal\n"
+            "2. Check SMART status immediately:\n"
+            "   - Download CrystalDiskInfo (free)\n"
+            "   - Check for 'Caution' or 'Bad' health status\n"
+            "   - Critical attributes: Reallocated Sectors, Current Pending, Uncorrectable\n"
+            "3. BACK UP DATA NOW:\n"
+            "   - If clicking is repetitive, the drive may fail at any moment\n"
+            "   - Copy the most important data first\n"
+            "   - Use robocopy /MIR for quick backup\n"
+            "   - Don't defragment a failing drive\n"
+            "4. Power supply issue:\n"
+            "   - Insufficient power can cause clicking in HDDs\n"
+            "   - Try a different SATA power cable\n"
+            "   - Check if too many drives on one power rail\n"
+            "5. If drive won't mount:\n"
+            "   - Try connecting to a different computer as a secondary drive\n"
+            "   - Use a USB-to-SATA adapter\n"
+            "   - Professional data recovery may be needed for critical data\n"
+            "6. For SSDs:\n"
+            "   - SSDs are silent - clicking usually comes from another component\n"
+            "   - Check fans, other HDDs, or the PSU\n"
+            "7. Replace the drive: If SMART shows bad health, replace immediately"
+        ),
+    },
+    {
+        "category": "Hardware",
+        "problem_title": "USB hub or USB devices not getting enough power",
+        "problem_description": "USB devices connected through a hub keep disconnecting or don't work at all. External drives may fail to spin up.",
+        "problem_keywords": "usb power, usb hub, power surge, usb disconnect, usb drive, not enough power, powered hub",
+        "solution_steps": (
+            "1. USB power limits:\n"
+            "   - USB 2.0 port: 500mA max (0.5A)\n"
+            "   - USB 3.0 port: 900mA max (0.9A)\n"
+            "   - Unpowered hubs share the host port's power budget\n"
+            "   - External HDDs may need 500-900mA each\n"
+            "2. Symptoms of insufficient power:\n"
+            "   - 'USB Device Not Recognized' or 'Power Surge on Hub Port'\n"
+            "   - Devices disconnect intermittently\n"
+            "   - External drives make clicking sounds\n"
+            "3. Solution: Use a powered USB hub:\n"
+            "   - Get a USB hub with its own power adapter\n"
+            "   - Each port can then deliver full power\n"
+            "   - Connect power-hungry devices to the powered hub\n"
+            "4. Connect directly to PC:\n"
+            "   - Bypass the hub for devices needing more power\n"
+            "   - Use rear USB ports (directly on motherboard) for better power\n"
+            "   - Front panel ports often have weaker power delivery\n"
+            "5. Check USB power settings:\n"
+            "   - Device Manager > Universal Serial Bus controllers > USB Root Hub\n"
+            "   - Properties > Power tab > shows power usage per device\n"
+            "   - Power Management tab > uncheck 'Allow the computer to turn off'\n"
+            "6. For external drives:\n"
+            "   - Use the Y-cable (dual USB connectors) if provided\n"
+            "   - Or use a drive with its own power adapter\n"
+            "7. USB-C/Thunderbolt: Can deliver up to 15W (3A at 5V) per port"
+        ),
+    },
+    {
+        "category": "Hardware",
+        "problem_title": "CPU fan running at full speed constantly",
+        "problem_description": "Computer fan runs at maximum speed and is very loud even when the system is idle. Fan speed doesn't adjust based on temperature.",
+        "problem_keywords": "fan loud, cpu fan, fan full speed, noisy fan, fan control, fan always on, fan speed",
+        "solution_steps": (
+            "1. Check CPU temperature:\n"
+            "   - Download HWMonitor, Core Temp, or HWiNFO\n"
+            "   - Idle temps should be 30-50°C\n"
+            "   - If temps are high: Fan is running fast for a reason (see overheating)\n"
+            "2. Clean the fan and heatsink:\n"
+            "   - Dust buildup reduces cooling efficiency\n"
+            "   - Power off > open case > use compressed air\n"
+            "   - Clean the heatsink fins where dust accumulates\n"
+            "3. BIOS fan control:\n"
+            "   - Enter BIOS > Hardware Monitor or Fan Control section\n"
+            "   - Set fan mode to 'Auto' or 'Smart Fan' (not 'Full Speed')\n"
+            "   - Adjust the fan curve: lower RPM at lower temps\n"
+            "4. Windows fan control:\n"
+            "   - SpeedFan (software) can control some fans\n"
+            "   - Manufacturer tools: Dell Command, Lenovo Vantage, HP OMEN\n"
+            "5. Fan header:\n"
+            "   - CPU fans should be connected to the CPU_FAN header (4-pin PWM)\n"
+            "   - If connected to a case fan header: May not have speed control\n"
+            "   - 3-pin fans use voltage control (less precise)\n"
+            "6. Check for high CPU usage:\n"
+            "   - Task Manager > CPU usage while idle\n"
+            "   - Background processes, malware, or updates may cause high CPU\n"
+            "7. Replace thermal paste: If temps are high after cleaning, reapply thermal paste"
+        ),
+    },
+    {
+        "category": "Hardware",
+        "problem_title": "Laptop touchpad not responding or erratic behavior",
+        "problem_description": "Laptop touchpad doesn't work at all or the cursor jumps around erratically. Gestures like two-finger scroll may have stopped working.",
+        "problem_keywords": "touchpad, trackpad, cursor jumping, touchpad not working, touchpad disabled, gestures, synaptics",
+        "solution_steps": (
+            "1. Check if touchpad is disabled:\n"
+            "   - Function key toggle: Fn+F6/F7/F8 (varies by manufacturer)\n"
+            "   - Look for a touchpad icon on the function keys\n"
+            "   - Some laptops have a physical switch or double-tap corner to toggle\n"
+            "2. Windows settings:\n"
+            "   - Settings > Devices > Touchpad\n"
+            "   - Ensure 'Touchpad' toggle is On\n"
+            "   - Check: 'Leave touchpad on when a mouse is connected'\n"
+            "   - If you have a USB mouse plugged in, touchpad may be auto-disabled\n"
+            "3. Update touchpad driver:\n"
+            "   - Device Manager > Mice and other pointing devices\n"
+            "   - Or: Human Interface Devices > check for touchpad entry\n"
+            "   - Update or download from laptop manufacturer (Synaptics, ELAN, Precision)\n"
+            "4. Erratic cursor/jumping:\n"
+            "   - Clean the touchpad surface (oils and moisture affect it)\n"
+            "   - Adjust touchpad sensitivity: Settings > Devices > Touchpad > Sensitivity\n"
+            "   - Check: Palm rejection should be enabled\n"
+            "5. Gestures not working:\n"
+            "   - Settings > Devices > Touchpad > scroll down to gestures\n"
+            "   - Configure Three-finger and Four-finger gestures\n"
+            "   - Precision touchpad drivers required for all gestures\n"
+            "6. Reinstall driver:\n"
+            "   - Device Manager > Uninstall touchpad device\n"
+            "   - Check 'Delete the driver software'\n"
+            "   - Restart to auto-install, or install manufacturer driver\n"
+            "7. BIOS: Some BIOS settings can disable the touchpad - check Advanced or Input"
+        ),
+    },
+    {
+        "category": "Hardware",
+        "problem_title": "Network card (NIC) failing or dropping link",
+        "problem_description": "Built-in network card loses link intermittently, shows errors, or the NIC is not detected at all. May work after restart but fails again.",
+        "problem_keywords": "nic failing, network card, ethernet card, nic error, link down, network adapter hardware, nic not detected",
+        "solution_steps": (
+            "1. Check adapter status:\n"
+            "   - Device Manager > Network adapters\n"
+            "   - Yellow exclamation: Driver issue or hardware error\n"
+            "   - Red X: Disabled (right-click > Enable)\n"
+            "   - Missing: Hardware not detected\n"
+            "2. Check link LED:\n"
+            "   - Ethernet port should have link light (green or amber)\n"
+            "   - No light: Cable, port, or NIC hardware failure\n"
+            "   - Flashing: Normal activity\n"
+            "3. Driver update:\n"
+            "   - Download latest NIC driver from motherboard/laptop manufacturer\n"
+            "   - Intel, Realtek, or Broadcom depending on the NIC\n"
+            "   - Completely uninstall old driver, install new one\n"
+            "4. Check Event Viewer:\n"
+            "   - System > errors from 'e1express', 'e1iexpress', or 'Netwtw'\n"
+            "   - Link up/down messages indicate physical or hardware issue\n"
+            "   - Repeated errors suggest failing NIC\n"
+            "5. Reset NIC:\n"
+            "   - Device Manager > NIC > Uninstall device > Restart\n"
+            "   - Or: netsh interface set interface 'Ethernet' admin=disable\n"
+            "   - Then: netsh interface set interface 'Ethernet' admin=enable\n"
+            "6. If built-in NIC is dead:\n"
+            "   - USB Ethernet adapter as a workaround\n"
+            "   - PCIe network card replacement (desktops)\n"
+            "   - Check warranty for replacement\n"
+            "7. Test with Linux live USB: If NIC works in Linux, it's a driver issue in Windows"
+        ),
+    },
+    {
+        "category": "Hardware",
+        "problem_title": "Computer beep codes at startup",
+        "problem_description": "Computer beeps during startup and doesn't boot. Beep codes (short and long beeps) indicate hardware issues detected by POST (Power-On Self Test).",
+        "problem_keywords": "beep code, post beep, startup beep, no boot beep, bios beep, motherboard beep, post error",
+        "solution_steps": (
+            "1. Count the beep pattern:\n"
+            "   - Note: number of beeps, short vs long, and pauses\n"
+            "   - Pattern varies by BIOS manufacturer (AMI, Award, Phoenix, Dell, HP)\n"
+            "2. Common AMI BIOS beep codes:\n"
+            "   - 1 short: Normal POST (all good)\n"
+            "   - 2 short: Memory (RAM) error\n"
+            "   - 3 short: Memory test failed\n"
+            "   - 5 short: CPU error\n"
+            "   - Continuous short: Power supply or motherboard issue\n"
+            "3. Common Dell beep codes:\n"
+            "   - 1-3-2 (1 beep, 3 beeps, 2 beeps): Memory failure\n"
+            "   - 1-3-3: Motherboard chipset error\n"
+            "   - Varies by model - look up specific Dell model\n"
+            "4. For RAM errors (most common):\n"
+            "   - Power off, unplug\n"
+            "   - Reseat RAM sticks (remove and firmly reinsert)\n"
+            "   - Try one stick at a time in the first slot\n"
+            "   - Clean contacts with an eraser if necessary\n"
+            "5. For GPU errors:\n"
+            "   - Reseat the graphics card\n"
+            "   - Ensure power cables to GPU are connected\n"
+            "   - Try the integrated GPU (remove discrete card)\n"
+            "6. No beep at all (and no display):\n"
+            "   - Check if PC speaker/buzzer is connected to motherboard\n"
+            "   - PSU may not be powering the board\n"
+            "   - Try paper clip test on PSU (if experienced)\n"
+            "7. Look up the specific beep code for your BIOS/manufacturer online"
+        ),
+    },
+    {
+        "category": "Hardware",
+        "problem_title": "Laptop not charging or charge stops at certain percentage",
+        "problem_description": "Laptop battery doesn't charge, charges very slowly, or stops charging at a percentage below 100%. Charger may or may not be detected.",
+        "problem_keywords": "not charging, battery, charge stops, slow charge, charger not detected, plugged in not charging, battery limit",
+        "solution_steps": (
+            "1. Check basic connections:\n"
+            "   - Verify charger is fully plugged in at both ends\n"
+            "   - Check the charging LED on the laptop\n"
+            "   - Try a different outlet\n"
+            "2. Battery health check:\n"
+            "   - powercfg /batteryreport (generates a battery health report)\n"
+            "   - Open the HTML report and check 'Design Capacity' vs 'Full Charge Capacity'\n"
+            "   - If Full Charge < 50% of Design: Battery needs replacement\n"
+            "3. Charge limit feature:\n"
+            "   - Many laptops limit charging to 80% for battery longevity\n"
+            "   - Lenovo Vantage > Battery > Conservation Mode\n"
+            "   - Dell > BIOS > Power > Primary Battery Charge Configuration\n"
+            "   - ASUS > MyASUS > Battery Health Charging\n"
+            "4. Wrong charger wattage:\n"
+            "   - Using a lower wattage charger than required\n"
+            "   - USB-C chargers must deliver enough watts for the laptop\n"
+            "   - Check laptop requirements vs charger output\n"
+            "5. Reset battery:\n"
+            "   - For removable batteries: Remove battery, hold power 30 seconds, reinsert\n"
+            "   - For internal batteries: Power off, hold power button 15 seconds\n"
+            "6. Driver reset:\n"
+            "   - Device Manager > Batteries > 'Microsoft ACPI-Compliant Control Method Battery'\n"
+            "   - Uninstall > Restart > Windows reinstalls it\n"
+            "7. BIOS update: Some charging issues are fixed by BIOS updates"
+        ),
+    },
+    {
+        "category": "Hardware",
+        "problem_title": "Thunderbolt or USB-C device not recognized",
+        "problem_description": "Thunderbolt dock, eGPU, or USB-C device not recognized or not working when connected. May charge but not transfer data.",
+        "problem_keywords": "thunderbolt, usb-c, usb c, dock not working, egpu, thunderbolt device, usb-c not working, type-c",
+        "solution_steps": (
+            "1. Check port capability:\n"
+            "   - Not all USB-C ports support Thunderbolt\n"
+            "   - Not all USB-C ports support video (DP Alt Mode)\n"
+            "   - Check laptop specs for port capabilities\n"
+            "   - Thunderbolt port has a lightning bolt icon\n"
+            "2. Approve the device:\n"
+            "   - Thunderbolt devices may require approval\n"
+            "   - Thunderbolt Control Center (Intel) > Approve new device\n"
+            "   - Settings > Thunderbolt > Approve device\n"
+            "3. Update Thunderbolt drivers:\n"
+            "   - Download from Intel or laptop manufacturer\n"
+            "   - Also update NVM firmware for Thunderbolt controller\n"
+            "   - Device Manager > System devices > Thunderbolt Controller\n"
+            "4. Cable quality:\n"
+            "   - Not all USB-C cables support Thunderbolt/USB4\n"
+            "   - Use the cable that came with the device\n"
+            "   - Active cables may be required for longer runs\n"
+            "   - USB 2.0 cables won't support USB 3.x speeds\n"
+            "5. Power delivery:\n"
+            "   - If the device charges but no data: Cable may be charge-only\n"
+            "   - eGPU requires significant power delivery\n"
+            "6. BIOS settings:\n"
+            "   - Some BIOSes have Thunderbolt security levels\n"
+            "   - Set to 'User Authorization' or 'No Security' for automatic connection\n"
+            "7. Firmware: Update dock/device firmware from the manufacturer"
+        ),
+    },
+    {
+        "category": "Hardware",
+        "problem_title": "Projector or conference room display connection issues",
+        "problem_description": "Laptop won't display on projector or conference room TV. HDMI/VGA/wireless connection established but no image appears or resolution is wrong.",
+        "problem_keywords": "projector, conference room, presentation, hdmi projector, display connect, vga, wireless display, miracast",
+        "solution_steps": (
+            "1. Check input source:\n"
+            "   - Projector/TV must be set to the correct input (HDMI 1, VGA, etc.)\n"
+            "   - Use the projector's remote or buttons to change input\n"
+            "2. Switch display mode:\n"
+            "   - Win+P > select Duplicate, Extend, or Second screen only\n"
+            "   - Try each option\n"
+            "   - Default is 'PC screen only' which won't send to projector\n"
+            "3. Cable/adapter check:\n"
+            "   - Try a different HDMI/VGA cable\n"
+            "   - For USB-C to HDMI: Ensure adapter supports your resolution\n"
+            "   - VGA is analog - use HDMI/DP when possible for better quality\n"
+            "4. Resolution issues:\n"
+            "   - The projector may not support your laptop's default resolution\n"
+            "   - Temporarily lower resolution: Settings > Display > Resolution\n"
+            "   - Most projectors: Optimal at 1920x1080 or 1280x720\n"
+            "5. Wireless display (Miracast):\n"
+            "   - Win+K to connect to wireless display\n"
+            "   - Both devices must support Miracast\n"
+            "   - Must be on the same network (or using Wi-Fi Direct)\n"
+            "6. Update display driver:\n"
+            "   - Old GPU drivers may not support certain resolutions or connections\n"
+            "   - Update from NVIDIA/AMD/Intel\n"
+            "7. Presentation timer: Use Presenter View in PowerPoint for notes on laptop screen"
+        ),
+    },
+    {
+        "category": "Hardware",
+        "problem_title": "Keyboard keys stuck or registering wrong characters",
+        "problem_description": "Keyboard types wrong characters, keys repeat uncontrollably, or specific keys are stuck. May be physical or software issue.",
+        "problem_keywords": "wrong characters, key stuck, keyboard wrong, key repeat, sticky keys, keyboard input, key mapping",
+        "solution_steps": (
+            "1. Check keyboard layout:\n"
+            "   - Settings > Time & Language > Language\n"
+            "   - Verify the correct keyboard layout is selected (e.g., US QWERTY)\n"
+            "   - Win+Space toggles between installed keyboard layouts\n"
+            "   - Remove extra layouts that could accidentally activate\n"
+            "2. Physically stuck keys:\n"
+            "   - Turn keyboard upside down and gently shake\n"
+            "   - Use compressed air to blow out debris\n"
+            "   - For laptops: Carefully pry up the key cap and clean underneath\n"
+            "3. Disable Filter Keys and Sticky Keys:\n"
+            "   - Settings > Accessibility > Keyboard\n"
+            "   - Turn off 'Sticky Keys' and 'Filter Keys'\n"
+            "   - Filter Keys can cause keys to appear stuck or ignored\n"
+            "4. Key repeat settings:\n"
+            "   - Control Panel > Keyboard > Speed tab\n"
+            "   - Adjust 'Repeat delay' (longer) and 'Repeat rate' (slower)\n"
+            "5. Driver reset:\n"
+            "   - Device Manager > Keyboards > Uninstall device\n"
+            "   - Restart to reinstall\n"
+            "   - For USB keyboards: Try a different USB port\n"
+            "6. Liquid damage:\n"
+            "   - If liquid was spilled: Power off immediately\n"
+            "   - Flip upside down, let dry 24-48 hours\n"
+            "   - Individual keys may need replacement\n"
+            "7. Test with on-screen keyboard: Settings > Accessibility > Keyboard > On-Screen Keyboard"
+        ),
+    },
+    {
+        "category": "Hardware",
+        "problem_title": "Multiple monitors different refresh rates or tearing",
+        "problem_description": "Multi-monitor setup has screen tearing, stuttering, or one monitor runs at the wrong refresh rate. Mixed refresh rate monitors cause issues.",
+        "problem_keywords": "refresh rate, screen tearing, multi monitor, vsync, freesync, g-sync, 144hz, mixed refresh",
+        "solution_steps": (
+            "1. Check current refresh rates:\n"
+            "   - Settings > System > Display > Advanced display settings\n"
+            "   - Select each monitor and check the refresh rate\n"
+            "   - Set each to its maximum supported rate\n"
+            "2. Set refresh rate properly:\n"
+            "   - Right-click desktop > Display settings > Advanced display > Refresh rate dropdown\n"
+            "   - If the desired rate isn't listed: Update GPU driver\n"
+            "   - Check cable: HDMI 2.0+ or DP 1.2+ for higher refresh rates\n"
+            "3. Mixed refresh rates:\n"
+            "   - Running 60Hz and 144Hz monitors together can cause stuttering\n"
+            "   - This is a known issue with Windows compositor\n"
+            "   - Workaround: Set all monitors to the same refresh rate if possible\n"
+            "   - Or: Use 'Hardware-accelerated GPU scheduling' (Settings > Display > Graphics)\n"
+            "4. Screen tearing:\n"
+            "   - Enable VSync in game/application settings\n"
+            "   - Use FreeSync (AMD) or G-Sync (NVIDIA) if monitor supports it\n"
+            "   - NVIDIA Control Panel > Manage 3D settings > V-Sync\n"
+            "5. GPU driver settings:\n"
+            "   - NVIDIA: NVIDIA Control Panel > Change Resolution > select correct for each\n"
+            "   - AMD: AMD Adrenalin > Display > per-monitor settings\n"
+            "6. Restart GPU driver: Win+Ctrl+Shift+B (screen flashes, resets driver)\n"
+            "7. Cable requirement: 4K@60Hz needs HDMI 2.0 or DP 1.2, 4K@120Hz needs HDMI 2.1 or DP 1.4"
+        ),
+    },
+    {
+        "category": "Hardware",
+        "problem_title": "Printer paper jam that keeps recurring",
+        "problem_description": "Printer jams paper repeatedly in the same area. Clearing the jam temporarily fixes it but it jams again within a few pages.",
+        "problem_keywords": "paper jam, recurring jam, printer jam, paper stuck, feed roller, pickup roller, jam error",
+        "solution_steps": (
+            "1. Clear the current jam completely:\n"
+            "   - Open all doors/covers indicated by the printer\n"
+            "   - Pull paper gently in the direction of paper travel\n"
+            "   - Check for small torn pieces left behind\n"
+            "   - Close all covers firmly\n"
+            "2. Check paper quality:\n"
+            "   - Use recommended paper weight (75-90 gsm for most printers)\n"
+            "   - Don't use damp, wrinkled, or curled paper\n"
+            "   - Fan the paper stack before loading (separates sheets)\n"
+            "   - Don't overfill the paper tray\n"
+            "3. Clean pickup rollers:\n"
+            "   - Open the tray and locate the rubber pickup rollers\n"
+            "   - Clean with a lint-free cloth dampened with water\n"
+            "   - Worn/shiny rollers need replacement\n"
+            "4. Check paper guides:\n"
+            "   - Tray paper guides should snugly fit the paper size\n"
+            "   - Too loose: Paper feeds at an angle\n"
+            "   - Too tight: Paper can't feed at all\n"
+            "5. Duplex unit:\n"
+            "   - If jams occur during double-sided printing\n"
+            "   - Remove and clean the duplex unit\n"
+            "   - Some paper types don't work well with duplex\n"
+            "6. Fuser area:\n"
+            "   - Jams near the output: Fuser may be worn\n"
+            "   - Fuser kits have a page life (e.g., 200K pages)\n"
+            "   - Professional replacement may be needed\n"
+            "7. Firmware update: Check manufacturer website for printer firmware"
+        ),
+    },
+    {
+        "category": "Hardware",
+        "problem_title": "Desktop PC won't power on at all",
+        "problem_description": "Pressing the power button does nothing. No fans spin, no LEDs light up, and no display output. Complete absence of any power signs.",
+        "problem_keywords": "won't turn on, no power, dead pc, power button, no response, pc dead, won't start, no lights",
+        "solution_steps": (
+            "1. Check power source:\n"
+            "   - Verify the outlet works (plug in a phone charger or lamp)\n"
+            "   - Check power strip/surge protector is on\n"
+            "   - Verify the power cable is firmly seated at both ends\n"
+            "2. PSU switch:\n"
+            "   - Check the power supply switch on the back (I = On, O = Off)\n"
+            "   - Some PSUs have a voltage selector (ensure it matches your country)\n"
+            "   - Try toggling the PSU switch off/on\n"
+            "3. Power button test:\n"
+            "   - The front panel power button may be disconnected\n"
+            "   - Open the case and locate the motherboard power header pins\n"
+            "   - Briefly touch the two PWR_SW pins with a screwdriver to jump-start\n"
+            "   - If it starts: Power button or front panel cable is faulty\n"
+            "4. PSU test:\n"
+            "   - Disconnect all cables from motherboard\n"
+            "   - Paperclip test: Short the green wire to any black wire on the 24-pin\n"
+            "   - If PSU fan doesn't spin: PSU is dead, replace it\n"
+            "5. Minimal boot test:\n"
+            "   - Disconnect everything except: CPU, 1 stick of RAM, CPU cooler, power\n"
+            "   - Try to power on\n"
+            "   - Add components back one by one to find the short\n"
+            "6. Check for shorts:\n"
+            "   - Loose standoff behind motherboard can short\n"
+            "   - Stray screws or metal objects in the case\n"
+            "7. Motherboard LED: Many motherboards have a standby LED - if it's not lit, power isn't reaching the board"
+        ),
+    },
+    {
+        "category": "Hardware",
+        "problem_title": "Laptop trackpad gestures or sensitivity not working",
+        "problem_description": "Laptop touchpad gestures (two-finger scroll, pinch zoom, three-finger swipe) not working, touchpad too sensitive or not sensitive enough, or touchpad stops working after driver update.",
+        "problem_keywords": "trackpad, touchpad, gesture, touchpad sensitivity, two finger scroll, touchpad not working, precision touchpad, synaptics",
+        "solution_steps": (
+            "1. Check touchpad settings:\n"
+            "   - Settings > Bluetooth & Devices > Touchpad\n"
+            "   - Ensure touchpad is enabled\n"
+            "   - Check: 'Leave touchpad on when a mouse is connected'\n"
+            "2. Gestures configuration:\n"
+            "   - Precision touchpad: Settings > Touchpad > scroll, tap, gestures\n"
+            "   - Three-finger gestures: Swipe, tap actions configurable\n"
+            "   - Four-finger gestures available on supported hardware\n"
+            "3. Sensitivity adjustment:\n"
+            "   - Settings > Touchpad > Touchpad sensitivity\n"
+            "   - Options: Most sensitive, High, Medium, Low\n"
+            "   - Palm detection: Helps prevent accidental touches while typing\n"
+            "4. Driver issues:\n"
+            "   - Device Manager > Mice and other pointing devices\n"
+            "   - Update or roll back touchpad driver\n"
+            "   - Precision Touchpad driver vs Synaptics/ELAN driver\n"
+            "   - Download latest from laptop manufacturer's site\n"
+            "5. Function key: Many laptops have Fn+F-key to enable/disable touchpad (look for touchpad icon on function keys)"
+        ),
+    },
+    {
+        "category": "Hardware",
+        "problem_title": "USB devices frequently disconnecting and reconnecting",
+        "problem_description": "USB devices keep disconnecting and reconnecting with the Windows notification sound. Affects mice, keyboards, drives, or other USB peripherals. May show 'USB device not recognized' intermittently.",
+        "problem_keywords": "usb disconnect, usb reconnect, usb dropped, usb intermittent, usb not recognized, usb power, usb hub disconnect",
+        "solution_steps": (
+            "1. USB power management:\n"
+            "   - Device Manager > Universal Serial Bus controllers\n"
+            "   - Each USB Root Hub > Properties > Power Management\n"
+            "   - Uncheck 'Allow the computer to turn off this device to save power'\n"
+            "2. USB Selective Suspend:\n"
+            "   - Control Panel > Power Options > Change plan settings > Advanced\n"
+            "   - USB settings > USB selective suspend setting > Disabled\n"
+            "3. Physical checks:\n"
+            "   - Try different USB port (front vs back)\n"
+            "   - Try without USB hub (direct to PC)\n"
+            "   - Check cable for damage\n"
+            "   - Clean USB ports with compressed air\n"
+            "4. USB hub power:\n"
+            "   - Unpowered hubs can't supply enough current\n"
+            "   - Use powered USB hub for power-hungry devices\n"
+            "   - Don't daisy-chain hubs\n"
+            "5. Driver fix: Uninstall all USB controllers in Device Manager, reboot (Windows reinstalls them automatically)"
+        ),
+    },
+    {
+        "category": "Hardware",
+        "problem_title": "Desktop or laptop fan running constantly at high speed",
+        "problem_description": "Computer fans running at full speed constantly, creating excessive noise. May indicate overheating, dust buildup, failed thermal management, or BIOS fan control issues.",
+        "problem_keywords": "fan noise, fan speed, loud fan, fan running, overheating fan, fan control, cpu fan, thermal",
+        "solution_steps": (
+            "1. Check temperatures:\n"
+            "   - Task Manager: Performance tab shows CPU temperature (Win11)\n"
+            "   - HWMonitor or Core Temp for detailed temps\n"
+            "   - CPU normal: 30-50C idle, 60-80C load\n"
+            "   - If >90C: Overheating problem\n"
+            "2. High CPU usage:\n"
+            "   - Task Manager: Check for processes using high CPU\n"
+            "   - Common: Windows Update, antivirus scan, malware\n"
+            "   - Fix the CPU issue and fans will quiet down\n"
+            "3. Dust cleaning:\n"
+            "   - Power off and unplug\n"
+            "   - Use compressed air to blow out vents and fans\n"
+            "   - Laptops: Clean intake and exhaust vents\n"
+            "   - Desktop: Open case, clean CPU heatsink and case fans\n"
+            "4. Thermal paste:\n"
+            "   - If cleaning doesn't help, thermal paste may need replacing\n"
+            "   - Desktop: Remove CPU cooler, clean old paste, apply new\n"
+            "   - Laptop: More complex, may need professional service\n"
+            "5. BIOS fan settings: Check BIOS for fan curve settings, reset to defaults if custom settings were changed"
+        ),
+    },
 ]
 
 DIAGNOSTIC_TREE = {

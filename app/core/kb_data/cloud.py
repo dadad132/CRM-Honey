@@ -325,6 +325,641 @@ ARTICLES = [
             "   - Flow may have been turned off due to repeated failures"
         ),
     },
+    {
+        "category": "Cloud & M365",
+        "problem_title": "Microsoft Teams meeting recording not available",
+        "problem_description": "Teams meeting recordings don't appear after the meeting ends. Recording button is grayed out, or recordings are lost and can't be found by participants.",
+        "problem_keywords": "teams recording, meeting recording, recording missing, recording not available, teams video, recording failed, stream",
+        "solution_steps": (
+            "1. Where recordings are saved:\n"
+            "   - Channel meetings: SharePoint > channel folder > Recordings\n"
+            "   - Non-channel meetings: OneDrive of the person who clicked Record\n"
+            "   - Recordings are no longer saved to Stream (Classic)\n"
+            "2. Recording not appearing:\n"
+            "   - Recordings can take 10-60 minutes to process after meeting ends\n"
+            "   - Check the meeting chat: Recording link appears there\n"
+            "   - Check OneDrive > Recordings folder\n"
+            "3. Recording button grayed out:\n"
+            "   - Admin must enable recording: Teams Admin Center > Meeting Policies\n"
+            "   - 'Allow cloud recording' must be ON\n"
+            "   - Guest/anonymous users cannot record\n"
+            "   - User must have appropriate license (E3/E5/Business)\n"
+            "4. Recording expired:\n"
+            "   - Teams recordings auto-expire (default: 120 days)\n"
+            "   - Admin can change: Meeting Policies > Default expiration time\n"
+            "   - Users get email notification before expiration\n"
+            "   - Download before expiration to keep permanently\n"
+            "5. Sharing recordings:\n"
+            "   - Click the recording in chat > Share\n"
+            "   - OneDrive sharing permissions apply\n"
+            "   - By default: Only meeting participants can view\n"
+            "6. Transcription:\n"
+            "   - Transcription is separate from recording\n"
+            "   - Enable: Meeting Policies > Allow transcription\n"
+            "   - Transcript appears as .vtt file alongside the recording\n"
+            "7. Storage: Recordings count against OneDrive/SharePoint storage quota"
+        ),
+    },
+    {
+        "category": "Cloud & M365",
+        "problem_title": "Azure AD Conditional Access blocking legitimate users",
+        "problem_description": "Users are blocked from accessing M365 or company apps due to Conditional Access policies. Error messages about compliance, location, or device requirements.",
+        "problem_keywords": "conditional access, blocked access, ca policy, azure ad block, compliance block, location policy, device requirement",
+        "solution_steps": (
+            "1. Identify the block:\n"
+            "   - User sees: 'You cannot access this right now' or 'Access has been blocked'\n"
+            "   - The error usually includes a Correlation ID\n"
+            "   - Azure AD > Sign-in logs > search by user > check Conditional Access tab\n"
+            "2. Common block reasons:\n"
+            "   - Device not compliant (not enrolled in Intune/MDM)\n"
+            "   - Signing in from untrusted location (IP not in named locations)\n"
+            "   - Using a non-approved browser or OS\n"
+            "   - MFA requirement not satisfied\n"
+            "3. Sign-in log analysis:\n"
+            "   - Azure Portal > Azure AD > Sign-in logs\n"
+            "   - Find the failed sign-in > Conditional Access tab\n"
+            "   - Shows which policies were evaluated and which blocked access\n"
+            "4. Device compliance:\n"
+            "   - Intune > Devices > find the device > Compliance\n"
+            "   - What compliance check is failing?\n"
+            "   - Fix the compliance issue or adjust the policy\n"
+            "5. Location-based:\n"
+            "   - Azure AD > Named Locations > check if user's IP is listed\n"
+            "   - For VPN users: Add VPN exit IP to named locations\n"
+            "   - For traveling users: Consider exceptions or MFA instead of block\n"
+            "6. Troubleshoot tool:\n"
+            "   - Azure AD > Diagnose and solve problems > Conditional Access troubleshooter\n"
+            "   - Or: 'What If' tool in Conditional Access blade\n"
+            "   - Simulates sign-in to see which policies would apply\n"
+            "7. Emergency: Use 'break glass' admin accounts that are excluded from CA policies"
+        ),
+    },
+    {
+        "category": "Cloud & M365",
+        "problem_title": "SharePoint site permissions confusion or access denied",
+        "problem_description": "Users can't access SharePoint sites, lists, or documents. Permissions seem correct but users still get 'Access Denied' or 'Request Access' screen.",
+        "problem_keywords": "sharepoint permissions, access denied, site permissions, sharepoint access, sharing, permission inheritance, request access",
+        "solution_steps": (
+            "1. Check user's permissions:\n"
+            "   - SharePoint site > Settings (gear) > Site Permissions\n"
+            "   - Or: Site Settings > Site Permissions > Check Permissions\n"
+            "   - Enter the user's name to see their effective permissions\n"
+            "2. Permission levels:\n"
+            "   - Full Control: Site owners (manage everything)\n"
+            "   - Edit/Contribute: Can add/modify content\n"
+            "   - Read: View only\n"
+            "   - Limited Access: System level (usually automatic)\n"
+            "3. Broken inheritance:\n"
+            "   - Folder or document may have unique permissions\n"
+            "   - Break permission inheritance means site permissions don't apply\n"
+            "   - Check the specific item: Library > Item > Manage Access\n"
+            "4. Sharing links:\n"
+            "   - Files shared via link may not grant site access\n"
+            "   - Types: Anyone, People in org, Specific people\n"
+            "   - Check sharing settings: Site > Settings > Site Sharing\n"
+            "5. M365 Group connected:\n"
+            "   - Team sites are connected to M365 Groups\n"
+            "   - Adding to the M365 Group grants site access\n"
+            "   - Azure AD > Groups > add the user as a member\n"
+            "6. External sharing:\n"
+            "   - If sharing with external/guest users:\n"
+            "   - SharePoint Admin Center > Sharing > must allow external sharing\n"
+            "   - Tenant level AND site level both must allow it\n"
+            "7. Access requests: Configure 'Access Request Settings' to route requests to the right person"
+        ),
+    },
+    {
+        "category": "Cloud & M365",
+        "problem_title": "Microsoft 365 email delivery delays or NDR bounce",
+        "problem_description": "Emails sent through Exchange Online are delayed by hours or bounced back with Non-Delivery Reports (NDR/bounce messages) to senders.",
+        "problem_keywords": "email delay, ndr, bounce, non-delivery, email bounce, exchange online, mail flow, delayed email",
+        "solution_steps": (
+            "1. Check NDR error code:\n"
+            "   - 550 5.1.1: Recipient not found (typo in address)\n"
+            "   - 550 5.7.1: Relay denied or blocked by policy\n"
+            "   - 550 5.4.1: Recipient address rejected\n"
+            "   - 452 4.5.3: Too many recipients\n"
+            "   - 550 5.7.606/501: Blocked for spam/abuse\n"
+            "2. Message trace:\n"
+            "   - Exchange Admin Center > Mail Flow > Message Trace\n"
+            "   - Search by sender, recipient, date range\n"
+            "   - Shows: Delivery status, time, reason for failure\n"
+            "3. Delayed delivery:\n"
+            "   - Check mailbox rules: Is 'Delay Delivery' enabled?\n"
+            "   - Transport rules: Admin rules may queue messages\n"
+            "   - Large attachments take longer to scan\n"
+            "   - Microsoft service issues: Check admin.microsoft.com > Health\n"
+            "4. Blocked for spam:\n"
+            "   - Microsoft may block your domain if flagged as spam source\n"
+            "   - Check: mxtoolbox.com for blacklist status\n"
+            "   - Submit delisting request if on Microsoft's block list\n"
+            "   - Review SPF, DKIM, DMARC records\n"
+            "5. SPF/DKIM/DMARC:\n"
+            "   - SPF: DNS TXT record listing authorized senders\n"
+            "   - DKIM: Email signing for authenticity\n"
+            "   - DMARC: Policy for handling SPF/DKIM failures\n"
+            "   - All three should be configured for reliable delivery\n"
+            "6. Mail flow rules:\n"
+            "   - Exchange Admin > Mail Flow > Rules\n"
+            "   - Check for rules that redirect, delay, or block messages\n"
+            "7. Connector issues: If using hybrid, check inbound/outbound connectors are correctly configured"
+        ),
+    },
+    {
+        "category": "Cloud & M365",
+        "problem_title": "OneDrive Known Folder Move (KFM) not redirecting folders",
+        "problem_description": "OneDrive Known Folder Move configured via policy is not redirecting Desktop, Documents, and Pictures folders to OneDrive. Or files are stuck syncing.",
+        "problem_keywords": "known folder move, kfm, onedrive redirect, desktop redirect, documents onedrive, folder redirect, kfm error",
+        "solution_steps": (
+            "1. KFM requirements:\n"
+            "   - OneDrive sync client must be current version\n"
+            "   - Windows 10/11 (not supported on macOS for KFM via GPO)\n"
+            "   - User must be signed into OneDrive with work account\n"
+            "2. Configure via GPO/Intune:\n"
+            "   - GPO: Computer Config > Admin Templates > OneDrive\n"
+            "   - 'Silently move Windows known folders to OneDrive' = Enabled\n"
+            "   - Requires your Azure AD Tenant ID\n"
+            "   - Intune: Device Configuration > Admin Templates > OneDrive\n"
+            "3. Common errors:\n"
+            "   - 'Files can't be moved': Unsupported file types (.pst, OneNote notebooks)\n"
+            "   - 'Path too long': Some file paths exceed 400 character limit\n"
+            "   - 'Folder not empty': Previous redirect still active\n"
+            "4. Troubleshoot:\n"
+            "   - Check: Are the folders already redirected by GPO folder redirection?\n"
+            "   - KFM and GPO folder redirection conflict\n"
+            "   - Remove GPO folder redirection first\n"
+            "5. PST files:\n"
+            "   - Outlook PST files in Documents block KFM\n"
+            "   - Move PST files out of Documents folder first\n"
+            "   - Or migrate PST to Online Archive\n"
+            "6. OneNote notebooks:\n"
+            "   - Local OneNote notebooks in Documents block KFM\n"
+            "   - Move notebooks to OneDrive manually first\n"
+            "   - Then re-run KFM\n"
+            "7. Verify: OneDrive icon > Settings > Backup > check which folders are managed"
+        ),
+    },
+    {
+        "category": "Cloud & M365",
+        "problem_title": "Microsoft Teams channels and tabs missing or broken",
+        "problem_description": "Teams channels are not loading, tabs show errors or blank pages, or custom tabs/apps added to channels stop working for users.",
+        "problem_keywords": "teams channel, teams tab, tab not loading, channel error, teams app, custom tab, channel missing",
+        "solution_steps": (
+            "1. Channel not loading:\n"
+            "   - Clear Teams cache: Close Teams > delete %appdata%\\Microsoft\\Teams\\Cache\n"
+            "   - Also clear: blob_storage, databases, GPUcache, IndexedDB, Local Storage, tmp\n"
+            "   - Restart Teams\n"
+            "2. Tab showing blank/error:\n"
+            "   - SPO/Website tab: Check if the URL is still accessible\n"
+            "   - Third-party app tab: The app service may be down\n"
+            "   - Try opening the tab in browser (right-click > Open in browser)\n"
+            "3. Missing channels:\n"
+            "   - Channel may have been hidden: Team name > More options > Manage Team\n"
+            "   - Hidden channels: Click 'hidden channels' at the bottom of channel list\n"
+            "   - Channel deleted: Team owner can view and restore within 30 days\n"
+            "4. Custom app/tab permissions:\n"
+            "   - Teams Admin Center > Teams Apps > Permission Policies\n"
+            "   - Check if the app is allowed for the user's policy\n"
+            "   - Third-party apps may be blocked by admin policy\n"
+            "5. SharePoint tab issues:\n"
+            "   - SharePoint tabs need user to have access to the SharePoint site\n"
+            "   - If access denied in the tab: Grant SharePoint permissions\n"
+            "6. Teams web vs desktop:\n"
+            "   - Try the web version (teams.microsoft.com) to isolate desktop client issues\n"
+            "   - If works on web: Reinstall desktop client\n"
+            "7. Admin: Check Teams Admin Center > Teams > Manage Teams for team/channel health"
+        ),
+    },
+    {
+        "category": "Cloud & M365",
+        "problem_title": "Azure AD Connect sync errors or attribute conflicts",
+        "problem_description": "Azure AD Connect shows synchronization errors. On-premises AD objects aren't appearing in Azure AD, or attribute conflicts prevent user sync.",
+        "problem_keywords": "azure ad connect, sync error, directory sync, aad connect, attribute conflict, sync conflict, hybrid identity",
+        "solution_steps": (
+            "1. Check sync status:\n"
+            "   - Synchronization Service Manager (miisclient.exe) on the AAD Connect server\n"
+            "   - Check: Operations tab > latest runs > look for errors\n"
+            "   - Azure Portal > Azure AD Connect > Sync Status\n"
+            "2. Common sync errors:\n"
+            "   - AttributeValueMustBeUnique: Duplicate attribute (e.g., proxyAddress)\n"
+            "   - InvalidSoftMatch: UPN/email conflicts with cloud-only account\n"
+            "   - LargeObject: Object exceeds attribute limits\n"
+            "3. Duplicate attribute:\n"
+            "   - Two objects have the same proxyAddress or UserPrincipalName\n"
+            "   - Find duplicates: Get-ADUser -Filter {proxyAddresses -like '*duplicate@domain.com*'}\n"
+            "   - Remove the duplicate on one object\n"
+            "4. Force sync:\n"
+            "   - PowerShell on AAD Connect server:\n"
+            "   - Start-ADSyncSyncCycle -PolicyType Delta (quick sync)\n"
+            "   - Start-ADSyncSyncCycle -PolicyType Initial (full sync - use sparingly)\n"
+            "5. Object not syncing:\n"
+            "   - Check the OU filtering: AAD Connect wizard > Customize synchronization options\n"
+            "   - Is the user's OU included in sync?\n"
+            "   - Check Metaverse Search in Sync Service Manager\n"
+            "6. Password hash sync:\n"
+            "   - If PHS not working: Restart 'Microsoft Azure AD Sync' service\n"
+            "   - Enable PHS troubleshooting: Invoke-ADSyncDiagnostics\n"
+            "   - Users must change password once for PHS to sync initial hash\n"
+            "7. Health: Azure AD Connect Health shows sync health in Azure Portal > AAD Connect"
+        ),
+    },
+    {
+        "category": "Cloud & M365",
+        "problem_title": "Microsoft 365 admin portal slow or inaccessible",
+        "problem_description": "The Microsoft 365 admin center (admin.microsoft.com) is loading slowly, timing out, or showing errors when trying to manage users, licenses, or settings.",
+        "problem_keywords": "admin portal, admin center, m365 admin, admin slow, portal timeout, admin inaccessible, azure portal",
+        "solution_steps": (
+            "1. Check service health:\n"
+            "   - admin.microsoft.com/adminportal/home#/servicehealth\n"
+            "   - Or: status.office365.com (public status page)\n"
+            "   - Microsoft may be experiencing a portal outage\n"
+            "2. Browser troubleshooting:\n"
+            "   - Clear browser cache and cookies for microsoft.com\n"
+            "   - Try InPrivate/Incognito window\n"
+            "   - Try a different browser (Edge, Chrome, Firefox)\n"
+            "   - Disable browser extensions (ad blockers may interfere)\n"
+            "3. Network:\n"
+            "   - Check internet connectivity and speed\n"
+            "   - If behind proxy: Ensure *.microsoft.com is allowed\n"
+            "   - Try from a different network (mobile hotspot) to isolate\n"
+            "4. PowerShell alternative:\n"
+            "   - If portal is down, use PowerShell for admin tasks\n"
+            "   - Install-Module Microsoft.Graph\n"
+            "   - Connect-MgGraph -Scopes 'User.ReadWrite.All'\n"
+            "   - Get-MgUser, New-MgUser, etc.\n"
+            "5. Specific page issues:\n"
+            "   - Some admin pages are heavier than others\n"
+            "   - Users page with 10,000+ users: Use search/filter instead of scrolling\n"
+            "   - Use PowerShell for bulk operations\n"
+            "6. Conditional Access:\n"
+            "   - Your own CA policies may block or complicate admin portal access\n"
+            "   - Ensure admin accounts aren't blocked by overly restrictive policies\n"
+            "7. Alternative portals: Use specific admin centers directly (exchange, sharepoint, teams admin)"
+        ),
+    },
+    {
+        "category": "Cloud & M365",
+        "problem_title": "Exchange Online mailbox migration stuck or failed",
+        "problem_description": "Mailbox migration from on-premises Exchange to Exchange Online is stuck at a certain percentage, failed with errors, or completed with missing items.",
+        "problem_keywords": "mailbox migration, exchange migration, migration batch, move request, hybrid migration, migration stuck, cutover migration",
+        "solution_steps": (
+            "1. Check migration status:\n"
+            "   - Exchange Admin Center > Migration > Migration batches\n"
+            "   - Or PowerShell: Get-MoveRequest | Get-MoveRequestStatistics\n"
+            "   - Look at: PercentComplete, Status, StatusDetail\n"
+            "2. Stuck migration:\n"
+            "   - 'Stalled': Usually transient - will retry automatically\n"
+            "   - 'Failed': Check FailureType and Message for specific error\n"
+            "   - 95%: Waiting for final cutover (sync completion)\n"
+            "3. Common errors:\n"
+            "   - 'Large item limit exceeded': Increase -LargeItemLimit parameter\n"
+            "   - 'Bad item limit exceeded': Increase -BadItemLimit parameter\n"
+            "   - Corruption: Some items can't be migrated (calendar corruption)\n"
+            "4. Resume failed migration:\n"
+            "   - Set-MoveRequest -Identity user@domain.com -BadItemLimit 50 -LargeItemLimit 50\n"
+            "   - Resume-MoveRequest -Identity user@domain.com\n"
+            "   - Monitor: Get-MoveRequestStatistics -Identity user@domain.com\n"
+            "5. Speed optimization:\n"
+            "   - Ensure MRS Proxy is enabled on on-premises Exchange\n"
+            "   - Increase concurrent move limit if available bandwidth allows\n"
+            "   - Migrate in batches during off-hours\n"
+            "6. Missing items:\n"
+            "   - Check: Get-MoveRequestStatistics -IncludeReport\n"
+            "   - Bad items are skipped and logged\n"
+            "   - Export report: $stats.Report.Entries to review each item\n"
+            "7. Post-migration: Update Autodiscover DNS, test mail flow, and verify client reconnection"
+        ),
+    },
+    {
+        "category": "Cloud & M365",
+        "problem_title": "Microsoft Intune device enrollment failures",
+        "problem_description": "Devices fail to enroll in Microsoft Intune. Users see enrollment errors in Company Portal, or enrollment completes but policies don't apply.",
+        "problem_keywords": "intune enrollment, device enrollment, company portal, enrollment failed, intune error, mdm enrollment, autopilot",
+        "solution_steps": (
+            "1. Check enrollment restrictions:\n"
+            "   - Intune > Devices > Enrollment Restrictions\n"
+            "   - Device type restrictions: Is the OS/platform allowed?\n"
+            "   - Device limit restrictions: Has user exceeded their device limit?\n"
+            "2. Common enrollment errors:\n"
+            "   - 0x801c03ed: Device already enrolled or stale object exists\n"
+            "   - 80180014: Device limit reached\n"
+            "   - 0x80180026: Enrollment restrictions deny this device type\n"
+            "3. Prerequisites:\n"
+            "   - User must have an Intune license assigned\n"
+            "   - Azure AD > Users > Licenses > verify Intune license\n"
+            "   - MDM authority must be set to Intune (not hybrid)\n"
+            "4. Windows enrollment:\n"
+            "   - Settings > Accounts > Access work or school > Connect\n"
+            "   - Enter work email > follows MDM enrollment flow\n"
+            "   - If already Azure AD joined: Should auto-enroll if MDM scope is set\n"
+            "   - Intune > Devices > Windows > Windows Enrollment > MDM User Scope = All\n"
+            "5. iOS enrollment:\n"
+            "   - Install Company Portal from App Store\n"
+            "   - Open > Sign in > follow enrollment prompts\n"
+            "   - Install the management profile when prompted\n"
+            "   - If 'Profile Failed to Install': Check Apple MDM certificate validity\n"
+            "6. Android enrollment:\n"
+            "   - Install Company Portal from Play Store\n"
+            "   - Sign in > Set up Work Profile\n"
+            "   - If fails: Ensure Android Enterprise is connected in Intune\n"
+            "7. Autopilot: For new Windows devices, check Autopilot deployment profile assignment"
+        ),
+    },
+    {
+        "category": "Cloud & M365",
+        "problem_title": "Power BI report not loading or showing data errors",
+        "problem_description": "Power BI dashboards and reports show errors, fail to load data, display stale data, or scheduled refresh fails for shared reports.",
+        "problem_keywords": "power bi, report error, data refresh, power bi failed, dashboard error, dataset refresh, power bi gateway",
+        "solution_steps": (
+            "1. Report not loading:\n"
+            "   - Clear browser cache (Power BI Service runs in browser)\n"
+            "   - Try a different browser or InPrivate mode\n"
+            "   - Check Power BI service status: admin.microsoft.com > Health\n"
+            "2. Data refresh failure:\n"
+            "   - Power BI Service > Dataset > Settings > Scheduled Refresh\n"
+            "   - Check: Refresh History for specific error messages\n"
+            "   - Common: Credentials expired, data source unreachable\n"
+            "3. On-premises data gateway:\n"
+            "   - Required for on-premises data sources (SQL Server, file shares)\n"
+            "   - Check gateway status: Power BI > Settings > Manage Gateways\n"
+            "   - Gateway service must be running on the gateway server\n"
+            "   - Credentials stored in gateway may need updating\n"
+            "4. Credential issues:\n"
+            "   - Dataset > Settings > Data source credentials > Edit Credentials\n"
+            "   - Re-enter credentials if password changed\n"
+            "   - Service accounts may have expired passwords\n"
+            "5. Row-level security (RLS):\n"
+            "   - Users see 'no data' but admin sees data: RLS not configured for user's role\n"
+            "   - Check RLS roles in Power BI Desktop > Modeling > Manage Roles\n"
+            "   - Assign users to roles in Power BI Service\n"
+            "6. Capacity issues:\n"
+            "   - Premium/Embedded capacity may be throttled\n"
+            "   - Large datasets may exceed Pro license limits (1 GB)\n"
+            "   - Premium: 10 GB per dataset, higher refresh frequency\n"
+            "7. Publishing: If report was updated in Desktop, republish to the same workspace"
+        ),
+    },
+    {
+        "category": "Cloud & M365",
+        "problem_title": "Azure Virtual Machine performance slow or unresponsive",
+        "problem_description": "Azure VM is running slowly, experiencing high CPU/memory, or becoming unresponsive. Applications hosted on the VM are timing out.",
+        "problem_keywords": "azure vm, virtual machine slow, azure performance, vm unresponsive, azure cpu, azure disk, vm size",
+        "solution_steps": (
+            "1. Check VM metrics:\n"
+            "   - Azure Portal > VM > Monitoring > Metrics\n"
+            "   - Key metrics: CPU %, Available Memory, Disk IOPS, Network In/Out\n"
+            "   - Identify the bottleneck: CPU, memory, disk, or network\n"
+            "2. CPU constrained:\n"
+            "   - If CPU consistently >80%: VM size is too small\n"
+            "   - Resize VM: VM > Size > select larger size\n"
+            "   - This requires a VM restart\n"
+            "   - Consider: B-series for bursty workloads (cheaper)\n"
+            "3. Memory constrained:\n"
+            "   - If available memory is low: Applications are paging to disk\n"
+            "   - Resize to a memory-optimized size (E-series, M-series)\n"
+            "   - Or: Identify which process is consuming memory\n"
+            "4. Disk performance:\n"
+            "   - Standard HDD: Very slow for production workloads\n"
+            "   - Upgrade to Premium SSD or Ultra Disk\n"
+            "   - Check: Disk IOPS consumed vs provisioned\n"
+            "   - VM size also limits disk throughput (check VM limits)\n"
+            "5. Temporary disk:\n"
+            "   - Azure VMs have a temporary disk (D: on Windows)\n"
+            "   - Data on temp disk is lost during maintenance\n"
+            "   - Use temp disk for pagefile/swap only\n"
+            "6. Boot diagnostics:\n"
+            "   - If VM is unresponsive: VM > Support + troubleshooting > Boot diagnostics\n"
+            "   - Shows: Screenshot of the console and serial log\n"
+            "   - Can identify: Stuck at boot, BSOD, login prompt\n"
+            "7. Serial console: VM > Support > Serial Console for direct console access when RDP fails"
+        ),
+    },
+    {
+        "category": "Cloud & M365",
+        "problem_title": "Microsoft Teams external or guest user access issues",
+        "problem_description": "External users can't join Teams, guest users can't access shared channels or files, or guest user experience is degraded with missing features.",
+        "problem_keywords": "teams guest, external user, guest access, teams external, guest permissions, b2b, external collaboration",
+        "solution_steps": (
+            "1. Guest access settings:\n"
+            "   - Teams Admin Center > Org-wide Settings > Guest Access\n"
+            "   - 'Allow guest access in Teams' must be ON\n"
+            "   - Configure specific guest permissions below\n"
+            "2. External access vs Guest access:\n"
+            "   - External access: Chat/call with users in other orgs (federation)\n"
+            "   - Guest access: Added as member of a Team (sees channels, files)\n"
+            "   - Both have separate settings in Teams Admin Center\n"
+            "3. Azure AD guest settings:\n"
+            "   - Azure Portal > Azure AD > External Identities > External collaboration settings\n"
+            "   - Who can invite guests? (Admins, members, or guests themselves)\n"
+            "   - Guest user access restrictions (limited or same as members)\n"
+            "4. Specific domain restrictions:\n"
+            "   - Teams Admin Center > External Access > blocked/allowed domains\n"
+            "   - If allow list is configured: Guest's domain must be listed\n"
+            "   - Azure AD > External Identities > Collaboration restrictions\n"
+            "5. Guest can't access files:\n"
+            "   - SharePoint sharing settings must allow external sharing\n"
+            "   - SharePoint Admin > Sharing > at least 'New and existing guests'\n"
+            "   - If 'Only people in your organization': Guests can't access files\n"
+            "6. Guest experience:\n"
+            "   - Guests don't see: Org chart, calendar scheduling, some apps\n"
+            "   - Guests can: Chat, call, share files, attend meetings\n"
+            "   - Guest switch tenants: User icon > Switch tenant\n"
+            "7. Shared channels: For cross-org collaboration without guest accounts, use Shared Channels (preview)"
+        ),
+    },
+    {
+        "category": "Cloud & M365",
+        "problem_title": "Microsoft 365 license assignment or management issues",
+        "problem_description": "Users don't have the right M365 license, can't access certain services, or license assignment via group-based licensing shows errors.",
+        "problem_keywords": "m365 license, license assignment, group license, license error, office license, insufficient licenses, license conflict",
+        "solution_steps": (
+            "1. Check user's licenses:\n"
+            "   - M365 Admin Center > Users > Active Users > select user > Licenses\n"
+            "   - Shows assigned licenses and enabled services\n"
+            "   - Or PowerShell: Get-MgUserLicenseDetail -UserId user@domain.com\n"
+            "2. Missing service:\n"
+            "   - License is assigned but specific service is disabled\n"
+            "   - Example: Teams is disabled within the E3 license\n"
+            "   - Edit license > toggle ON the specific service\n"
+            "3. Group-based licensing:\n"
+            "   - Azure AD > Groups > select group > Licenses\n"
+            "   - Check for 'Users with errors' count\n"
+            "   - Common error: 'Not enough licenses' (pool exhausted)\n"
+            "   - Common error: 'Conflicting service plans'\n"
+            "4. Conflicting licenses:\n"
+            "   - User has two licenses with overlapping services\n"
+            "   - Example: E3 + Teams standalone = conflict\n"
+            "   - Fix: Remove the redundant standalone license\n"
+            "5. License count:\n"
+            "   - M365 Admin Center > Billing > Licenses\n"
+            "   - Shows: Available, Assigned, and total for each subscription\n"
+            "   - Purchase more licenses or reclaim from inactive users\n"
+            "6. Reclaim licenses:\n"
+            "   - Run 'Inactive users' report in Admin Center > Reports\n"
+            "   - Users not signed in for 90+ days may not need a license\n"
+            "   - Remove license from inactive/departed users\n"
+            "7. Automation: Use Azure AD dynamic groups to auto-assign licenses based on department/role"
+        ),
+    },
+    {
+        "category": "Cloud & M365",
+        "problem_title": "Azure Multi-Factor Authentication (MFA) registration issues",
+        "problem_description": "Users can't complete MFA registration, the registration prompt doesn't appear, or the registration page shows errors for new or existing users.",
+        "problem_keywords": "mfa registration, azure mfa, mfa setup, authentication methods, mfa prompt, register mfa, security info",
+        "solution_steps": (
+            "1. MFA registration portal:\n"
+            "   - Users register at: https://aka.ms/mysecurityinfo\n"
+            "   - Or: They are prompted during sign-in when MFA is required\n"
+            "2. Registration not prompted:\n"
+            "   - Check: Is MFA actually required for this user?\n"
+            "   - Per-user MFA: Azure AD > Users > Per-user MFA\n"
+            "   - Conditional Access: Check if CA policy requires MFA\n"
+            "   - Security Defaults: If enabled, all users must register within 14 days\n"
+            "3. Registration page errors:\n"
+            "   - Browser issues: Clear cache, try InPrivate/Incognito\n"
+            "   - Phone number format: Use international format (+1 for US)\n"
+            "   - App notification not received: Check phone internet connection\n"
+            "4. Temporary Access Pass:\n"
+            "   - Admin can issue a temporary pass for MFA registration\n"
+            "   - Azure AD > Users > select user > Authentication Methods > Add > TAP\n"
+            "   - User signs in with TAP and registers their permanent MFA method\n"
+            "5. Authentication methods policy:\n"
+            "   - Azure AD > Security > Authentication Methods\n"
+            "   - Enable the methods you want: Authenticator, SMS, FIDO2, etc.\n"
+            "   - Can target specific groups for each method\n"
+            "6. Combined registration:\n"
+            "   - Azure AD uses 'combined registration experience'\n"
+            "   - If old registration page shows: Enable combined registration\n"
+            "   - Azure AD > User Settings > Manage user feature preview settings\n"
+            "7. Bulk registration: For new deployments, use 'Registration campaign' to prompt all users"
+        ),
+    },
+    {
+        "category": "Cloud & M365",
+        "problem_title": "SharePoint site storage quota exceeded",
+        "problem_description": "SharePoint Online site has reached its storage quota. Users can't upload files and receive 'storage limit exceeded' or 'site is out of space' errors.",
+        "problem_keywords": "sharepoint storage, site quota, storage limit, sharepoint full, site storage, quota exceeded, sharepoint space",
+        "solution_steps": (
+            "1. Check site storage:\n"
+            "   - SharePoint Admin Center > Sites > Active Sites\n"
+            "   - Shows: Storage used and storage limit per site\n"
+            "   - Or: Site Settings > Storage Metrics\n"
+            "2. Identify large content:\n"
+            "   - Site Settings > Storage Metrics\n"
+            "   - Shows breakdown by library, list, recycle bin\n"
+            "   - Often: Recycle bin holds significant data\n"
+            "3. Empty recycle bins:\n"
+            "   - Site Recycle Bin: Site Contents > Recycle Bin\n"
+            "   - Second-stage recycle bin: Bottom of Recycle Bin page\n"
+            "   - These count against storage quota\n"
+            "4. Version history:\n"
+            "   - Each file version counts toward storage\n"
+            "   - Library Settings > Versioning > reduce max versions\n"
+            "   - Default 500 versions per file can consume huge space\n"
+            "   - Consider reducing to 50-100 versions\n"
+            "5. Increase quota: SharePoint Admin Center > Sites > select site > Storage limit > increase"
+        ),
+    },
+    {
+        "category": "Cloud & M365",
+        "problem_title": "Microsoft Forms or Planner access and creation issues",
+        "problem_description": "Users can't create Microsoft Forms surveys or Planner boards. Forms show as read-only or Planner tab in Teams shows errors.",
+        "problem_keywords": "microsoft forms, planner, forms access, planner not working, forms disabled, planner error, planner teams",
+        "solution_steps": (
+            "1. Forms licensing:\n"
+            "   - Forms requires M365 Business/E1/E3/E5 license\n"
+            "   - Check: User has an active M365 license with Forms enabled\n"
+            "   - Admin Center > Users > Licenses > Microsoft Forms ON\n"
+            "2. Forms disabled by admin:\n"
+            "   - M365 Admin Center > Settings > Org settings > Microsoft Forms\n"
+            "   - Check: 'Allow people in your org to use Forms'\n"
+            "   - External sharing settings for forms\n"
+            "3. Planner licensing:\n"
+            "   - Planner is included in M365 Business/E1/E3/E5\n"
+            "   - User must also have an Exchange Online mailbox\n"
+            "   - Planner uses M365 Groups (requires group creation rights)\n"
+            "4. Planner in Teams:\n"
+            "   - Tasks by Planner tab: Check if Planner app is enabled\n"
+            "   - Teams Admin Center > Teams Apps > Permission Policies\n"
+            "   - Ensure 'Tasks by Planner and To Do' app is allowed\n"
+            "5. Group creation: If users can't create Planner plans, check if M365 Group creation is restricted to specific groups"
+        ),
+    },
+    {
+        "category": "Cloud & M365",
+        "problem_title": "Microsoft Defender for Office 365 quarantine and policy issues",
+        "problem_description": "Legitimate emails are being quarantined by Defender for Office 365. Users can't access quarantine, or anti-phishing policies are too aggressive.",
+        "problem_keywords": "quarantine, defender, safe links, safe attachments, anti-phishing, eop, email quarantine, false positive",
+        "solution_steps": (
+            "1. Check quarantine:\n"
+            "   - Security.microsoft.com > Email & collaboration > Review > Quarantine\n"
+            "   - Users can access their own quarantine at security.microsoft.com/quarantine\n"
+            "   - Admin can release quarantined messages\n"
+            "2. Release false positives:\n"
+            "   - Select the message > Release (delivers to inbox)\n"
+            "   - Report as 'not junk' to improve future detection\n"
+            "   - Submit to Microsoft for analysis\n"
+            "3. Anti-spam policy:\n"
+            "   - Security > Policies > Anti-spam > check thresholds\n"
+            "   - Bulk mail threshold: Lower = more aggressive (default 7)\n"
+            "   - Allow list: Add trusted senders or domains\n"
+            "4. Anti-phishing policy:\n"
+            "   - Impersonation protection may block legitimate senders\n"
+            "   - Add trusted senders to impersonation exceptions\n"
+            "   - Mailbox intelligence can reduce false positives\n"
+            "5. Safe Links/Attachments: If blocking legitimate URLs or files, add to tenant allow/block list"
+        ),
+    },
+    {
+        "category": "Cloud & M365",
+        "problem_title": "Microsoft Teams phone system or calling issues",
+        "problem_description": "Teams phone system calls failing, no dial tone, calls dropping, or unable to make/receive PSTN calls through Teams calling plans or Direct Routing.",
+        "problem_keywords": "teams phone, teams calling, pstn, dial tone, direct routing, calling plan, teams voice, phone system",
+        "solution_steps": (
+            "1. Check licensing:\n"
+            "   - Phone System license must be assigned\n"
+            "   - Calling Plan OR Direct Routing must be configured\n"
+            "   - Admin Center > Users > Licenses > Phone System\n"
+            "2. Phone number assignment:\n"
+            "   - Teams Admin Center > Voice > Phone Numbers\n"
+            "   - Is a number assigned to the user?\n"
+            "   - Emergency address must be set for E911 compliance\n"
+            "3. Calling policy:\n"
+            "   - Teams Admin Center > Voice > Calling Policies\n"
+            "   - Check: 'Make private calls' is enabled\n"
+            "   - Voicemail, call forwarding, simultaneous ring settings\n"
+            "4. Direct Routing:\n"
+            "   - Session Border Controller (SBC) must be online and paired\n"
+            "   - Teams Admin Center > Voice > Direct Routing > check SBC status\n"
+            "   - Voice routing policies must route calls through the SBC\n"
+            "5. Quality: If calls drop or have poor audio, check Teams Admin Center > Analytics > Call Quality Dashboard"
+        ),
+    },
+    {
+        "category": "Cloud & M365",
+        "problem_title": "Azure AD security defaults vs Conditional Access conflicts",
+        "problem_description": "Organization has enabled both security defaults and Conditional Access policies causing conflicts, unexpected MFA prompts, or blocked access.",
+        "problem_keywords": "security defaults, conditional access, mfa conflict, azure ad security, ca policy, baseline policy, security conflict",
+        "solution_steps": (
+            "1. Security Defaults vs Conditional Access:\n"
+            "   - Security Defaults: Free, basic protection (MFA for all, block legacy auth)\n"
+            "   - Conditional Access: Paid (Azure AD P1+), granular policies\n"
+            "   - CANNOT use both simultaneously\n"
+            "2. Check current state:\n"
+            "   - Azure Portal > Azure AD > Properties > Manage Security Defaults\n"
+            "   - If enabled: All Conditional Access policies are ignored\n"
+            "   - Disable Security Defaults before creating CA policies\n"
+            "3. Migration path:\n"
+            "   - Create CA policies that replicate Security Defaults:\n"
+            "   - Policy 1: Require MFA for all users\n"
+            "   - Policy 2: Block legacy authentication\n"
+            "   - Policy 3: Require MFA for admin roles\n"
+            "4. then disable Security Defaults after CA policies are active\n"
+            "   - Test with a pilot group first\n"
+            "   - Use 'Report-only' mode to preview CA impact\n"
+            "5. Break glass: Always exclude 2 emergency admin accounts from ALL Conditional Access policies"
+        ),
+    },
 ]
 
 DIAGNOSTIC_TREE = {

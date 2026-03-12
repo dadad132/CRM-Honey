@@ -653,6 +653,605 @@ ARTICLES = [
             "7. Group Policy may override local firewall settings - check with IT admin"
         ),
     },
+    {
+        "category": "Windows",
+        "problem_title": "Blue Screen DRIVER_IRQL_NOT_LESS_OR_EQUAL (ndis.sys)",
+        "problem_description": "BSOD referencing ndis.sys or a network-related driver. Often occurs after waking from sleep or connecting to network.",
+        "problem_keywords": "ndis.sys bsod, driver irql, network driver crash, ndis crash, blue screen network, ndis bsod",
+        "solution_steps": (
+            "1. Update network adapter drivers:\n"
+            "   - Device Manager > Network adapters\n"
+            "   - Right-click adapter > Update Driver\n"
+            "   - Better: Download latest from manufacturer (Intel, Realtek, Broadcom)\n"
+            "2. Disable power management on the NIC:\n"
+            "   - Device Manager > Network adapter > Properties > Power Management\n"
+            "   - Uncheck 'Allow the computer to turn off this device'\n"
+            "3. Check for VPN/firewall software conflicts:\n"
+            "   - Third-party VPN clients may install conflicting NDIS filter drivers\n"
+            "   - Try uninstalling VPN client temporarily\n"
+            "4. Disable offloading features:\n"
+            "   - Device Manager > Network adapter > Properties > Advanced\n"
+            "   - Disable: Large Send Offload, TCP Checksum Offload, RSS\n"
+            "5. Run driver verifier to identify the problematic driver:\n"
+            "   - verifier (run limited testing mode)\n"
+            "6. sfc /scannow and DISM /Online /Cleanup-Image /RestoreHealth\n"
+            "7. If recent Windows update caused it: Uninstall the update from Recovery"
+        ),
+    },
+    {
+        "category": "Windows",
+        "problem_title": "Windows Explorer Shell keeps restarting",
+        "problem_description": "The Windows taskbar, desktop icons, and Start menu keep disappearing and reappearing. Explorer.exe is crashing and restarting in a loop.",
+        "problem_keywords": "explorer crash, explorer restart, taskbar disappear, shell crash, explorer.exe, desktop flashing",
+        "solution_steps": (
+            "1. Check Event Viewer:\n"
+            "   - Application log > filter by 'Application Error' source\n"
+            "   - Look for explorer.exe crashes - note the faulting module\n"
+            "2. Common faulting modules:\n"
+            "   - ntdll.dll: System corruption, run sfc /scannow\n"
+            "   - shell32.dll: Shell extension conflict\n"
+            "   - Third-party DLL: Identify and uninstall the application\n"
+            "3. Disable shell extensions:\n"
+            "   - Download ShellExView (NirSoft) to see all shell extensions\n"
+            "   - Disable all non-Microsoft extensions\n"
+            "   - Re-enable one by one to find the culprit\n"
+            "4. Safe Mode test:\n"
+            "   - If explorer is stable in Safe Mode: Third-party software conflict\n"
+            "   - Clean boot: msconfig > Services > Hide Microsoft > Disable All\n"
+            "5. Check for corrupted thumbnail cache:\n"
+            "   - Delete: %localappdata%\\Microsoft\\Windows\\Explorer\\thumbcache_*\n"
+            "   - Restart explorer\n"
+            "6. Reset Windows shell:\n"
+            "   - Create new user account and test if explorer works there\n"
+            "   - If yes: User profile is corrupted\n"
+            "7. sfc /scannow and DISM /Online /Cleanup-Image /RestoreHealth"
+        ),
+    },
+    {
+        "category": "Windows",
+        "problem_title": "Windows 10 to 11 upgrade failing",
+        "problem_description": "Upgrade to Windows 11 fails with compatibility errors about TPM 2.0, Secure Boot, CPU, or other requirements during installation.",
+        "problem_keywords": "windows 11 upgrade, tpm 2.0, secure boot, upgrade fail, windows 11 requirements, compatibility, win11",
+        "solution_steps": (
+            "1. Check requirements:\n"
+            "   - Run the PC Health Check app from Microsoft\n"
+            "   - Requirements: TPM 2.0, Secure Boot, 64-bit CPU (8th gen Intel+/Ryzen 2000+)\n"
+            "   - 4 GB RAM minimum, 64 GB storage\n"
+            "2. Enable TPM 2.0:\n"
+            "   - Restart > BIOS/UEFI settings (Del/F2)\n"
+            "   - Intel: Look for 'Intel PTT' under Security or Advanced\n"
+            "   - AMD: Look for 'AMD fTPM' under Security\n"
+            "   - Enable it and save/exit\n"
+            "3. Enable Secure Boot:\n"
+            "   - BIOS/UEFI > Boot or Security section\n"
+            "   - Set 'Secure Boot' to Enabled\n"
+            "   - Note: Drive must be GPT (not MBR) for Secure Boot\n"
+            "   - Check disk type: diskmgmt.msc > right-click disk > Properties > Volumes\n"
+            "4. If CPU not supported:\n"
+            "   - Windows 11 officially requires specific CPUs\n"
+            "   - The hardware does not meet Microsoft's requirements\n"
+            "   - Consider staying on Windows 10 (supported until Oct 2025)\n"
+            "5. If upgrade fails midway:\n"
+            "   - Check C:\\$WINDOWS.~BT\\Sources\\Panther\\setupact.log for error details\n"
+            "   - Free up 20+ GB of disk space\n"
+            "   - Disconnect non-essential USB devices\n"
+            "   - Disable antivirus during upgrade"
+        ),
+    },
+    {
+        "category": "Windows",
+        "problem_title": "Windows event log full or not recording events",
+        "problem_description": "Event Viewer shows 'The log file is full' or events are missing. System may have stopped recording important audit and error events.",
+        "problem_keywords": "event log full, event viewer, event log, log file full, security log, audit log, events missing",
+        "solution_steps": (
+            "1. Check log sizes:\n"
+            "   - Event Viewer > Windows Logs > right-click each log > Properties\n"
+            "   - Note the log size and maximum size\n"
+            "2. Increase maximum log size:\n"
+            "   - Right-click log > Properties > Maximum log size\n"
+            "   - Recommended: Security: 256 MB, System/Application: 64 MB\n"
+            "3. Set log behavior:\n"
+            "   - 'Overwrite events as needed' (default - recommended for most)\n"
+            "   - 'Archive the log when full' (for compliance requirements)\n"
+            "   - 'Do not overwrite events' (causes 'log full' error)\n"
+            "4. Clear old logs:\n"
+            "   - Right-click the log > Clear Log > Save And Clear (to archive first)\n"
+            "   - Or just Clear if you don't need old events\n"
+            "5. Via Group Policy:\n"
+            "   - Computer Config > Admin Templates > Windows Components > Event Log Service\n"
+            "   - Set maximum log size and retention method per log\n"
+            "6. PowerShell to manage logs:\n"
+            "   - wevtutil gl Security (view config)\n"
+            "   - wevtutil sl Security /ms:268435456 (set max size to 256MB)\n"
+            "7. Check if audit policies are generating excessive events:\n"
+            "   - auditpol /get /category:* (view all audit policies)"
+        ),
+    },
+    {
+        "category": "Windows",
+        "problem_title": "Windows not detecting second hard drive or SSD",
+        "problem_description": "A second hard drive or SSD is installed but doesn't appear in File Explorer. May show in BIOS but not in Windows.",
+        "problem_keywords": "second drive, disk not showing, new ssd, drive missing, disk management, initialize disk, unallocated",
+        "solution_steps": (
+            "1. Check Disk Management:\n"
+            "   - diskmgmt.msc > look for the drive at the bottom\n"
+            "   - If it shows as 'Not Initialized': Right-click > Initialize Disk\n"
+            "   - Choose GPT (recommended for drives > 2TB) or MBR\n"
+            "2. If it shows as 'Unallocated':\n"
+            "   - Right-click the unallocated space > New Simple Volume\n"
+            "   - Follow the wizard to format and assign a drive letter\n"
+            "3. If no drive letter:\n"
+            "   - Right-click the volume > Change Drive Letter and Paths\n"
+            "   - Assign a letter\n"
+            "4. If drive doesn't appear in Disk Management:\n"
+            "   - Check BIOS: Is the drive detected there?\n"
+            "   - Check physical connections: SATA cable and power cable\n"
+            "   - Try a different SATA port on the motherboard\n"
+            "5. For NVMe drives:\n"
+            "   - Check if NVMe is enabled in BIOS\n"
+            "   - M.2 slot may share bandwidth with SATA ports (disabling one)\n"
+            "   - Install NVMe driver if needed (Intel RST or Samsung NVMe)\n"
+            "6. Device Manager:\n"
+            "   - Disk drives > check if the drive is listed\n"
+            "   - If yellow exclamation: Right-click > Update Driver\n"
+            "7. For USB external drives: Try different USB port, update USB drivers"
+        ),
+    },
+    {
+        "category": "Windows",
+        "problem_title": "Print Screen / screenshot not working",
+        "problem_description": "Pressing Print Screen key doesn't capture screenshots. Snipping Tool or Win+Shift+S not working either.",
+        "problem_keywords": "screenshot, print screen, snipping tool, screen capture, prtsc, win shift s, screenshot not working",
+        "solution_steps": (
+            "1. Check Print Screen key:\n"
+            "   - Some laptops: Need Fn+PrtSc combination\n"
+            "   - PrtSc saves to clipboard - paste in Paint to see it\n"
+            "   - Win+PrtSc: Saves directly to Pictures\\Screenshots folder\n"
+            "2. Snipping Tool / Snip & Sketch:\n"
+            "   - Win+Shift+S should open the snipping toolbar\n"
+            "   - If not working: Reset the app\n"
+            "   - Settings > Apps > Snipping Tool > Advanced > Reset\n"
+            "3. Check for keyboard shortcuts conflict:\n"
+            "   - OneDrive may intercept PrtSc: OneDrive Settings > Backup > uncheck 'Automatically save screenshots'\n"
+            "   - Third-party screenshot tools may capture the key\n"
+            "   - Gaming software (GeForce Experience, Xbox Game Bar) may intercept\n"
+            "4. Fix via Registry:\n"
+            "   - HKCU\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Explorer\n"
+            "   - Set 'ScreenshotIndex' DWORD value\n"
+            "5. Reinstall Snipping Tool:\n"
+            "   - PowerShell: Get-AppxPackage *SnippingTool* | Remove-AppxPackage\n"
+            "   - Then reinstall from Microsoft Store\n"
+            "6. Try alternative methods:\n"
+            "   - Win+G (Xbox Game Bar) > Capture\n"
+            "   - Alt+PrtSc to capture active window only"
+        ),
+    },
+    {
+        "category": "Windows",
+        "problem_title": "Windows PIN or fingerprint login stopped working",
+        "problem_description": "Windows Hello PIN, fingerprint, or facial recognition stopped working after an update. Back to password-only login.",
+        "problem_keywords": "windows hello, pin login, fingerprint, facial recognition, biometric, hello not working, pin error",
+        "solution_steps": (
+            "1. Reset the PIN:\n"
+            "   - Settings > Accounts > Sign-in options > PIN (Windows Hello)\n"
+            "   - Click 'I forgot my PIN' and follow the prompts\n"
+            "   - Requires the account password\n"
+            "2. Clear PIN data:\n"
+            "   - Delete the folder: C:\\Windows\\ServiceProfiles\\LocalService\\AppData\\Local\\Microsoft\\Ngc\n"
+            "   - Requires admin permissions (take ownership first)\n"
+            "   - Restart and set up PIN again\n"
+            "3. For fingerprint:\n"
+            "   - Settings > Accounts > Sign-in options > Fingerprint\n"
+            "   - Remove all fingerprints and re-enroll\n"
+            "   - Update fingerprint reader driver from Device Manager\n"
+            "   - Check: Device Manager > Biometric devices\n"
+            "4. Check required services:\n"
+            "   - services.msc > 'Windows Biometric Service' > Running\n"
+            "   - 'Microsoft Passport' service > Running\n"
+            "   - 'Credential Manager' service > Running\n"
+            "5. Group Policy check:\n"
+            "   - Computer Config > Admin Templates > System > Logon\n"
+            "   - 'Turn on convenience PIN sign-in' should be Enabled or Not Configured\n"
+            "6. TPM issues:\n"
+            "   - tpm.msc > check TPM status\n"
+            "   - PIN uses TPM - if TPM has errors, clear and reinitialize"
+        ),
+    },
+    {
+        "category": "Windows",
+        "problem_title": "Scheduled Task won't run or runs at wrong time",
+        "problem_description": "Windows Task Scheduler tasks are not executing at the configured times, or run at unexpected times. Manual run may work fine.",
+        "problem_keywords": "scheduled task, task scheduler, task not running, wrong time, scheduled job, task trigger, cron",
+        "solution_steps": (
+            "1. Check task status:\n"
+            "   - Task Scheduler > check 'Last Run Result'\n"
+            "   - 0x0: Success\n"
+            "   - 0x1: Incorrect function (check the action/command)\n"
+            "   - 0x41301: Currently running\n"
+            "   - 0x41303: Task not yet run\n"
+            "   - 0x800710E0: The operator or admin has refused the request\n"
+            "2. Check 'Run whether user is logged on or not':\n"
+            "   - Task Properties > General > Security options\n"
+            "   - This must be selected for tasks to run when nobody is logged in\n"
+            "   - Requires storing the password\n"
+            "3. Check the user account:\n"
+            "   - The run-as account must have 'Log on as a batch job' right\n"
+            "   - Local Security Policy > User Rights Assignment\n"
+            "   - If password changed: Update the task password\n"
+            "4. Conditions tab:\n"
+            "   - Uncheck 'Start only if AC power' (for laptops)\n"
+            "   - Uncheck 'Start only if network is available' if not needed\n"
+            "   - Check 'Wake the computer' if needed\n"
+            "5. Wrong time execution:\n"
+            "   - Check timezone on the server/PC\n"
+            "   - Check if trigger is set to UTC or local time\n"
+            "   - Review trigger schedule carefully\n"
+            "6. History tab: Enable Task Scheduler history for debugging:\n"
+            "   - Task Scheduler > Action > Enable All Tasks History"
+        ),
+    },
+    {
+        "category": "Windows",
+        "problem_title": "Night Light or color settings not working",
+        "problem_description": "Windows Night Light feature not turning on/off, color calibration is wrong, or display colors look oversaturated or washed out.",
+        "problem_keywords": "night light, color calibration, display color, color temperature, oversaturated, color profile, night mode",
+        "solution_steps": (
+            "1. Night Light not working:\n"
+            "   - Settings > System > Display > Night Light\n"
+            "   - Toggle off and back on\n"
+            "   - Set schedule: Sunset to Sunrise or custom times\n"
+            "   - May require Location Services to be enabled for sunset/sunrise\n"
+            "2. Night Light greyed out:\n"
+            "   - Update the display/graphics driver\n"
+            "   - Some older or basic display drivers don't support Night Light\n"
+            "   - Check: Device Manager > Display adapters > update driver\n"
+            "3. Color calibration:\n"
+            "   - Search 'Calibrate display color' > follow the wizard\n"
+            "   - Adjusts gamma, brightness, contrast, and color balance\n"
+            "   - Or: dccw.exe from Run dialog\n"
+            "4. Wrong color profile:\n"
+            "   - Settings > System > Display > Advanced display settings\n"
+            "   - Color Management > select monitor > Add/remove profiles\n"
+            "   - Use the manufacturer's ICC profile\n"
+            "5. Graphics driver color settings:\n"
+            "   - Intel: Intel Graphics Command Center > Display > Color\n"
+            "   - NVIDIA: NVIDIA Control Panel > Display > Adjust desktop color\n"
+            "   - AMD: AMD Adrenalin > Display > Color settings\n"
+            "   - Reset all to defaults if colors are off\n"
+            "6. HDR issues: Settings > Display > HDR > toggle off if causing problems"
+        ),
+    },
+    {
+        "category": "Windows",
+        "problem_title": "Windows Services failing to start at boot",
+        "problem_description": "One or more Windows services fail to start automatically. Applications dependent on these services don't work until services are manually started.",
+        "problem_keywords": "service failed, service not starting, automatic service, service timeout, service error 1053, dependency",
+        "solution_steps": (
+            "1. Check the service error:\n"
+            "   - services.msc > find the service > Properties\n"
+            "   - Note the startup type and current status\n"
+            "   - Check Event Viewer > System for service errors at boot time\n"
+            "2. Service dependencies:\n"
+            "   - Service Properties > Dependencies tab\n"
+            "   - All dependent services must start first\n"
+            "   - If a dependency fails, the service can't start\n"
+            "3. Error 1053 (Service did not respond in time):\n"
+            "   - Registry: HKLM\\SYSTEM\\CurrentControlSet\\Control\n"
+            "   - Increase 'ServicesPipeTimeout' DWORD to 60000 (60 seconds)\n"
+            "   - Slow disks or extensive startup can cause timeouts\n"
+            "4. Set startup type:\n"
+            "   - Automatic: Starts at boot\n"
+            "   - Automatic (Delayed Start): Starts after other services (better for slow PCs)\n"
+            "   - Try changing to Delayed Start if it fails with Automatic\n"
+            "5. Log On account:\n"
+            "   - Service Properties > Log On tab\n"
+            "   - Try 'Local System' account if a specific account fails\n"
+            "   - If using a domain account: Verify password hasn't changed\n"
+            "6. Repair service registration:\n"
+            "   - sc config ServiceName start= auto\n"
+            "   - sfc /scannow to repair system files\n"
+            "7. For third-party service: Reinstall the application"
+        ),
+    },
+    {
+        "category": "Windows",
+        "problem_title": "Clipboard not working or can't copy/paste",
+        "problem_description": "Copy and paste (Ctrl+C/Ctrl+V) stops working. Clipboard is empty when trying to paste, or content doesn't transfer between applications.",
+        "problem_keywords": "clipboard, copy paste, ctrl c, ctrl v, clipboard empty, can't paste, copy not working",
+        "solution_steps": (
+            "1. Restart clipboard:\n"
+            "   - Open Task Manager > find 'rdpclip.exe' or 'Windows Explorer'\n"
+            "   - End task on rdpclip.exe (if on Remote Desktop)\n"
+            "   - Restart Windows Explorer: Task Manager > Details > explorer.exe > End Task > File > New Task > explorer.exe\n"
+            "2. Clear clipboard:\n"
+            "   - Win+V > Clear All\n"
+            "   - Or: cmd > echo off | clip\n"
+            "   - Settings > System > Clipboard > Clear clipboard data\n"
+            "3. Check Clipboard service:\n"
+            "   - services.msc > 'ClipSVC' (Clipboard User Service) > Running\n"
+            "   - Restart the service if needed\n"
+            "4. Remote Desktop clipboard issues:\n"
+            "   - RDP session: rdpclip.exe handles clipboard sync\n"
+            "   - Kill rdpclip.exe in Task Manager and restart it\n"
+            "   - RDP settings: Local Resources > Clipboard must be checked\n"
+            "5. Application-specific:\n"
+            "   - Some applications lock the clipboard while using it\n"
+            "   - Try copying from/to a different application (e.g., Notepad)\n"
+            "   - Close apps one by one to find the culprit\n"
+            "6. Enable clipboard history:\n"
+            "   - Settings > System > Clipboard > Clipboard history: On\n"
+            "   - Win+V to see clipboard history"
+        ),
+    },
+    {
+        "category": "Windows",
+        "problem_title": "Windows hibernation or sleep mode not working",
+        "problem_description": "Computer won't sleep, won't hibernate, wakes from sleep immediately, or won't wake from sleep properly.",
+        "problem_keywords": "sleep mode, hibernate, won't sleep, wake from sleep, power, standby, sleep not working",
+        "solution_steps": (
+            "1. Won't go to sleep:\n"
+            "   - powercfg /requests (shows what's preventing sleep)\n"
+            "   - Common: Media player, downloads, USB devices\n"
+            "   - powercfg /requestsoverride (override specific blockers)\n"
+            "2. Wakes immediately after sleeping:\n"
+            "   - powercfg /lastwake (shows what woke the PC)\n"
+            "   - Common culprits: Network adapter, mouse, keyboard\n"
+            "   - Device Manager > Network adapter > Properties > Power Management\n"
+            "   - Uncheck 'Allow this device to wake the computer'\n"
+            "   - Do the same for mouse if it's too sensitive\n"
+            "3. Hibernate not available:\n"
+            "   - CMD (admin): powercfg /hibernate on\n"
+            "   - Add Hibernate to power menu: Power Options > Choose what power buttons do\n"
+            "   - Check: Requires enough disk space for hiberfil.sys (RAM size)\n"
+            "4. Won't wake from sleep (black screen):\n"
+            "   - Update graphics driver\n"
+            "   - Try: Press any key, move mouse, press power button briefly\n"
+            "   - Disable 'Fast Startup': Power Options > Choose what power buttons do > Change settings > uncheck 'Turn on fast startup'\n"
+            "5. Sleep/hibernate troubleshooter:\n"
+            "   - powercfg /energy (generates energy report)\n"
+            "   - Check the report for warnings and errors\n"
+            "6. BIOS: Check sleep/suspend settings (S3 vs Modern Standby)"
+        ),
+    },
+    {
+        "category": "Windows",
+        "problem_title": "Windows fonts missing, corrupted, or not displaying",
+        "problem_description": "Fonts appear as boxes or squares, certain applications show wrong fonts, or custom installed fonts are missing after an update.",
+        "problem_keywords": "fonts missing, font corrupted, boxes instead of text, missing characters, font install, font not showing",
+        "solution_steps": (
+            "1. Rebuild font cache:\n"
+            "   - services.msc > 'Windows Font Cache Service' > Stop\n"
+            "   - Delete: C:\\Windows\\ServiceProfiles\\LocalService\\AppData\\Local\\FontCache\\*\n"
+            "   - Delete: C:\\Windows\\System32\\FNTCACHE.DAT\n"
+            "   - Restart the font cache service and restart the PC\n"
+            "2. Restore default fonts:\n"
+            "   - Settings > Personalization > Fonts > Related settings > Font settings\n"
+            "   - 'Restore default font settings'\n"
+            "3. Check font folder:\n"
+            "   - C:\\Windows\\Fonts should contain the system fonts\n"
+            "   - If fonts were deleted: Copy from a working PC or Windows ISO\n"
+            "   - sfc /scannow restores missing system files including fonts\n"
+            "4. Install custom fonts:\n"
+            "   - Right-click .ttf or .otf file > Install\n"
+            "   - Or drag into C:\\Windows\\Fonts\n"
+            "   - 'Install for all users' requires admin rights\n"
+            "5. Group Policy font restrictions:\n"
+            "   - Computer Config > Admin Templates > Network > Fonts\n"
+            "   - 'Enable font providers' may be disabled\n"
+            "   - 'Download fonts over metered connections' may block fonts\n"
+            "6. For boxes/squares appearing:\n"
+            "   - Missing Unicode fonts needed for the language\n"
+            "   - Settings > Time & Language > Language > Add language packs needed"
+        ),
+    },
+    {
+        "category": "Windows",
+        "problem_title": "Disk Check (CHKDSK) needed or running at every boot",
+        "problem_description": "Windows prompts to run disk check or CHKDSK runs automatically at every boot. May indicate disk errors or improper shutdowns.",
+        "problem_keywords": "chkdsk, disk check, check disk, chkdsk every boot, disk error, file system error, chkdsk stuck",
+        "solution_steps": (
+            "1. Run CHKDSK manually:\n"
+            "   - CMD (admin): chkdsk C: /f /r\n"
+            "   - /f: Fix errors, /r: Locate bad sectors and recover data\n"
+            "   - Will schedule for next reboot on boot drive\n"
+            "   - Let it complete fully - do NOT interrupt\n"
+            "2. CHKDSK running every boot:\n"
+            "   - Check dirty bit: fsutil dirty query C:\n"
+            "   - If 'Dirty': Run chkdsk /f to fix errors and clear the bit\n"
+            "   - Registry check: HKLM\\SYSTEM\\CurrentControlSet\\Control\\Session Manager\n"
+            "   - 'BootExecute' should show 'autocheck autochk *' (not additional entries)\n"
+            "3. CHKDSK stuck at a percentage:\n"
+            "   - Stage 4 and 5 can take hours on large drives\n"
+            "   - Do NOT interrupt - let it finish\n"
+            "   - If truly stuck (24+ hours): Power cycle and run again\n"
+            "4. Check the SMART health of the drive:\n"
+            "   - Use CrystalDiskInfo to check for hardware errors\n"
+            "   - Repeated CHKDSK needs often means the drive is failing\n"
+            "   - Back up data immediately if SMART shows warnings\n"
+            "5. For SSDs:\n"
+            "   - chkdsk /f is fine on SSDs (skip /r as it's for bad sectors)\n"
+            "   - SSD wear: Check Total Bytes Written in CrystalDiskInfo\n"
+            "6. After CHKDSK: Review the log in Event Viewer > Application > Event ID 26212 (Wininit)"
+        ),
+    },
+    {
+        "category": "Windows",
+        "problem_title": "Remote Desktop scaling or display issues",
+        "problem_description": "Remote Desktop session shows tiny text, blurry display, wrong resolution, or DPI scaling issues on high-resolution monitors.",
+        "problem_keywords": "rdp scaling, rdp resolution, rdp blurry, remote desktop display, rdp dpi, rdp small text, rdp monitor",
+        "solution_steps": (
+            "1. Adjust RDP display settings before connecting:\n"
+            "   - mstsc > Show Options > Display tab\n"
+            "   - Resolution slider: Set to desired resolution or 'Full Screen'\n"
+            "   - Check 'Use all my monitors for remote session' if multi-monitor\n"
+            "2. Smart sizing:\n"
+            "   - In the RDP window: System menu > Smart Sizing\n"
+            "   - This scales the remote desktop to fit the window\n"
+            "3. DPI scaling fix:\n"
+            "   - Right-click mstsc.exe > Properties > Compatibility\n"
+            "   - Change high DPI settings > Override high DPI scaling\n"
+            "   - Scaling performed by: System\n"
+            "4. RDP file settings for custom DPI:\n"
+            "   - Edit the .rdp file in Notepad\n"
+            "   - Add: desktopscalefactor:i:125 (or 150, 200 etc.)\n"
+            "   - Add: smart sizing:i:1\n"
+            "5. Dynamic resolution:\n"
+            "   - Windows 10+ supports dynamic resolution in RDP\n"
+            "   - Resizing the RDP window should change the remote resolution\n"
+            "   - If not working: Check Group Policy on the remote server\n"
+            "6. Multi-monitor:\n"
+            "   - mstsc /multimon (command line to enable multi-monitor)\n"
+            "   - Requires same DPI across monitors for best results"
+        ),
+    },
+    {
+        "category": "Windows",
+        "problem_title": "Windows Installer service errors (MSI failures)",
+        "problem_description": "Applications fail to install or uninstall with Windows Installer errors. MSI packages show error codes like 1603, 1722, or 'The Windows Installer Service could not be accessed'.",
+        "problem_keywords": "msi error, windows installer, error 1603, error 1722, installer service, msiexec, install failed",
+        "solution_steps": (
+            "1. Check Windows Installer service:\n"
+            "   - services.msc > 'Windows Installer' > should be Manual or Running\n"
+            "   - If stopped: Start it\n"
+            "   - If won't start: msiexec /regserver (re-register the service)\n"
+            "2. Error 1603 (Fatal error during installation):\n"
+            "   - Check Windows Temp folder: %TEMP%\\MSI*.LOG\n"
+            "   - Common: Not enough disk space, permissions, or locked files\n"
+            "   - Try running installer as administrator\n"
+            "   - Close all running applications first\n"
+            "3. Error 1722 (Problem with Windows Installer package):\n"
+            "   - The .msi package has a problem with a custom action\n"
+            "   - Try re-downloading the installer\n"
+            "   - Run in compatibility mode\n"
+            "4. Cannot uninstall:\n"
+            "   - Use Microsoft's Program Install/Uninstall Troubleshooter\n"
+            "   - Available from support.microsoft.com\n"
+            "   - Fixes broken uninstall registrations\n"
+            "5. Re-register Windows Installer:\n"
+            "   - CMD (admin): msiexec /unregister then msiexec /regserver\n"
+            "6. Install logging for debugging:\n"
+            "   - msiexec /i package.msi /l*vx install.log\n"
+            "   - Review install.log for the specific error\n"
+            "7. sfc /scannow to repair system files"
+        ),
+    },
+    {
+        "category": "Windows",
+        "problem_title": "Disk encryption with BitLocker causing boot delay",
+        "problem_description": "Computer takes much longer to boot after BitLocker encryption was enabled. Startup may show 'Preparing BitLocker' or just be very slow.",
+        "problem_keywords": "bitlocker slow boot, bitlocker encrypting, bitlocker startup, slow encryption, bitlocker preparing, boot delay",
+        "solution_steps": (
+            "1. Check encryption status:\n"
+            "   - manage-bde -status C:\n"
+            "   - If 'Encryption in Progress': The drive is still encrypting\n"
+            "   - This is normal - initial encryption can take hours\n"
+            "   - Boot will be slower until encryption completes\n"
+            "2. While encryption is in progress:\n"
+            "   - Do NOT interrupt or power off during encryption\n"
+            "   - manage-bde -status shows percentage complete\n"
+            "   - Normal activities can continue - encryption runs in background\n"
+            "3. After encryption completes but still slow:\n"
+            "   - BitLocker decryption at boot adds about 5-10 seconds\n"
+            "   - Check if TPM is working: tpm.msc\n"
+            "   - Without TPM: BitLocker uses password/USB key (slower)\n"
+            "4. Optimize boot:\n"
+            "   - Ensure Fast Startup is enabled\n"
+            "   - Check BIOS boot order: Remove unnecessary boot devices\n"
+            "   - SSD + TPM: BitLocker overhead should be minimal\n"
+            "   - HDD: Expect more noticeable slowdown\n"
+            "5. If boot is extremely slow (minutes):\n"
+            "   - Check Event Viewer for BitLocker errors\n"
+            "   - Check SMART health of the drive\n"
+            "   - Update BIOS/firmware\n"
+            "6. To pause encryption temporarily:\n"
+            "   - manage-bde -pause C: (resume later with manage-bde -resume C:)"
+        ),
+    },
+    {
+        "category": "Windows",
+        "problem_title": "Windows Sandbox or Hyper-V not available",
+        "problem_description": "Cannot enable Windows Sandbox or Hyper-V. The feature doesn't appear in Windows Features or gives an error about virtualization.",
+        "problem_keywords": "windows sandbox, hyper-v, virtualization, hypervisor, sandbox not available, vt-x, amd-v",
+        "solution_steps": (
+            "1. Check Windows edition:\n"
+            "   - Windows Sandbox: Requires Pro or Enterprise (not Home)\n"
+            "   - Hyper-V: Requires Pro, Enterprise, or Education (not Home)\n"
+            "   - Check: winver (shows edition)\n"
+            "2. Enable virtualization in BIOS:\n"
+            "   - Restart > BIOS/UEFI settings\n"
+            "   - Intel: Enable 'Intel Virtualization Technology' (VT-x)\n"
+            "   - AMD: Enable 'AMD-V' or 'SVM Mode'\n"
+            "   - Save and exit\n"
+            "3. Enable the Windows feature:\n"
+            "   - Control Panel > Programs > Turn Windows features on or off\n"
+            "   - Check 'Hyper-V' (all sub-items)\n"
+            "   - Check 'Windows Sandbox'\n"
+            "   - Restart when prompted\n"
+            "4. Check virtualization status:\n"
+            "   - Task Manager > Performance > CPU\n"
+            "   - 'Virtualization: Enabled' should show at the bottom\n"
+            "   - If 'Disabled': Go to BIOS (step 2)\n"
+            "5. Conflicts:\n"
+            "   - VirtualBox/VMware may conflict with Hyper-V\n"
+            "   - Choose one hypervisor or enable WHP (Windows Hypervisor Platform)\n"
+            "   - bcdedit /set hypervisorlaunchtype auto (enable Hyper-V)\n"
+            "6. For nested virtualization (VM inside VM):\n"
+            "   - The host must also have Hyper-V enabled\n"
+            "   - Enable nested virtualization on the VM"
+        ),
+    },
+    {
+        "category": "Windows",
+        "problem_title": "Windows Sandbox or Hyper-V feature not available",
+        "problem_description": "Windows Sandbox or Hyper-V option is grayed out in Windows Features, won't enable, or gives errors about virtualization not supported despite having a compatible CPU.",
+        "problem_keywords": "windows sandbox, hyper-v, virtualization, windows features, sandbox not available, hyper-v grayed out, vt-x, slat",
+        "solution_steps": (
+            "1. Check requirements:\n"
+            "   - Windows 10/11 Pro, Enterprise, or Education (not Home)\n"
+            "   - 64-bit processor with SLAT (Second Level Address Translation)\n"
+            "   - Minimum 4GB RAM (8GB+ recommended)\n"
+            "   - systeminfo | findstr /i \"Hyper-V\"\n"
+            "2. Enable in BIOS:\n"
+            "   - Enter BIOS/UEFI (usually F2, F10, DEL at boot)\n"
+            "   - Intel: Enable VT-x / Intel Virtualization Technology\n"
+            "   - AMD: Enable AMD-V / SVM Mode\n"
+            "   - Save and exit\n"
+            "3. Enable Windows features:\n"
+            "   - Control Panel > Programs > Turn Windows features on or off\n"
+            "   - Check: Hyper-V, Windows Sandbox, Virtual Machine Platform\n"
+            "   - Or PowerShell: Enable-WindowsOptionalFeature -Online -FeatureName Microsoft-Hyper-V-All\n"
+            "4. Conflict with other hypervisors:\n"
+            "   - VirtualBox/VMware may conflict with Hyper-V\n"
+            "   - bcdedit /set hypervisorlaunchtype auto (enable Hyper-V)\n"
+            "   - bcdedit /set hypervisorlaunchtype off (disable for other hypervisors)\n"
+            "5. Reboot required after enabling any virtualization feature"
+        ),
+    },
+    {
+        "category": "Windows",
+        "problem_title": "Windows event log full or event log service errors",
+        "problem_description": "Windows Event Viewer shows 'event log is full' warnings, events not being recorded, or Event Log service failing to start. Critical for security auditing and troubleshooting.",
+        "problem_keywords": "event log, event viewer, log full, event log service, windows log, security log, audit log, log size",
+        "solution_steps": (
+            "1. Check log sizes:\n"
+            "   - Event Viewer > Windows Logs\n"
+            "   - Right-click each log > Properties\n"
+            "   - Shows: Current size, maximum size, overwrite policy\n"
+            "2. Increase log size:\n"
+            "   - Right-click log > Properties > Maximum log size\n"
+            "   - Recommended: Security 1GB+, Application 256MB, System 256MB\n"
+            "   - Set overwrite policy: 'Overwrite events as needed'\n"
+            "3. Clear old logs:\n"
+            "   - Right-click log > Clear Log\n"
+            "   - Save before clearing: 'Save and Clear'\n"
+            "   - PowerShell: wevtutil cl Security\n"
+            "4. Group Policy settings:\n"
+            "   - Computer Config > Admin Templates > Windows Components > Event Log Service\n"
+            "   - Set max log sizes and retention method per log\n"
+            "   - Security log: 'Do not overwrite' for compliance\n"
+            "5. Event Log service: If service won't start, check %SystemRoot%\\System32\\winevt\\Logs\\ folder permissions (SYSTEM needs Full Control)"
+        ),
+    },
 ]
 
 
