@@ -412,44 +412,10 @@ class EmailToTicketService:
         return name, email_addr.lower()
     
     def clean_email_body(self, body: str) -> str:
-        """Clean email body (format nicely but preserve signature content)"""
+        """Clean email body - preserve full content including quoted/forwarded sections"""
         import re
         
-        lines = body.split('\n')
-        cleaned_lines = []
-        in_quoted_reply = False
-        
-        # Markers that indicate start of quoted reply (not signature)
-        quote_markers = [
-            'On ', 'From:', '-----Original Message-----',
-            '> On ', '> From:', 'wrote:'
-        ]
-        
-        for line in lines:
-            stripped = line.strip()
-            
-            # Detect start of quoted reply section (usually previous email thread)
-            if any(stripped.startswith(marker) for marker in quote_markers):
-                # Check if this looks like a quote header
-                if 'wrote:' in stripped or stripped.startswith('From:') or stripped.startswith('-----'):
-                    in_quoted_reply = True
-                    continue
-            
-            # Skip lines that are clearly quoted text (start with >)
-            if stripped.startswith('>'):
-                continue
-            
-            # If we're in a quoted reply section, skip until we see a non-quoted line
-            if in_quoted_reply and stripped:
-                # Still in quote section
-                continue
-            elif in_quoted_reply and not stripped:
-                # Empty line might end quote section, but be careful
-                pass
-            
-            cleaned_lines.append(line)
-        
-        result = '\n'.join(cleaned_lines).strip()
+        result = body.strip()
         
         # Clean up excessive whitespace 
         result = re.sub(r'\n{4,}', '\n\n\n', result)  # Max 3 consecutive newlines
