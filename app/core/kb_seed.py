@@ -24,6 +24,8 @@ async def seed_knowledge_base(workspace_id: int) -> None:
             select(SupportArticle).where(SupportArticle.workspace_id == workspace_id).limit(1)
         )).scalar_one_or_none()
         if existing:
+            # Fix any category name mismatches from older seeds
+            await _fix_category_names(session, workspace_id)
             return  # Already seeded
 
         # Import data (deferred to avoid circular imports at module level)
@@ -115,3 +117,43 @@ async def _seed_tree_node(
             session, workspace_id, category, child,
             parent_id=db_node.id, sort_order=idx,
         )
+
+
+# Mapping from old category names to correct article-data names
+_CATEGORY_RENAMES = {
+    "Authentication": "Account & Access",
+    "Email": "Email & Outlook",
+}
+
+
+async def _fix_category_names(session: AsyncSession, workspace_id: int) -> None:
+    """Rename categories that were seeded with old names so they match article data."""
+    from sqlmodel import func
+
+    cats = (await session.execute(
+        select(SupportCategory).where(SupportCategory.workspace_id == workspace_id)
+    )).scalars().all()
+
+    changed = False
+    for cat in cats:
+        new_name = _CATEGORY_RENAMES.get(cat.name)
+        if new_name:
+            logger.info(f"🔧 Renaming KB category '{cat.name}' → '{new_name}'")
+            cat.name = new_name
+            changed = True
+
+    if not changed:
+        return
+
+    # Recount articles per category
+    for cat in cats:
+        count_result = await session.execute(
+            select(func.count()).where(
+                SupportArticle.workspace_id == workspace_id,
+                SupportArticle.category == cat.name,
+            )
+        )
+        cat.article_count = count_result.scalar_one()
+
+    await session.commit()
+    logger.info("✅ KB category names fixed")
