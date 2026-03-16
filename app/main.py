@@ -90,9 +90,13 @@ class CacheControlMiddleware(BaseHTTPMiddleware):
     """Add cache headers to static files for better performance"""
     async def dispatch(self, request: Request, call_next):
         response = await call_next(request)
+        path = request.url.path
         # Cache uploaded files (images, attachments) for 1 day
-        if request.url.path.startswith('/uploads'):
+        if path.startswith('/uploads'):
             response.headers['Cache-Control'] = 'public, max-age=86400'
+        # Cache static assets (JS, CSS, icons, manifest) for 7 days
+        elif path.startswith('/static'):
+            response.headers['Cache-Control'] = 'public, max-age=604800'
         return response
 
 app.add_middleware(CacheControlMiddleware)
@@ -147,28 +151,6 @@ app.mount("/static", StaticFiles(directory=static_path), name="static")
 @app.get("/health")
 async def health():
     return {"status": "ok"}
-
-
-# API documentation routes - DISABLED for all users
-# Documentation is completely hidden from all users including admins
-# Uncomment routes below if you need to enable API docs temporarily
-
-# @app.get("/docs", include_in_schema=False)
-# async def custom_swagger_ui_html(request: Request):
-#     """Swagger UI - Disabled"""
-#     raise HTTPException(status_code=404, detail="Not found")
-
-
-# @app.get("/redoc", include_in_schema=False)
-# async def redoc_html(request: Request):
-#     """ReDoc - Disabled"""
-#     raise HTTPException(status_code=404, detail="Not found")
-
-
-# @app.get("/openapi.json", include_in_schema=False)
-# async def get_open_api_endpoint(request: Request):
-#     """OpenAPI JSON - Disabled"""
-#     raise HTTPException(status_code=404, detail="Not found")
 
 
 # API routers

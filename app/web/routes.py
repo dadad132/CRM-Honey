@@ -48,10 +48,10 @@ from app.models.chat import Chat, ChatMember, Message
 from app.models.meeting import Meeting, MeetingAttendee
 from app.models.company import Company
 from app.models.contact import Contact
-from app.models.lead import Lead, LeadStatus, LeadSource
-from app.models.deal import Deal, DealStage
-from app.models.activity import Activity, ActivityType
-from app.core.bubbles_personality import get_conversational_response, HUMAN_REQUEST_TRIGGERS
+from app.models.lead import Lead
+from app.models.deal import Deal
+from app.models.activity import Activity
+from app.core.bubbles_personality import get_conversational_response
 
 BASE_DIR = Path(__file__).resolve().parents[1]
 templates = Jinja2Templates(directory=str(BASE_DIR / 'templates'))
