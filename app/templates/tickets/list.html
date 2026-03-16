@@ -856,29 +856,11 @@ async function checkEmailsAsync() {
         const data = await response.json();
         
         if (data.success) {
-            if (data.tickets_created > 0) {
-                showToast(`✓ Created ${data.tickets_created} ticket(s): ${data.ticket_numbers.join(', ')}`, 'success');
-                // Reload page to show new tickets
-                setTimeout(() => window.location.reload(), 1500);
-            } else {
-                showToast('✓ No new unprocessed emails found', 'info');
-            }
+            showToast('✓ Email check complete', 'success');
+            // Reload page to show any new tickets
+            setTimeout(() => window.location.reload(), 1000);
         } else {
-            // Show detailed error info per account
-            let errorMsg = data.message || data.error || 'Unknown error';
-            if (data.account_results) {
-                const failed = data.account_results.filter(a => a.status === 'error');
-                if (failed.length > 0) {
-                    errorMsg += '\n\nFailed accounts:\n' + failed.map(a => 
-                        `• ${a.name} (${a.host || 'N/A'}): ${a.error}`
-                    ).join('\n');
-                }
-            }
-            showToast('⚠ ' + errorMsg, 'error');
-            // Still reload if some tickets were created
-            if (data.tickets_created > 0) {
-                setTimeout(() => window.location.reload(), 2000);
-            }
+            showToast('⚠ ' + (data.error || data.message || 'Unknown error'), 'error');
         }
     } catch (error) {
         showToast('✗ Error checking emails: ' + error.message, 'error');

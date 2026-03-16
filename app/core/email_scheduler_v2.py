@@ -29,6 +29,25 @@ class EmailScheduler:
         self.check_interval = check_interval
         self.running = False
         self.task = None
+        self._wake_event = asyncio.Event()
+        self._lock = asyncio.Lock()
+    
+    async def check_now(self):
+        """Wake the scheduler to run an immediate email check.
+        Returns after the check completes."""
+        if not self.running:
+            return
+        # Signal the sleeping loop to wake up
+        self._wake_event.set()
+        # Wait briefly for the lock to be acquired (meaning a check started)
+        # then wait for the lock to be released (meaning the check finished)
+        for _ in range(300):  # max 30 seconds
+            if self._lock.locked():
+                break
+            await asyncio.sleep(0.1)
+        # Now wait for the check to finish
+        async with self._lock:
+            pass
     
     async def check_emails_task(self):
         """Background task to check emails periodically"""
@@ -39,41 +58,47 @@ class EmailScheduler:
         while self.running:
             check_count += 1
             try:
-                timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-                print(f"[{timestamp}] [Email-to-Ticket] 📧 Check #{check_count} starting...")
+                async with self._lock:
+                    timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+                    print(f"[{timestamp}] [Email-to-Ticket] 📧 Check #{check_count} starting...")
+                    
+                    total_tickets_created = 0
+                    
+                    # Process legacy workspace email settings (single account)
+                    workspace_ids = []
+                    
+                    try:
+                        async with AsyncSession(engine) as db:
+                            # Get all workspaces with legacy email settings
+                            result = await db.execute(
+                                select(EmailSettings.workspace_id).where(EmailSettings.incoming_mail_host.isnot(None))
+                            )
+                            workspace_ids = [row[0] for row in result.all()]
+                        
+                        print(f"[Email-to-Ticket] Found {len(workspace_ids)} workspaces with legacy email settings")
+                        
+                        # Process legacy workspaces sequentially
+                        for ws_id in workspace_ids:
+                            await self._process_workspace(ws_id)
+                    except Exception as e:
+                        if "no such table" in str(e).lower():
+                            print(f"[Email-to-Ticket] EmailSettings table not found - skipping legacy email check")
+                        else:
+                            print(f"[Email-to-Ticket] Error checking legacy email settings: {e}")
+                    
+                    # Process new multi-account email settings
+                    await self._process_email_accounts()
+                    
+                    timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+                    print(f"[{timestamp}] [Email-to-Ticket] ✅ Check #{check_count} complete. Next check in {self.check_interval}s")
                 
-                total_tickets_created = 0
-                
-                # Process legacy workspace email settings (single account)
-                workspace_ids = []
-                
+                # Wait for next check OR be woken up by check_now()
+                self._wake_event.clear()
                 try:
-                    async with AsyncSession(engine) as db:
-                        # Get all workspaces with legacy email settings
-                        result = await db.execute(
-                            select(EmailSettings.workspace_id).where(EmailSettings.incoming_mail_host.isnot(None))
-                        )
-                        workspace_ids = [row[0] for row in result.all()]
-                    
-                    print(f"[Email-to-Ticket] Found {len(workspace_ids)} workspaces with legacy email settings")
-                    
-                    # Process legacy workspaces sequentially
-                    for ws_id in workspace_ids:
-                        await self._process_workspace(ws_id)
-                except Exception as e:
-                    if "no such table" in str(e).lower():
-                        print(f"[Email-to-Ticket] EmailSettings table not found - skipping legacy email check")
-                    else:
-                        print(f"[Email-to-Ticket] Error checking legacy email settings: {e}")
-                
-                # Process new multi-account email settings
-                await self._process_email_accounts()
-                
-                timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-                print(f"[{timestamp}] [Email-to-Ticket] ✅ Check #{check_count} complete. Next check in {self.check_interval}s")
-                
-                # Wait for next check
-                await asyncio.sleep(self.check_interval)
+                    await asyncio.wait_for(self._wake_event.wait(), timeout=self.check_interval)
+                    print("[Email-to-Ticket] 🔔 Manual check requested - running immediately")
+                except asyncio.TimeoutError:
+                    pass  # Normal timeout, proceed with next scheduled check
                 
             except asyncio.CancelledError:
                 print("[Email-to-Ticket] Task cancelled")
@@ -201,3 +226,8 @@ async def start_email_scheduler():
 async def stop_email_scheduler():
     """Stop the email-to-ticket scheduler"""
     await email_scheduler.stop()
+
+
+async def check_emails_now():
+    """Trigger an immediate email check (wakes the scheduler)"""
+    await email_scheduler.check_now()

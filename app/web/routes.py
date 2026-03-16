@@ -5047,7 +5047,7 @@ async def web_admin_email_settings_test(request: Request, db: AsyncSession = Dep
 
 @router.post('/admin/email-settings/check-emails')
 async def web_admin_check_emails(request: Request, db: AsyncSession = Depends(get_session)):
-    """Manually trigger email check - processes ALL email sources. Available to all authenticated users."""
+    """Manually trigger email check - wakes the background scheduler immediately."""
     user_id = request.session.get('user_id')
     if not user_id:
         return JSONResponse({'success': False, 'error': 'Not authenticated'})
@@ -5057,83 +5057,19 @@ async def web_admin_check_emails(request: Request, db: AsyncSession = Depends(ge
         return JSONResponse({'success': False, 'error': 'User not found'})
     
     try:
-        from app.core.email_to_ticket_v2 import process_workspace_emails, process_email_account
-        from app.models.incoming_email_account import IncomingEmailAccount
+        from app.core.email_scheduler_v2 import email_scheduler
         
-        all_tickets = []
-        account_results = []  # Track per-account status
-        legacy_error = None
+        if not email_scheduler.running:
+            return JSONResponse({'success': False, 'error': 'Email scheduler is not running. Please restart the server.'})
         
-        # 1. Process main workspace emails (legacy support)
-        try:
-            tickets = await process_workspace_emails(db, user.workspace_id)
-            all_tickets.extend(tickets)
-            account_results.append({
-                'name': 'Legacy Email Settings',
-                'status': 'success',
-                'tickets_created': len(tickets)
-            })
-        except Exception as e:
-            import traceback
-            legacy_error = str(e)
-            logger.warning(f"[Email] Error processing workspace emails: {e}")
-            logger.warning(traceback.format_exc())
-            account_results.append({
-                'name': 'Legacy Email Settings',
-                'status': 'error',
-                'error': str(e)
-            })
-        
-        # 2. Process ALL alternate email accounts
-        accounts_result = await db.execute(
-            select(IncomingEmailAccount).where(
-                IncomingEmailAccount.workspace_id == user.workspace_id,
-                IncomingEmailAccount.is_active == True
-            )
-        )
-        accounts = accounts_result.scalars().all()
-        
-        for account in accounts:
-            try:
-                tickets = await process_email_account(db, account)
-                all_tickets.extend(tickets)
-                account_results.append({
-                    'name': account.name,
-                    'email': account.email_address,
-                    'host': account.imap_host,
-                    'protocol': getattr(account, 'protocol', 'imap'),
-                    'status': 'success',
-                    'tickets_created': len(tickets)
-                })
-            except Exception as e:
-                import traceback
-                logger.warning(f"[Email] Error processing account {account.name}: {e}")
-                logger.warning(traceback.format_exc())
-                account_results.append({
-                    'name': account.name,
-                    'email': account.email_address,
-                    'host': account.imap_host,
-                    'protocol': getattr(account, 'protocol', 'imap'),
-                    'status': 'error',
-                    'error': str(e)
-                })
-        
-        # Build summary
-        failed_accounts = [a for a in account_results if a['status'] == 'error']
-        success_accounts = [a for a in account_results if a['status'] == 'success']
-        
-        message = f'Checked {len(account_results)} email source(s): {len(success_accounts)} succeeded'
-        if failed_accounts:
-            failed_names = ', '.join(a['name'] for a in failed_accounts)
-            message += f', {len(failed_accounts)} FAILED ({failed_names})'
+        # Wake the scheduler to run immediately (waits for it to finish)
+        await email_scheduler.check_now()
         
         return JSONResponse({
-            'success': len(failed_accounts) == 0, 
-            'message': message,
-            'tickets_created': len(all_tickets),
-            'ticket_numbers': [t.ticket_number for t in all_tickets],
-            'accounts_checked': len(accounts),
-            'account_results': account_results
+            'success': True,
+            'message': 'Email check completed',
+            'tickets_created': 0,
+            'ticket_numbers': []
         })
         
     except Exception as e:

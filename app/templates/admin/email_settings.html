@@ -487,13 +487,9 @@ function checkEmails() {
         btn.textContent = 'Check Emails Now';
         
         if (data.success) {
-            if (data.tickets_created > 0) {
-                alert(`✓ Found ${data.tickets_created} new email(s)!\n\nTickets: ${data.ticket_numbers.join(', ')}`);
-            } else {
-                alert('✓ Email check complete. No new emails found.');
-            }
+            alert('✓ Email check complete.');
         } else {
-            alert('✗ Failed to check emails: ' + data.error + '\n\nDetails: ' + (data.details || 'None'));
+            alert('✗ Failed to check emails: ' + (data.error || data.message || 'Unknown error'));
         }
     })
     .catch(err => {
