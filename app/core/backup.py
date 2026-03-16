@@ -52,9 +52,9 @@ class DatabaseBackup:
             backup_type = "MANUAL" if is_manual else "AUTO"
             
             if include_attachments:
-                # Create ZIP archive with database + attachments using LZMA compression
-                # LZMA gives significantly smaller files than DEFLATE (~30-50% smaller)
-                with zipfile.ZipFile(backup_file, 'w', zipfile.ZIP_LZMA) as zipf:
+                # Create ZIP archive with database + attachments using DEFLATE compression
+                # DEFLATE is much faster than LZMA while still giving good compression
+                with zipfile.ZipFile(backup_file, 'w', zipfile.ZIP_DEFLATED, compresslevel=6) as zipf:
                     # Add database
                     zipf.write(self.db_path, arcname='data.db')
                     
@@ -329,9 +329,9 @@ class DatabaseBackup:
         while True:
             try:
                 await asyncio.sleep(self.backup_interval)
-                self.create_backup(include_attachments=True)  # Always include attachments in auto-backups
-                # Run full cleanup to enforce all retention limits
-                self.cleanup_all_old_backups()
+                # Run in thread pool to avoid blocking the event loop
+                await asyncio.to_thread(self.create_backup, include_attachments=True)
+                await asyncio.to_thread(self.cleanup_all_old_backups)
             except asyncio.CancelledError:
                 logger.info("Backup loop cancelled")
                 break

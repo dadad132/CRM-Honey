@@ -4281,8 +4281,11 @@ async def web_admin_backup_create(
         raise HTTPException(status_code=403, detail="Admin access required")
     
     from app.core.backup import backup_manager
-    # Always create full backup with attachments
-    backup_file = backup_manager.create_backup(is_manual=True, include_attachments=True)
+    # Run backup in thread pool to avoid blocking the async event loop
+    import asyncio
+    backup_file = await asyncio.to_thread(
+        backup_manager.create_backup, is_manual=True, include_attachments=True
+    )
     
     if backup_file:
         return RedirectResponse('/web/admin/backups?success=backup_created', status_code=303)
