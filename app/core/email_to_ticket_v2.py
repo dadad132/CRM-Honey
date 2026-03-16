@@ -1967,11 +1967,23 @@ async def process_email_account(db: AsyncSession, account) -> List[Ticket]:
                 traceback.print_exc()
                 continue
         
-        # Close connection in thread pool
+        # Close connection in thread pool (with timeout to prevent hanging)
         if mail:
-            await asyncio.to_thread(lambda: (mail.close(), mail.logout()))
+            try:
+                await asyncio.wait_for(
+                    asyncio.to_thread(lambda: (mail.close(), mail.logout())),
+                    timeout=15
+                )
+            except (asyncio.TimeoutError, Exception) as e:
+                print(f"[Email Account] Warning: IMAP close/logout issue: {e}")
         if pop3_conn:
-            await asyncio.to_thread(lambda: pop3_conn.quit())
+            try:
+                await asyncio.wait_for(
+                    asyncio.to_thread(lambda: pop3_conn.quit()),
+                    timeout=15
+                )
+            except (asyncio.TimeoutError, Exception) as e:
+                print(f"[Email Account] Warning: POP3 quit issue: {e}")
         
     except Exception as e:
         print(f"[Email Account] ❌ Error fetching emails for account {account_name}: {e}")
@@ -1980,13 +1992,19 @@ async def process_email_account(db: AsyncSession, account) -> List[Ticket]:
         traceback.print_exc()
         if mail:
             try:
-                await asyncio.to_thread(lambda: (mail.close(), mail.logout()))
-            except:
+                await asyncio.wait_for(
+                    asyncio.to_thread(lambda: (mail.close(), mail.logout())),
+                    timeout=15
+                )
+            except (asyncio.TimeoutError, Exception):
                 pass
         if pop3_conn:
             try:
-                await asyncio.to_thread(lambda: pop3_conn.quit())
-            except:
+                await asyncio.wait_for(
+                    asyncio.to_thread(lambda: pop3_conn.quit()),
+                    timeout=15
+                )
+            except (asyncio.TimeoutError, Exception):
                 pass
         # Re-raise so the caller can report the error per-account
         raise

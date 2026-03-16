@@ -16,6 +16,10 @@ from app.models.email_settings import EmailSettings
 from app.models.incoming_email_account import IncomingEmailAccount
 
 
+# Maximum time (seconds) to wait for a single email account to finish processing
+ACCOUNT_PROCESS_TIMEOUT = 180  # 3 minutes per account
+
+
 class EmailScheduler:
     """Background scheduler for email-to-ticket processing"""
     
@@ -135,22 +139,31 @@ class EmailScheduler:
             # first account expired all remaining account objects (expire_on_commit=True),
             # causing MissingGreenlet errors on subsequent accounts
             for account in accounts:
+                account_name = account.name
                 try:
                     async with AsyncSession(engine) as account_db:
-                        tickets = await process_email_account(account_db, account)
+                        # Timeout prevents a hanging IMAP connection from blocking the scheduler forever
+                        tickets = await asyncio.wait_for(
+                            process_email_account(account_db, account),
+                            timeout=ACCOUNT_PROCESS_TIMEOUT
+                        )
                         if tickets:
                             timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-                            print(f"[{timestamp}] Email '{account.name}': Created {len(tickets)} ticket(s) from emails")
+                            print(f"[{timestamp}] Email '{account_name}': Created {len(tickets)} ticket(s) from emails")
                         
                         # Update last_checked_at
                         account.last_checked_at = datetime.utcnow()
                         account_db.add(account)
                         await account_db.commit()
+                except asyncio.TimeoutError:
+                    print(f"[Email-to-Ticket] ⚠️ TIMEOUT: Account '{account_name}' exceeded {ACCOUNT_PROCESS_TIMEOUT}s - skipping")
+                    from app.core.system_logger import log_fire_and_forget
+                    log_fire_and_forget('ERROR', 'Scheduler', f'Timeout processing account: {account_name}', f'Exceeded {ACCOUNT_PROCESS_TIMEOUT}s')
                 except Exception as e:
-                    print(f"[Email-to-Ticket] Error processing email account '{account.name}': {e}")
+                    print(f"[Email-to-Ticket] Error processing email account '{account_name}': {e}")
                     print(f"[Email-to-Ticket] Traceback: {traceback.format_exc()}")
                     from app.core.system_logger import log_fire_and_forget
-                    log_fire_and_forget('ERROR', 'Scheduler', f'Error processing account: {account.name}', str(e)[:200])
+                    log_fire_and_forget('ERROR', 'Scheduler', f'Error processing account: {account_name}', str(e)[:200])
         
         except Exception as e:
             if "no such table" in str(e).lower():
@@ -172,16 +185,31 @@ class EmailScheduler:
         print("[Email-to-Ticket] Scheduler started successfully")
     
     def _task_done_callback(self, task):
-        """Handle task completion/failure"""
+        """Handle task completion/failure — auto-restart if crashed"""
         try:
             exception = task.exception()
             if exception:
                 print(f"[Email-to-Ticket] ❌ Background task crashed: {exception}")
                 print(f"[Email-to-Ticket] Traceback: {traceback.format_exception(type(exception), exception, exception.__traceback__)}")
+                # Auto-restart the scheduler after a crash
+                if self.running:
+                    print("[Email-to-Ticket] 🔄 Auto-restarting scheduler after crash...")
+                    loop = asyncio.get_event_loop()
+                    loop.call_soon(lambda: asyncio.ensure_future(self._restart()))
         except asyncio.CancelledError:
             print("[Email-to-Ticket] Task was cancelled")
         except asyncio.InvalidStateError:
             pass  # Task not done yet
+    
+    async def _restart(self):
+        """Restart the scheduler task after a crash"""
+        try:
+            await asyncio.sleep(10)  # Brief delay before restart
+            self.task = asyncio.create_task(self.check_emails_task())
+            self.task.add_done_callback(self._task_done_callback)
+            print("[Email-to-Ticket] ✅ Scheduler restarted successfully")
+        except Exception as e:
+            print(f"[Email-to-Ticket] ❌ Failed to restart scheduler: {e}")
     
     async def stop(self):
         """Stop the scheduler"""
