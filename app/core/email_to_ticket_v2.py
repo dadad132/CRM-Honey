@@ -6,14 +6,13 @@ IMAP-based email processing, uses database settings, keeps emails on server
 import asyncio
 import imaplib
 import email
-import socket
 import uuid
 from email.header import decode_header
 from email.utils import parseaddr
 from pathlib import Path
 import re
 import logging
-from datetime import datetime, date, timezone, timedelta
+from datetime import datetime, timezone, timedelta
 from typing import Optional, List, Tuple
 
 # Set default IMAP socket timeout to prevent hanging connections
@@ -26,11 +25,10 @@ def _syslog(level, source, message, details=None, workspace_id=None):
         log_fire_and_forget(level, 'email', source, message, details, workspace_id)
     except Exception:
         pass
-from sqlmodel import Session, select
+from sqlmodel import select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from app.models.ticket import Ticket, TicketHistory, TicketComment, TicketAttachment
-from app.models.user import User
 from app.models.notification import Notification
 from app.models.email_settings import EmailSettings
 from app.models.processed_mail import ProcessedMail
@@ -248,8 +246,6 @@ def is_support_query(subject: str, body: str, sender_email: str) -> bool:
 
 async def generate_unique_ticket_number(db: AsyncSession, workspace_id: int) -> str:
     """Generate a unique ticket number by finding the max existing number GLOBALLY"""
-    from sqlalchemy import func
-    
     current_year = datetime.now().year
     prefix = f"TKT-{current_year}-"
     
@@ -304,9 +300,6 @@ class EmailToTicketService:
                     use_ssl = True
                     port = 993
             
-            # Set socket timeout to prevent hanging
-            socket.setdefaulttimeout(IMAP_TIMEOUT)
-            
             if use_ssl:
                 mail = imaplib.IMAP4_SSL(
                     host,
@@ -319,9 +312,6 @@ class EmailToTicketService:
                     port or 143
                 )
             
-            # Reset default timeout after connection
-            socket.setdefaulttimeout(None)
-            
             mail.login(
                 self.settings.incoming_mail_username,
                 self.settings.incoming_mail_password
@@ -330,7 +320,6 @@ class EmailToTicketService:
             _syslog('INFO', 'IMAP', f'Connected to {host}:{port}')
             return mail
         except Exception as e:
-            socket.setdefaulttimeout(None)  # Reset timeout on failure
             print(f"[IMAP] Failed to connect to IMAP server {host}:{port} (SSL={use_ssl}): {e}")
             _syslog('ERROR', 'IMAP', f'Connection failed: {host}:{port}', str(e)[:200])
             raise
@@ -739,7 +728,7 @@ class EmailToTicketService:
         message_id: str, 
         email_from: str, 
         subject: str, 
-        ticket_id: int
+        ticket_id: Optional[int]
     ):
         """Mark email as processed - with duplicate protection"""
         try:
@@ -815,7 +804,7 @@ class EmailToTicketService:
             workspace_id=self.workspace_id,
             created_by_id=None,  # Guest ticket
             is_guest=True,
-            guest_name=sender_name.split()[0] if sender_name else "Unknown",
+            guest_name=sender_name.split()[0] if sender_name and sender_name.strip() else "Unknown",
             guest_surname=sender_name.split()[-1] if sender_name and len(sender_name.split()) > 1 else "",
             guest_email=sender_email,
             guest_phone="",
@@ -841,7 +830,7 @@ class EmailToTicketService:
             user_id=None,  # System action
             action='created',
             new_value=history_comment,
-            created_at=datetime.utcnow()
+            created_at=get_local_time()
         )
         db.add(history)
         
@@ -1455,15 +1444,12 @@ async def add_comment_from_email_for_account(
 
 def _html_to_text_standalone(html: str) -> str:
     """Standalone HTML-to-text converter for use outside the EmailToTicketService class"""
-    # Create a temporary service instance to reuse the converter
-    service = EmailToTicketService.__new__(EmailToTicketService)
-    return service.html_to_text(html)
+    return EmailToTicketService.html_to_text(None, html)
 
 
 def _clean_email_body_standalone(body: str) -> str:
     """Standalone email body cleaner for use outside the EmailToTicketService class"""
-    service = EmailToTicketService.__new__(EmailToTicketService)
-    return service.clean_email_body(body)
+    return EmailToTicketService.clean_email_body(None, body)
 
 
 async def process_email_account(db: AsyncSession, account) -> List[Ticket]:
@@ -1495,7 +1481,6 @@ async def process_email_account(db: AsyncSession, account) -> List[Ticket]:
         return []
     
     # Store account data we need before any async operations
-    account_id = account.id
     account_name = account.name
     account_email = account.email_address
     workspace_id = account.workspace_id
@@ -1541,12 +1526,10 @@ async def process_email_account(db: AsyncSession, account) -> List[Ticket]:
             if protocol == 'pop3':
                 # POP3 connection with timeout
                 print(f"[Email Account] Using POP3 protocol on {imap_host}:{imap_port}")
-                socket.setdefaulttimeout(IMAP_TIMEOUT)
                 if imap_use_ssl:
                     pop3_conn = poplib.POP3_SSL(imap_host, imap_port or 995, timeout=IMAP_TIMEOUT)
                 else:
                     pop3_conn = poplib.POP3(imap_host, imap_port or 110, timeout=IMAP_TIMEOUT)
-                socket.setdefaulttimeout(None)
                 
                 pop3_conn.user(imap_username)
                 pop3_conn.pass_(imap_password)
@@ -1574,7 +1557,6 @@ async def process_email_account(db: AsyncSession, account) -> List[Ticket]:
             else:
                 # IMAP connection (default) with timeout
                 print(f"[Email Account] Using IMAP protocol on {imap_host}:{effective_port} (SSL={effective_ssl})")
-                socket.setdefaulttimeout(IMAP_TIMEOUT)
                 if effective_ssl:
                     mail = imaplib.IMAP4_SSL(imap_host, effective_port or 993, timeout=IMAP_TIMEOUT)
                 else:
@@ -1585,7 +1567,6 @@ async def process_email_account(db: AsyncSession, account) -> List[Ticket]:
                     except Exception:
                         # Server doesn't support STARTTLS, continue without encryption
                         pass
-                socket.setdefaulttimeout(None)  # Reset timeout
                 
                 mail.login(imap_username, imap_password)
                 
@@ -1724,7 +1705,8 @@ async def process_email_account(db: AsyncSession, account) -> List[Ticket]:
                             email_from=sender_email_addr,
                             subject=subject,
                             ticket_id=None,
-                            workspace_id=workspace_id
+                            workspace_id=workspace_id,
+                            processed_at=get_local_time()
                         )
                         fresh_db.add(processed)
                         await fresh_db.commit()
@@ -1797,7 +1779,8 @@ async def process_email_account(db: AsyncSession, account) -> List[Ticket]:
                             email_from=sender_email_addr or 'unknown@unknown.com',
                             subject=subject,
                             ticket_id=None,
-                            workspace_id=workspace_id
+                            workspace_id=workspace_id,
+                            processed_at=get_local_time()
                         )
                         fresh_db.add(processed)
                         await fresh_db.commit()
@@ -1840,7 +1823,8 @@ async def process_email_account(db: AsyncSession, account) -> List[Ticket]:
                             email_from=sender_email_addr or 'unknown@unknown.com',
                             subject=subject,
                             ticket_id=existing_ticket_id,
-                            workspace_id=workspace_id
+                            workspace_id=workspace_id,
+                            processed_at=get_local_time()
                         )
                         fresh_db.add(processed)
                         await fresh_db.commit()
@@ -1891,7 +1875,7 @@ async def process_email_account(db: AsyncSession, account) -> List[Ticket]:
                         created_by_id=None,  # Guest ticket
                         assigned_to_id=auto_assign_to_user_id,  # Auto-assign if configured
                         is_guest=True,
-                        guest_name=sender_name.split()[0] if sender_name else "Unknown",
+                        guest_name=sender_name.split()[0] if sender_name and sender_name.strip() else "Unknown",
                         guest_surname=sender_name.split()[-1] if sender_name and len(sender_name.split()) > 1 else "",
                         guest_email=sender_email_addr,
                         guest_phone="",
@@ -1902,11 +1886,20 @@ async def process_email_account(db: AsyncSession, account) -> List[Ticket]:
                     )
                     
                     fresh_db.add(new_ticket)
-                    await fresh_db.commit()
-                    await fresh_db.refresh(new_ticket)
+                    await fresh_db.flush()
                     
-                    # Store ID immediately after refresh to avoid lazy loading issues
+                    # Store ID immediately after flush to avoid lazy loading issues
                     ticket_id = new_ticket.id
+                    
+                    # Add history entry
+                    history = TicketHistory(
+                        ticket_id=ticket_id,
+                        user_id=None,
+                        action='created',
+                        new_value=f'Ticket created from email via {account_name}: {sender_email_addr}',
+                        created_at=get_local_time()
+                    )
+                    fresh_db.add(history)
                     
                     # Save email attachments if any
                     if email_attachments:
@@ -1922,10 +1915,12 @@ async def process_email_account(db: AsyncSession, account) -> List[Ticket]:
                         email_from=sender_email_addr or 'unknown@unknown.com',
                         subject=subject,
                         ticket_id=ticket_id,
-                        workspace_id=workspace_id
+                        workspace_id=workspace_id,
+                        processed_at=get_local_time()
                     )
                     fresh_db.add(processed)
                     await fresh_db.commit()
+                    await fresh_db.refresh(new_ticket)
                     
                     # Mark as read (run in thread)
                     if mail:
