@@ -17,7 +17,7 @@ from app.models.incoming_email_account import IncomingEmailAccount
 
 
 # Maximum time (seconds) to wait for a single email account to finish processing
-ACCOUNT_PROCESS_TIMEOUT = 180  # 3 minutes per account
+ACCOUNT_PROCESS_TIMEOUT = 120  # 2 minutes per account
 
 
 class EmailScheduler:
