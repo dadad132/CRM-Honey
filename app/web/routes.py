@@ -5062,14 +5062,12 @@ async def web_admin_check_emails(request: Request, db: AsyncSession = Depends(ge
         if not email_scheduler.running:
             return JSONResponse({'success': False, 'error': 'Email scheduler is not running. Please restart the server.'})
         
-        # Wake the scheduler to run immediately (waits for it to finish)
+        # Wake the scheduler to run immediately (fire-and-forget)
         await email_scheduler.check_now()
         
         return JSONResponse({
             'success': True,
-            'message': 'Email check completed',
-            'tickets_created': 0,
-            'ticket_numbers': []
+            'message': 'Email check triggered'
         })
         
     except Exception as e:

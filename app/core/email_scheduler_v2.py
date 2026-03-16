@@ -34,20 +34,10 @@ class EmailScheduler:
     
     async def check_now(self):
         """Wake the scheduler to run an immediate email check.
-        Returns after the check completes."""
+        Returns immediately after triggering — does not wait for completion."""
         if not self.running:
             return
-        # Signal the sleeping loop to wake up
         self._wake_event.set()
-        # Wait briefly for the lock to be acquired (meaning a check started)
-        # then wait for the lock to be released (meaning the check finished)
-        for _ in range(300):  # max 30 seconds
-            if self._lock.locked():
-                break
-            await asyncio.sleep(0.1)
-        # Now wait for the check to finish
-        async with self._lock:
-            pass
     
     async def check_emails_task(self):
         """Background task to check emails periodically"""

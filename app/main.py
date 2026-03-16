@@ -48,7 +48,7 @@ class WorkspaceMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
         # Skip workspace lookup for static files, health checks, and API calls
         path = request.url.path
-        if path.startswith('/uploads') or path == '/health' or path.startswith('/api/'):
+        if path.startswith('/static') or path.startswith('/uploads') or path == '/health' or path.startswith('/api/'):
             return await call_next(request)
         
         user_id = None
