@@ -5828,6 +5828,11 @@ async def web_admin_email_accounts_add(
             imap_username=imap_username,
             imap_password=imap_password,
             imap_use_ssl=imap_use_ssl,
+            smtp_host=form.get('smtp_host') or None,
+            smtp_port=int(form.get('smtp_port', 587)) if form.get('smtp_port') else 587,
+            smtp_username=form.get('smtp_username') or None,
+            smtp_password=form.get('smtp_password') or None,
+            smtp_use_tls=form.get('smtp_use_tls') == 'on',
             is_active=True,
             auto_assign_to_user_id=int(auto_assign) if auto_assign else None,
             default_priority=form.get('default_priority', 'medium'),
@@ -5975,6 +5980,17 @@ async def web_admin_email_accounts_update(
         account.auto_assign_to_user_id = int(auto_assign) if auto_assign else None
         account.default_priority = form.get('default_priority', 'medium')
         account.default_category = form.get('default_category', 'support')
+        
+        # SMTP settings for outgoing replies
+        account.smtp_host = form.get('smtp_host') or None
+        account.smtp_port = int(form.get('smtp_port', 587)) if form.get('smtp_port') else 587
+        smtp_username_val = form.get('smtp_username') or None
+        account.smtp_username = smtp_username_val
+        new_smtp_password = form.get('smtp_password')
+        if new_smtp_password:
+            account.smtp_password = new_smtp_password
+        account.smtp_use_tls = form.get('smtp_use_tls') == 'on'
+        
         account.updated_at = datetime.utcnow()
         
         await db.commit()
@@ -14246,19 +14262,53 @@ async def send_ticket_comment_email(ticket, content: str, user_id: int, db: Asyn
         from_email = email_settings.smtp_from_email
         from_name = email_settings.smtp_from_name or "Support Team"
         
+        # Track whether we found account-specific SMTP settings
+        account_smtp_host = None
+        account_smtp_port = None
+        account_smtp_username = None
+        account_smtp_password = None
+        account_smtp_use_tls = None
+        
         log(f"[EMAIL] Default from: {from_name} <{from_email}>")
         
-        # Check if ticket is related to a project with support email
+        # Check if ticket is related to a project with a dedicated email account
         if ticket.related_project_id:
             from app.models.project import Project
+            from app.models.incoming_email_account import IncomingEmailAccount
+            
             project = (await db.execute(
                 select(Project).where(Project.id == ticket.related_project_id)
             )).scalar_one_or_none()
             
-            if project and project.support_email:
-                from_email = project.support_email
-                from_name = f"{project.name} Support"
-                log(f"[EMAIL] Using project email: {from_name} <{from_email}>")
+            if project:
+                # Look for IncomingEmailAccount linked to this project
+                email_account = (await db.execute(
+                    select(IncomingEmailAccount).where(
+                        IncomingEmailAccount.project_id == ticket.related_project_id,
+                        IncomingEmailAccount.workspace_id == ticket.workspace_id,
+                        IncomingEmailAccount.is_active == True
+                    )
+                )).scalar_one_or_none()
+                
+                if email_account:
+                    from_email = email_account.email_address
+                    from_name = f"{email_account.name}"
+                    log(f"[EMAIL] Using email account: {from_name} <{from_email}>")
+                    
+                    # Use account-specific SMTP if configured
+                    if email_account.smtp_host and email_account.smtp_username and email_account.smtp_password:
+                        account_smtp_host = email_account.smtp_host
+                        account_smtp_port = email_account.smtp_port or 587
+                        account_smtp_username = email_account.smtp_username
+                        account_smtp_password = email_account.smtp_password
+                        account_smtp_use_tls = email_account.smtp_use_tls
+                        log(f"[EMAIL] Using account-specific SMTP: {account_smtp_host}:{account_smtp_port}")
+                    else:
+                        log(f"[EMAIL] No account SMTP configured, falling back to workspace SMTP")
+                elif project.support_email:
+                    from_email = project.support_email
+                    from_name = f"{project.name} Support"
+                    log(f"[EMAIL] Using project email: {from_name} <{from_email}>")
         
         # Send email if we have a sender address
         if from_email:
@@ -14352,11 +14402,12 @@ async def send_ticket_comment_email(ticket, content: str, user_id: int, db: Asyn
             
             # Extract all SMTP settings BEFORE entering thread pool
             # (ORM objects should not be accessed across threads)
-            smtp_host = email_settings.smtp_host
-            smtp_port = email_settings.smtp_port
-            smtp_username = email_settings.smtp_username
-            smtp_password = email_settings.smtp_password
-            smtp_use_tls = email_settings.smtp_use_tls
+            # Use account-specific SMTP if available, otherwise workspace defaults
+            smtp_host = account_smtp_host or email_settings.smtp_host
+            smtp_port = account_smtp_port or email_settings.smtp_port
+            smtp_username = account_smtp_username or email_settings.smtp_username
+            smtp_password = account_smtp_password or email_settings.smtp_password
+            smtp_use_tls = account_smtp_use_tls if account_smtp_use_tls is not None else email_settings.smtp_use_tls
             
             # Send email in thread pool to avoid blocking
             import concurrent.futures

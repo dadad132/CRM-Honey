@@ -32,6 +32,13 @@ class IncomingEmailAccount(SQLModel, table=True):
     imap_password: str  # Store encrypted in production
     imap_use_ssl: bool = Field(default=True)
     
+    # SMTP Settings (Outgoing Mail) - for sending replies from this account
+    smtp_host: Optional[str] = Field(default=None)
+    smtp_port: Optional[int] = Field(default=587)
+    smtp_username: Optional[str] = Field(default=None)
+    smtp_password: Optional[str] = Field(default=None)
+    smtp_use_tls: bool = Field(default=True)
+    
     # Processing settings
     is_active: bool = Field(default=True)
     auto_assign_to_user_id: Optional[int] = Field(default=None, foreign_key="user.id")  # Auto-assign tickets to this user
@@ -55,6 +62,11 @@ class IncomingEmailAccountCreate(SQLModel):
     imap_username: str
     imap_password: str
     imap_use_ssl: bool = True
+    smtp_host: Optional[str] = None
+    smtp_port: Optional[int] = 587
+    smtp_username: Optional[str] = None
+    smtp_password: Optional[str] = None
+    smtp_use_tls: bool = True
     auto_assign_to_user_id: Optional[int] = None
     default_priority: str = "medium"
     default_category: str = "support"
@@ -71,6 +83,11 @@ class IncomingEmailAccountUpdate(SQLModel):
     imap_username: Optional[str] = None
     imap_password: Optional[str] = None
     imap_use_ssl: Optional[bool] = None
+    smtp_host: Optional[str] = None
+    smtp_port: Optional[int] = None
+    smtp_username: Optional[str] = None
+    smtp_password: Optional[str] = None
+    smtp_use_tls: Optional[bool] = None
     is_active: Optional[bool] = None
     auto_assign_to_user_id: Optional[int] = None
     default_priority: Optional[str] = None
