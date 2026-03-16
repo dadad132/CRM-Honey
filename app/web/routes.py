@@ -627,6 +627,7 @@ async def web_dashboard(request: Request, view: Optional[str] = None, user_id: O
     from app.models.ticket import Ticket
     from app.models.project_member import ProjectMember
     from datetime import timedelta
+    from sqlalchemy import func
     
     today = date.today()
     week_ago = today - timedelta(days=7)
@@ -661,7 +662,8 @@ async def web_dashboard(request: Request, view: Optional[str] = None, user_id: O
     
     # Tasks done this week
     my_done_result = await db.execute(
-        select(Task)
+        select(func.count())
+        .select_from(Task)
         .join(Assignment, Task.id == Assignment.task_id)
         .where(
             Assignment.assignee_id == current_user_id,
@@ -669,7 +671,7 @@ async def web_dashboard(request: Request, view: Optional[str] = None, user_id: O
             Task.updated_at >= datetime.combine(week_ago, time.min)
         )
     )
-    my_tasks_done = len(my_done_result.scalars().all())
+    my_tasks_done = my_done_result.scalar() or 0
     
     # Tasks due soon (next 7 days)
     tasks_due_result = await db.execute(
@@ -716,7 +718,8 @@ async def web_dashboard(request: Request, view: Optional[str] = None, user_id: O
     
     # Meetings today
     meetings_result = await db.execute(
-        select(Meeting)
+        select(func.count())
+        .select_from(Meeting)
         .join(MeetingAttendee, Meeting.id == MeetingAttendee.meeting_id)
         .where(
             MeetingAttendee.user_id == current_user_id,
@@ -724,7 +727,7 @@ async def web_dashboard(request: Request, view: Optional[str] = None, user_id: O
             Meeting.is_cancelled == False
         )
     )
-    meetings_today = len(meetings_result.scalars().all())
+    meetings_today = meetings_result.scalar() or 0
     
     # Upcoming meetings (next 7 days)
     upcoming_result = await db.execute(
@@ -743,10 +746,11 @@ async def web_dashboard(request: Request, view: Optional[str] = None, user_id: O
     
     # Team members count
     team_result = await db.execute(
-        select(User)
+        select(func.count())
+        .select_from(User)
         .where(User.workspace_id == user.workspace_id, User.is_active == True)
     )
-    total_team_members = len(team_result.scalars().all())
+    total_team_members = team_result.scalar() or 0
     
     # ========== ENHANCED RECENT ACTIVITY ==========
     from app.models.task_history import TaskHistory
@@ -858,6 +862,7 @@ async def web_dashboard(request: Request, view: Optional[str] = None, user_id: O
             Project.workspace_id == user.workspace_id
         )
         .order_by(Task.due_date.asc())
+        .limit(20)
     )
     overdue_tasks = []
     for task, project_name in overdue_tasks_result.fetchall():
@@ -933,18 +938,20 @@ async def web_dashboard(request: Request, view: Optional[str] = None, user_id: O
     if user.is_admin:
         # Tasks completed by team this week
         team_done_result = await db.execute(
-            select(Task)
+            select(func.count())
+            .select_from(Task)
             .where(
                 Task.project_id.in_(project_ids) if project_ids else True,
                 Task.status == TaskStatus.done,
                 Task.updated_at >= datetime.combine(week_ago, time.min)
             )
         )
-        team_tasks_completed = len(team_done_result.scalars().all())
+        team_tasks_completed = team_done_result.scalar() or 0
         
         # Tickets resolved this week (exclude archived)
         resolved_result = await db.execute(
-            select(Ticket)
+            select(func.count())
+            .select_from(Ticket)
             .where(
                 Ticket.workspace_id == user.workspace_id,
                 Ticket.status.in_(['resolved', 'closed']),
@@ -952,7 +959,7 @@ async def web_dashboard(request: Request, view: Optional[str] = None, user_id: O
                 Ticket.is_archived == False
             )
         )
-        team_tickets_resolved = len(resolved_result.scalars().all())
+        team_tickets_resolved = resolved_result.scalar() or 0
         
         # User view - get all team members for selector
         if view == 'user':
@@ -974,15 +981,17 @@ async def web_dashboard(request: Request, view: Optional[str] = None, user_id: O
                 if selected_user:
                     # Get selected user's open tasks
                     su_tasks_result = await db.execute(
-                        select(Task)
+                        select(func.count())
+                        .select_from(Task)
                         .join(Assignment, Task.id == Assignment.task_id)
                         .where(Assignment.assignee_id == user_id, Task.status != TaskStatus.done)
                     )
-                    su_open_tasks = len(su_tasks_result.scalars().all())
+                    su_open_tasks = su_tasks_result.scalar() or 0
                     
                     # Get selected user's done tasks this week
                     su_done_result = await db.execute(
-                        select(Task)
+                        select(func.count())
+                        .select_from(Task)
                         .join(Assignment, Task.id == Assignment.task_id)
                         .where(
                             Assignment.assignee_id == user_id,
@@ -990,22 +999,24 @@ async def web_dashboard(request: Request, view: Optional[str] = None, user_id: O
                             Task.updated_at >= datetime.combine(week_ago, time.min)
                         )
                     )
-                    su_done_tasks = len(su_done_result.scalars().all())
+                    su_done_tasks = su_done_result.scalar() or 0
                     
                     # Get selected user's open tickets (exclude archived)
                     su_tickets_result = await db.execute(
-                        select(Ticket)
+                        select(func.count())
+                        .select_from(Ticket)
                         .where(
                             Ticket.assigned_to_id == user_id,
                             Ticket.status.in_(['open', 'in_progress', 'waiting']),
                             Ticket.is_archived == False
                         )
                     )
-                    su_open_tickets = len(su_tickets_result.scalars().all())
+                    su_open_tickets = su_tickets_result.scalar() or 0
                     
                     # Get selected user's overdue tasks
                     su_overdue_result = await db.execute(
-                        select(Task)
+                        select(func.count())
+                        .select_from(Task)
                         .join(Assignment, Task.id == Assignment.task_id)
                         .where(
                             Assignment.assignee_id == user_id,
@@ -1013,7 +1024,7 @@ async def web_dashboard(request: Request, view: Optional[str] = None, user_id: O
                             Task.due_date < today
                         )
                     )
-                    su_overdue_tasks = len(su_overdue_result.scalars().all())
+                    su_overdue_tasks = su_overdue_result.scalar() or 0
                     
                     # Get selected user's projects
                     su_projects_result = await db.execute(

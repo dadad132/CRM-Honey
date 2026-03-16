@@ -335,58 +335,6 @@ class EmailToTicketService:
             _syslog('ERROR', 'IMAP', f'Connection failed: {host}:{port}', str(e)[:200])
             raise
     
-    def _fetch_raw_emails_sync(self) -> List[dict]:
-        """
-        Synchronous method to fetch raw emails from IMAP server.
-        This runs in a thread pool to avoid blocking the event loop.
-        Uses IMAP UIDs (stable across sessions) instead of sequence numbers.
-        
-        Returns list of dicts with: email_id, msg_bytes, message_id
-        """
-        raw_emails = []
-        mail = None
-        
-        try:
-            mail = self.connect_imap()
-            mail.select('INBOX')
-            
-            # Search for emails from the last 7 days (not just unread)
-            # This ensures we catch emails even if they're marked as read by other clients
-            # Use UID commands for stable email identification across sessions
-            from datetime import datetime, timedelta
-            date_since = (datetime.now() - timedelta(days=7)).strftime("%d-%b-%Y")
-            status, messages = mail.uid('search', None, f'SINCE {date_since}')
-            email_ids = messages[0].split()
-            
-            print(f"[IMAP] Found {len(email_ids)} messages from last 7 days")
-            
-            for email_id in email_ids:
-                try:
-                    status, msg_data = mail.uid('fetch', email_id, '(RFC822)')
-                    if msg_data and msg_data[0]:
-                        raw_emails.append({
-                            'email_id': email_id,
-                            'msg_bytes': msg_data[0][1],
-                            'mail': mail,  # Pass mail connection for marking as read later
-                            'use_uid': True  # Flag to use UID for marking as read
-                        })
-                except Exception as e:
-                    print(f"[IMAP] Error fetching email UID {email_id}: {e}")
-                    continue
-            
-            # Don't close here - we need to mark emails as read later
-            return raw_emails
-            
-        except Exception as e:
-            print(f"[IMAP] Error connecting to IMAP: {e}")
-            if mail:
-                try:
-                    mail.close()
-                    mail.logout()
-                except:
-                    pass
-            return []
-    
     def decode_header_value(self, header: str) -> str:
         """Decode email header"""
         if not header:
@@ -1400,58 +1348,6 @@ async def find_ticket_by_reply_for_account(
         return 'CLOSED'
     
     print(f"[DEBUG] No ticket found via In-Reply-To or References")
-    return None
-
-
-async def find_ticket_by_subject_for_account(db: AsyncSession, workspace_id: int, subject: str) -> Optional[Ticket]:
-    """
-    Fallback: Find ticket by subject line pattern for alternate email accounts
-    Gmail/Outlook include "Re: Ticket #12345" in subject
-    """
-    import re
-    
-    print(f"[DEBUG] Trying to find ticket by subject: '{subject}'")
-    
-    # Clean up the subject - remove Re:, Fwd:, etc.
-    clean_subject = re.sub(r'^(Re:|RE:|Fwd:|FWD:|\[.*?\])\s*', '', subject, flags=re.IGNORECASE).strip()
-    print(f"[DEBUG] Cleaned subject: '{clean_subject}'")
-    
-    # Look for patterns like "Ticket #TKT-2025-00042" or "#TKT-2025-00042"
-    patterns = [
-        r'Ticket\s*#?\s*(TKT-\d{4}-\d+)',  # "Ticket #TKT-2025-00042"
-        r'Re:\s*Ticket\s*#?\s*(TKT-\d{4}-\d+)',  # "Re: Ticket #TKT-2025-00042"
-        r'#(TKT-\d{4}-\d+)',  # "#TKT-2025-00042"
-        r'\[(TKT-\d{4}-\d+)\]',  # "[TKT-2025-00042]"
-        r'(TKT-\d{4}-\d{5})',  # Just the ticket number pattern anywhere
-    ]
-    
-    # Try on both original and cleaned subject
-    for test_subject in [subject, clean_subject]:
-        for pattern in patterns:
-            match = re.search(pattern, test_subject, re.IGNORECASE)
-            if match:
-                ticket_number = match.group(1).upper()
-                print(f"[DEBUG] Found potential ticket number in subject: {ticket_number} (pattern: {pattern})")
-                
-                # Search for ticket by number (exclude closed tickets)
-                result = await db.execute(
-                    select(Ticket).where(
-                        Ticket.ticket_number == ticket_number,
-                        Ticket.workspace_id == workspace_id
-                    )
-                )
-                ticket = result.scalar_one_or_none()
-                if ticket:
-                    # Don't add comments to closed tickets - create new ticket instead
-                    if ticket.status in ['closed', 'resolved']:
-                        print(f"[DEBUG] Found ticket #{ticket.ticket_number} but it's CLOSED - will create new ticket")
-                        return None
-                    print(f"[DEBUG] ✅ Found ticket #{ticket.ticket_number} via subject line")
-                    return ticket
-                else:
-                    print(f"[DEBUG] Pattern matched '{ticket_number}' but no ticket found in database")
-    
-    print(f"[DEBUG] ❌ No ticket number found in subject")
     return None
 
 
