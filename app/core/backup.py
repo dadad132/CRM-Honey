@@ -52,9 +52,9 @@ class DatabaseBackup:
             backup_type = "MANUAL" if is_manual else "AUTO"
             
             if include_attachments:
-                # Create ZIP archive with database + attachments using DEFLATE compression
-                # DEFLATE is much faster than LZMA while still giving good compression
-                with zipfile.ZipFile(backup_file, 'w', zipfile.ZIP_DEFLATED, compresslevel=6) as zipf:
+                # Create ZIP archive with database + attachments using LZMA compression
+                # LZMA gives significantly smaller files than DEFLATE (~30-50% smaller)
+                with zipfile.ZipFile(backup_file, 'w', zipfile.ZIP_LZMA) as zipf:
                     # Add database
                     zipf.write(self.db_path, arcname='data.db')
                     
