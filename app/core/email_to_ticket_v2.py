@@ -10,7 +10,6 @@ import uuid
 from email.header import decode_header
 from email.utils import parseaddr
 from pathlib import Path
-import re
 import logging
 from datetime import datetime, timezone, timedelta
 from typing import Optional, List, Tuple
