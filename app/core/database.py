@@ -111,6 +111,15 @@ async def lifespan(app):  # FastAPI lifespan
     except Exception as e:
         logger.warning(f"⚠️  System log cleanup scheduler not started: {e}")
     
+    # Start data retention scheduler (cleans notifications, bot conversations, behavior tracking)
+    try:
+        from app.core.data_retention import start_data_retention_scheduler, cleanup_old_data
+        await cleanup_old_data()  # Run once on startup
+        asyncio.create_task(start_data_retention_scheduler())
+        logger.info("✅ Data retention scheduler started")
+    except Exception as e:
+        logger.warning(f"⚠️  Data retention scheduler not started: {e}")
+    
     # Fix ticketattachment.uploaded_by_id NOT NULL constraint
     # The model says Optional[int] but the DB column may still have NOT NULL from original create
     # SQLite doesn't support ALTER COLUMN, so we recreate the table if needed
