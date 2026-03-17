@@ -1151,14 +1151,16 @@ class EmailToTicketService:
                         to_header = msg.get('To', '')
                         _, to_email = self.extract_email_address(to_header)
                         
-                        # Skip ALL emails sent FROM our own support address
-                        # The legacy IMAP path handles the workspace support mailbox which
-                        # sends system-generated copies (IT request forms, etc) to itself.
-                        # These must always be skipped — they are not customer emails.
+                        # Skip emails sent FROM our own address ONLY when TO is external
+                        # FROM=self, TO=customer → outgoing reply, skip
+                        # FROM=self, TO=self → form notification / system alert, process as new ticket
                         own_email = (self.settings.incoming_mail_username or '').lower()
                         smtp_from = (self.settings.smtp_from_email or '').lower() if hasattr(self.settings, 'smtp_from_email') else ''
-                        if sender_email and (sender_email.lower() == own_email or sender_email.lower() == smtp_from):
-                            print(f"[IMAP] ⏭️ SKIPPING: Email sent from our own address ({sender_email})")
+                        own_addresses = {addr for addr in [own_email, smtp_from] if addr}
+                        is_from_self = sender_email and sender_email.lower() in own_addresses
+                        is_to_self = to_email and to_email.lower() in own_addresses
+                        if is_from_self and not is_to_self:
+                            print(f"[IMAP] ⏭️ SKIPPING: Outgoing reply from our address ({sender_email}) to external ({to_email})")
                             _syslog('INFO', 'IMAP', 'Skipped own outgoing email', f'From={sender_email}')
                             await self.mark_email_processed(fresh_db, message_id, sender_email,
                                 self.decode_header_value(msg.get('Subject', 'No Subject')), None)
@@ -1205,9 +1207,13 @@ class EmailToTicketService:
                         
                         # If not found via headers, try by sender email
                         # (Skip subject matching - too aggressive, catches invoice numbers etc.)
-                        if not existing_ticket:
+                        # NEVER use sender fallback for our own address — the support mailbox
+                        # has many open tickets, so it would match everything to one ticket
+                        if not existing_ticket and not is_from_self:
                             print(f"[IMAP] Trying sender email fallback...")
                             existing_ticket = await self.find_ticket_by_sender(fresh_db, sender_email)
+                        elif not existing_ticket and is_from_self:
+                            print(f"[IMAP] Skipping sender fallback (email is from our own address)")
                         
                         if existing_ticket:
                             print(f"[IMAP] ✅ MATCH FOUND - Adding to ticket #{existing_ticket.ticket_number}")
@@ -1917,11 +1923,15 @@ async def process_email_account(db: AsyncSession, account) -> List[Ticket]:
                     
                     # If not found via headers, try by sender email
                     # (Skip subject matching - too aggressive, catches invoice numbers etc.)
-                    if not existing_ticket:
+                    # NEVER use sender fallback for our own address — it has many open
+                    # tickets, so it would match everything to one ticket
+                    if not existing_ticket and not is_from_self:
                         print(f"[Email Account] Trying sender email fallback...")
                         existing_ticket = await find_ticket_by_sender_for_account(
                             fresh_db, workspace_id, sender_email_addr
                         )
+                    elif not existing_ticket and is_from_self:
+                        print(f"[Email Account] Skipping sender fallback (email is from our own address)")
                     
                     if existing_ticket:
                         # Refresh the ticket to ensure all attributes are loaded
