@@ -566,11 +566,12 @@ class EmailToTicketService:
             return re.sub(r'<[^>]+>', '', html)
     
     async def is_email_processed(self, db: AsyncSession, message_id: str) -> bool:
-        """Check if email was already processed (globally, not workspace-specific)"""
-        # Check globally - if ANY system processed this email, skip it
+        """Check if email was already processed by THIS account"""
+        account_email = (self.settings.incoming_mail_username or '').lower()
         result = await db.execute(
             select(ProcessedMail).where(
-                ProcessedMail.message_id == message_id
+                ProcessedMail.message_id == message_id,
+                ProcessedMail.email_account == account_email
             )
         )
         return result.scalar_one_or_none() is not None
@@ -592,7 +593,7 @@ class EmailToTicketService:
                     ProcessedMail.workspace_id == self.workspace_id
                 )
             )
-            processed = result.scalar_one_or_none()
+            processed = result.scalars().first()
             print(f"[DEBUG] ProcessedMail result: {processed}")
             if processed and processed.ticket_id:
                 print(f"[DEBUG] Found ticket_id: {processed.ticket_id}")
@@ -623,7 +624,7 @@ class EmailToTicketService:
                         ProcessedMail.workspace_id == self.workspace_id
                     )
                 )
-                processed = result.scalar_one_or_none()
+                processed = result.scalars().first()
                 if processed and processed.ticket_id:
                     ticket_result = await db.execute(
                         select(Ticket).where(Ticket.id == processed.ticket_id)
@@ -733,12 +734,14 @@ class EmailToTicketService:
     ):
         """Mark email as processed - with duplicate protection"""
         try:
+            account_email = (self.settings.incoming_mail_username or '').lower()
             processed = ProcessedMail(
                 message_id=message_id,
                 email_from=email_from,
                 subject=subject,
                 ticket_id=ticket_id,
                 workspace_id=self.workspace_id,
+                email_account=account_email,
                 processed_at=get_local_time()
             )
             db.add(processed)
@@ -1300,7 +1303,7 @@ async def find_ticket_by_reply_for_account(
                 ProcessedMail.workspace_id == workspace_id
             )
         )
-        processed = result.scalar_one_or_none()
+        processed = result.scalars().first()
         print(f"[DEBUG] ProcessedMail result: {processed}")
         if processed and processed.ticket_id:
             print(f"[DEBUG] Found ticket_id: {processed.ticket_id}")
@@ -1329,7 +1332,7 @@ async def find_ticket_by_reply_for_account(
                     ProcessedMail.workspace_id == workspace_id
                 )
             )
-            processed = result.scalar_one_or_none()
+            processed = result.scalars().first()
             if processed and processed.ticket_id:
                 ticket_result = await db.execute(
                     select(Ticket).where(Ticket.id == processed.ticket_id)
@@ -1657,9 +1660,12 @@ async def process_email_account(db: AsyncSession, account) -> List[Ticket]:
                 
                 # Use a fresh database session for each email to avoid greenlet issues
                 async with NewAsyncSession(engine) as fresh_db:
-                    # Check if already processed (globally)
+                    # Check if already processed by THIS account
                     existing = await fresh_db.execute(
-                        select(ProcessedMail).where(ProcessedMail.message_id == message_id)
+                        select(ProcessedMail).where(
+                            ProcessedMail.message_id == message_id,
+                            ProcessedMail.email_account == account_email.lower()
+                        )
                     )
                     if existing.scalar_one_or_none():
                         print(f"[Email Account] Email already processed, marking as read")
@@ -1726,6 +1732,7 @@ async def process_email_account(db: AsyncSession, account) -> List[Ticket]:
                             subject=subject,
                             ticket_id=None,
                             workspace_id=workspace_id,
+                            email_account=account_email.lower(),
                             processed_at=get_local_time()
                         )
                         fresh_db.add(processed)
@@ -1800,6 +1807,7 @@ async def process_email_account(db: AsyncSession, account) -> List[Ticket]:
                             subject=subject,
                             ticket_id=None,
                             workspace_id=workspace_id,
+                            email_account=account_email.lower(),
                             processed_at=get_local_time()
                         )
                         fresh_db.add(processed)
@@ -1848,6 +1856,7 @@ async def process_email_account(db: AsyncSession, account) -> List[Ticket]:
                             subject=subject,
                             ticket_id=existing_ticket_id,
                             workspace_id=workspace_id,
+                            email_account=account_email.lower(),
                             processed_at=get_local_time()
                         )
                         fresh_db.add(processed)
@@ -1940,6 +1949,7 @@ async def process_email_account(db: AsyncSession, account) -> List[Ticket]:
                         subject=subject,
                         ticket_id=ticket_id,
                         workspace_id=workspace_id,
+                        email_account=account_email.lower(),
                         processed_at=get_local_time()
                     )
                     fresh_db.add(processed)

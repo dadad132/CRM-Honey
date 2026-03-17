@@ -203,6 +203,46 @@ async def lifespan(app):  # FastAPI lifespan
     except Exception as e:
         logger.warning(f"⚠️  Could not fix attachment paths: {e}")
     
+    # Add email_account column to processedmail and change unique constraint
+    # from global message_id to per-account (message_id + email_account)
+    try:
+        import sqlite3
+        from pathlib import Path
+        
+        db_path = Path("data.db")
+        if db_path.exists():
+            conn = sqlite3.connect(str(db_path))
+            cursor = conn.cursor()
+            
+            cursor.execute('PRAGMA table_info("processedmail")')
+            pm_cols = {row[1] for row in cursor.fetchall()}
+            
+            if "email_account" not in pm_cols:
+                logger.info("🔧 Adding email_account column to processedmail...")
+                cursor.execute("PRAGMA foreign_keys=OFF")
+                cursor.execute("BEGIN TRANSACTION")
+                try:
+                    cursor.execute("ALTER TABLE processedmail ADD COLUMN email_account VARCHAR NOT NULL DEFAULT ''")
+                    # Drop old unique indexes on message_id alone (may have different names)
+                    cursor.execute("DROP INDEX IF EXISTS ix_processedmail_message_id")
+                    cursor.execute("DROP INDEX IF EXISTS ix_processedmail_message_id_unique")
+                    # Create new composite unique index
+                    cursor.execute("CREATE UNIQUE INDEX IF NOT EXISTS uq_processedmail_msg_account ON processedmail(message_id, email_account)")
+                    # Re-create regular indexes
+                    cursor.execute("CREATE INDEX IF NOT EXISTS ix_processedmail_message_id ON processedmail(message_id)")
+                    cursor.execute("CREATE INDEX IF NOT EXISTS ix_processedmail_email_account ON processedmail(email_account)")
+                    cursor.execute("COMMIT")
+                    logger.info("✅ Added email_account column - dedup is now per-account")
+                except Exception:
+                    cursor.execute("ROLLBACK")
+                    raise
+                finally:
+                    cursor.execute("PRAGMA foreign_keys=ON")
+            
+            conn.close()
+    except Exception as e:
+        logger.warning(f"⚠️  Could not migrate processedmail schema: {e}")
+    
     # Seed IT Knowledge Base with common troubleshooting data (runs once if empty)
     try:
         from app.core.kb_seed import seed_knowledge_base
