@@ -28,6 +28,10 @@ class DatabaseBackup:
         self.max_uploaded_backups = 5  # Keep last 5 uploaded backups
         self.backup_interval = 43200  # Backup every 12 hours (43200 seconds)
         self._backup_task: Optional[asyncio.Task] = None
+        # Status tracking for async backup operations
+        self.backup_status: str = 'idle'  # idle | running | done | error
+        self.backup_progress: str = ''
+        self.backup_result_file: Optional[str] = None
         
     def get_backup_filename(self, is_manual: bool = False, include_attachments: bool = True) -> str:
         """Generate timestamped backup filename"""
@@ -52,22 +56,28 @@ class DatabaseBackup:
             backup_type = "MANUAL" if is_manual else "AUTO"
             
             if include_attachments:
+                # Collect files first so we can track progress
+                files_to_add = []
+                if self.uploads_dir.exists():
+                    files_to_add = [f for f in self.uploads_dir.rglob('*') if f.is_file()]
+                total_files = len(files_to_add) + 1  # +1 for database
+                
                 # Create ZIP archive with database + attachments using LZMA compression
                 # LZMA gives significantly smaller files than DEFLATE (~30-50% smaller)
                 with zipfile.ZipFile(backup_file, 'w', zipfile.ZIP_LZMA) as zipf:
                     # Add database
+                    self.backup_progress = f'Compressing database (1/{total_files})'
                     zipf.write(self.db_path, arcname='data.db')
                     
                     # Add all attachments
-                    if self.uploads_dir.exists():
-                        for file_path in self.uploads_dir.rglob('*'):
-                            if file_path.is_file():
-                                arcname = str(file_path.relative_to(self.uploads_dir.parent))
-                                zipf.write(file_path, arcname=arcname)
+                    for i, file_path in enumerate(files_to_add, start=2):
+                        self.backup_progress = f'Compressing file {i}/{total_files}'
+                        arcname = str(file_path.relative_to(self.uploads_dir.parent))
+                        zipf.write(file_path, arcname=arcname)
                 
                 # Log backup size
                 backup_size_mb = backup_file.stat().st_size / (1024 * 1024)
-                logger.info(f"✅ Full backup (DB + attachments) created: {backup_file} ({backup_type}) - {backup_size_mb:.2f} MB")
+                logger.info(f"Full backup (DB + attachments) created: {backup_file} ({backup_type}) - {backup_size_mb:.2f} MB")
             else:
                 # Simple database-only backup
                 shutil.copy2(self.db_path, backup_file)

@@ -84,12 +84,21 @@
 <div class="mb-6 grid grid-cols-1 md:grid-cols-2 gap-4">
   <div class="bg-white rounded-lg border border-slate-200 p-4">
     <h3 class="font-semibold mb-3">Create New Backup</h3>
-    <form method="post" action="/web/admin/backups/create" class="space-y-3">
-      <button type="submit" class="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 w-full">
+    <div class="space-y-3">
+      <button type="button" id="createBackupBtn" onclick="startBackup()" class="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 w-full">
         💾 Create Full Backup Now
       </button>
-      <p class="text-xs text-slate-500">Creates a complete backup with database and all attachments. Manual backups are kept forever.</p>
-    </form>
+      <!-- Progress bar (hidden by default) -->
+      <div id="backupProgressContainer" class="hidden">
+        <div class="w-full bg-slate-200 rounded-full h-3 overflow-hidden">
+          <div id="backupProgressBar" class="h-3 bg-blue-600 rounded-full transition-all duration-300" style="width: 0%"></div>
+        </div>
+        <p id="backupProgressText" class="text-xs text-slate-600 mt-1">Starting backup...</p>
+      </div>
+      <!-- Result message -->
+      <div id="backupResult" class="hidden"></div>
+      <p class="text-xs text-slate-500">Creates a complete backup with database and all attachments. LZMA compression is used for smallest file size (may take a minute).</p>
+    </div>
   </div>
   
   <div class="bg-white rounded-lg border border-slate-200 p-4">
@@ -331,6 +340,116 @@ function confirmDelete(filename) {
     document.body.appendChild(form);
     form.submit();
   }
+}
+
+let backupPollTimer = null;
+let backupAnimProgress = 0;
+
+async function startBackup() {
+  const btn = document.getElementById('createBackupBtn');
+  const progressContainer = document.getElementById('backupProgressContainer');
+  const progressBar = document.getElementById('backupProgressBar');
+  const progressText = document.getElementById('backupProgressText');
+  const resultDiv = document.getElementById('backupResult');
+  
+  // Disable button, show progress
+  btn.disabled = true;
+  btn.classList.add('opacity-50', 'cursor-not-allowed');
+  btn.textContent = '⏳ Backup in progress...';
+  progressContainer.classList.remove('hidden');
+  resultDiv.classList.add('hidden');
+  progressBar.style.width = '5%';
+  progressText.textContent = 'Starting backup...';
+  backupAnimProgress = 5;
+  
+  try {
+    const response = await fetch('/web/admin/backups/create', {
+      method: 'POST',
+      headers: { 'X-Requested-With': 'XMLHttpRequest' }
+    });
+    const data = await response.json();
+    
+    if (!data.success) {
+      showBackupError(data.error || 'Failed to start backup');
+      return;
+    }
+    
+    // Start polling for status
+    pollBackupStatus();
+  } catch (error) {
+    showBackupError('Network error: ' + error.message);
+  }
+}
+
+function pollBackupStatus() {
+  backupPollTimer = setInterval(async () => {
+    try {
+      const response = await fetch('/web/admin/backups/status');
+      const data = await response.json();
+      
+      const progressBar = document.getElementById('backupProgressBar');
+      const progressText = document.getElementById('backupProgressText');
+      
+      if (data.status === 'running') {
+        // Parse file progress (e.g. "Compressing file 5/20")
+        const match = data.progress.match(/(\d+)\/(\d+)/);
+        if (match) {
+          const current = parseInt(match[1]);
+          const total = parseInt(match[2]);
+          const pct = Math.min(95, Math.round((current / total) * 95));
+          progressBar.style.width = pct + '%';
+        } else {
+          // Slowly animate progress while waiting
+          backupAnimProgress = Math.min(backupAnimProgress + 2, 50);
+          progressBar.style.width = backupAnimProgress + '%';
+        }
+        progressText.textContent = data.progress;
+      } else if (data.status === 'done') {
+        clearInterval(backupPollTimer);
+        progressBar.style.width = '100%';
+        progressBar.classList.remove('bg-blue-600');
+        progressBar.classList.add('bg-green-600');
+        progressText.textContent = 'Backup complete!';
+        
+        const resultDiv = document.getElementById('backupResult');
+        resultDiv.innerHTML = '<div class="p-3 bg-green-50 border border-green-200 rounded text-green-800 text-sm">✅ Backup created successfully</div>';
+        resultDiv.classList.remove('hidden');
+        
+        resetBackupButton();
+        // Reload page after short delay to show the new backup in the list
+        setTimeout(() => window.location.reload(), 2000);
+      } else if (data.status === 'error') {
+        clearInterval(backupPollTimer);
+        showBackupError(data.progress);
+      }
+    } catch (e) {
+      // Network error during poll - keep trying
+    }
+  }, 1000);
+}
+
+function showBackupError(message) {
+  clearInterval(backupPollTimer);
+  const progressBar = document.getElementById('backupProgressBar');
+  const progressText = document.getElementById('backupProgressText');
+  const resultDiv = document.getElementById('backupResult');
+  
+  progressBar.style.width = '100%';
+  progressBar.classList.remove('bg-blue-600');
+  progressBar.classList.add('bg-red-500');
+  progressText.textContent = 'Backup failed';
+  
+  resultDiv.innerHTML = '<div class="p-3 bg-red-50 border border-red-200 rounded text-red-800 text-sm">❌ ' + message + '</div>';
+  resultDiv.classList.remove('hidden');
+  
+  resetBackupButton();
+}
+
+function resetBackupButton() {
+  const btn = document.getElementById('createBackupBtn');
+  btn.disabled = false;
+  btn.classList.remove('opacity-50', 'cursor-not-allowed');
+  btn.textContent = '💾 Create Full Backup Now';
 }
 </script>
 {% endblock %}

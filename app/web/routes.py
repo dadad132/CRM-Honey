@@ -4274,23 +4274,58 @@ async def web_admin_backup_create(
 ):
     user_id = request.session.get('user_id')
     if not user_id:
-        return RedirectResponse('/web/login', status_code=303)
+        return JSONResponse({'success': False, 'error': 'Not authenticated'})
     
     user = (await db.execute(select(User).where(User.id == user_id))).scalar_one_or_none()
     if not user or not user.is_active or not user.is_admin:
-        raise HTTPException(status_code=403, detail="Admin access required")
+        return JSONResponse({'success': False, 'error': 'Admin access required'})
     
     from app.core.backup import backup_manager
-    # Run backup in thread pool to avoid blocking the async event loop
     import asyncio
-    backup_file = await asyncio.to_thread(
-        backup_manager.create_backup, is_manual=True, include_attachments=True
-    )
     
-    if backup_file:
-        return RedirectResponse('/web/admin/backups?success=backup_created', status_code=303)
-    else:
-        return RedirectResponse('/web/admin/backups?error=backup_failed', status_code=303)
+    if backup_manager.backup_status == 'running':
+        return JSONResponse({'success': False, 'error': 'A backup is already in progress'})
+    
+    # Fire-and-forget: start backup in background thread
+    async def _run_backup():
+        try:
+            backup_manager.backup_status = 'running'
+            backup_manager.backup_progress = 'Starting backup...'
+            backup_manager.backup_result_file = None
+            backup_file = await asyncio.to_thread(
+                backup_manager.create_backup, is_manual=True, include_attachments=True
+            )
+            if backup_file:
+                backup_manager.backup_status = 'done'
+                backup_manager.backup_progress = 'Backup created successfully'
+                backup_manager.backup_result_file = backup_file.name
+            else:
+                backup_manager.backup_status = 'error'
+                backup_manager.backup_progress = 'Backup creation failed'
+        except Exception as e:
+            backup_manager.backup_status = 'error'
+            backup_manager.backup_progress = f'Error: {str(e)[:200]}'
+    
+    asyncio.create_task(_run_backup())
+    return JSONResponse({'success': True, 'message': 'Backup started'})
+
+
+@router.get('/admin/backups/status')
+async def web_admin_backup_status(
+    request: Request,
+    db: AsyncSession = Depends(get_session)
+):
+    """Poll endpoint for backup progress"""
+    user_id = request.session.get('user_id')
+    if not user_id:
+        return JSONResponse({'success': False, 'error': 'Not authenticated'})
+    
+    from app.core.backup import backup_manager
+    return JSONResponse({
+        'status': backup_manager.backup_status,
+        'progress': backup_manager.backup_progress,
+        'filename': backup_manager.backup_result_file
+    })
 
 
 @router.get('/admin/backups/download/{filename}')
