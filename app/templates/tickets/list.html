@@ -856,22 +856,52 @@ async function checkEmailsAsync() {
         const data = await response.json();
         
         if (data.success) {
-            showToast('✓ Email check triggered — refreshing shortly...', 'success');
-            // Reload after a few seconds to allow background check to process
-            setTimeout(() => window.location.reload(), 5000);
+            text.textContent = 'Processing emails...';
+            // Poll until the scheduler finishes the check it just triggered
+            const startedAt = new Date().toISOString();
+            let polls = 0;
+            const maxPolls = 60; // Max 60 seconds
+            const pollInterval = setInterval(async () => {
+                polls++;
+                try {
+                    const statusResp = await fetch('/web/admin/email-settings/check-emails/status');
+                    const status = await statusResp.json();
+                    // Done when scheduler is no longer checking AND completed after we triggered
+                    if (!status.checking && status.completed_at && status.completed_at >= startedAt) {
+                        clearInterval(pollInterval);
+                        showToast('✓ Email check complete — reloading...', 'success');
+                        setTimeout(() => window.location.reload(), 500);
+                    } else if (polls >= maxPolls) {
+                        clearInterval(pollInterval);
+                        showToast('⚠ Email check is still running — reload the page manually', 'warning');
+                        resetCheckEmailsBtn();
+                    }
+                } catch (e) {
+                    clearInterval(pollInterval);
+                    showToast('⚠ Could not check status — reload the page manually', 'warning');
+                    resetCheckEmailsBtn();
+                }
+            }, 1000);
         } else {
             showToast('⚠ ' + (data.error || data.message || 'Unknown error'), 'error');
+            resetCheckEmailsBtn();
         }
     } catch (error) {
         showToast('✗ Error checking emails: ' + error.message, 'error');
-    } finally {
-        // Reset button state
-        btn.disabled = false;
-        btn.classList.remove('opacity-75', 'cursor-not-allowed');
-        icon.classList.remove('hidden');
-        spinner.classList.add('hidden');
-        text.textContent = 'Check Emails';
+        resetCheckEmailsBtn();
     }
+}
+
+function resetCheckEmailsBtn() {
+    const btn = document.getElementById('checkEmailsBtn');
+    const icon = document.getElementById('checkEmailsIcon');
+    const spinner = document.getElementById('checkEmailsSpinner');
+    const text = document.getElementById('checkEmailsText');
+    btn.disabled = false;
+    btn.classList.remove('opacity-75', 'cursor-not-allowed');
+    icon.classList.remove('hidden');
+    spinner.classList.add('hidden');
+    text.textContent = 'Check Emails';
 }
 </script>
 {% endblock %}

@@ -5115,6 +5115,25 @@ async def web_admin_check_emails(request: Request, db: AsyncSession = Depends(ge
         return JSONResponse({'success': False, 'error': str(e), 'details': error_details})
 
 
+@router.get('/admin/email-settings/check-emails/status')
+async def web_admin_check_emails_status(request: Request):
+    """Poll endpoint: returns whether the email scheduler is currently checking or has completed."""
+    user_id = request.session.get('user_id')
+    if not user_id:
+        return JSONResponse({'error': 'Not authenticated'}, status_code=401)
+    
+    from app.core.email_scheduler_v2 import email_scheduler
+    
+    completed_at = None
+    if email_scheduler._last_check_completed_at:
+        completed_at = email_scheduler._last_check_completed_at.isoformat()
+    
+    return JSONResponse({
+        'checking': email_scheduler._checking,
+        'completed_at': completed_at,
+    })
+
+
 @router.get('/admin/email-settings/diagnose')
 async def web_admin_email_diagnose(request: Request, db: AsyncSession = Depends(get_session)):
     """Diagnose email account connections - tests each account and reports status"""

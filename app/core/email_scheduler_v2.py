@@ -35,6 +35,9 @@ class EmailScheduler:
         self.task = None
         self._wake_event = asyncio.Event()
         self._lock = asyncio.Lock()
+        # Track check status for UI polling
+        self._last_check_completed_at: datetime | None = None
+        self._checking = False
     
     async def check_now(self):
         """Wake the scheduler to run an immediate email check.
@@ -52,6 +55,11 @@ class EmailScheduler:
         while self.running:
             check_count += 1
             try:
+                # Clear the wake event at the START of each cycle so that
+                # check_now() calls during processing are NOT lost
+                self._wake_event.clear()
+                self._checking = True
+                
                 async with self._lock:
                     timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
                     print(f"[{timestamp}] [Email-to-Ticket] 📧 Check #{check_count} starting...")
@@ -86,13 +94,20 @@ class EmailScheduler:
                     timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
                     print(f"[{timestamp}] [Email-to-Ticket] ✅ Check #{check_count} complete. Next check in {self.check_interval}s")
                 
+                self._checking = False
+                self._last_check_completed_at = datetime.now()
+                
                 # Wait for next check OR be woken up by check_now()
-                self._wake_event.clear()
-                try:
-                    await asyncio.wait_for(self._wake_event.wait(), timeout=self.check_interval)
-                    print("[Email-to-Ticket] 🔔 Manual check requested - running immediately")
-                except asyncio.TimeoutError:
-                    pass  # Normal timeout, proceed with next scheduled check
+                # If check_now() was called during processing, the event is already set
+                # and this will return immediately — no trigger lost
+                if not self._wake_event.is_set():
+                    try:
+                        await asyncio.wait_for(self._wake_event.wait(), timeout=self.check_interval)
+                        print("[Email-to-Ticket] 🔔 Manual check requested - running immediately")
+                    except asyncio.TimeoutError:
+                        pass  # Normal timeout, proceed with next scheduled check
+                else:
+                    print("[Email-to-Ticket] 🔔 Manual check was requested during processing - running again immediately")
                 
             except asyncio.CancelledError:
                 print("[Email-to-Ticket] Task cancelled")
