@@ -45,11 +45,7 @@ logger = logging.getLogger(__name__)
 # Timezone offset (UTC+2 for South Africa)
 LOCAL_TZ_OFFSET = timedelta(hours=2)
 
-# Track whether the one-time cleanup of incorrectly-skipped "own outgoing" emails has run
-_outgoing_cleanup_done = False
 
-# Track whether the one-time damage repair for legacy IMAP bug has run
-_damage_repair_done = False
 
 def get_local_time() -> datetime:
     """Get current time in local timezone (UTC+2)"""
@@ -961,82 +957,6 @@ class EmailToTicketService:
         tickets_created = []
         mail = None
         
-        # One-time damage repair: the previous deploy incorrectly deleted ProcessedMail records
-        # for support@kyotech.co.za, causing system-generated form emails to be re-processed
-        # and matched to ticket #TKT-2026-00565 via sender fallback. This cleanup removes
-        # those incorrect comments, history entries, ProcessedMail records, and notifications.
-        global _damage_repair_done
-        if not _damage_repair_done:
-            _damage_repair_done = True
-            try:
-                from sqlmodel.ext.asyncio.session import AsyncSession as RepairSession
-                from app.core.database import engine as repair_engine
-                from app.models.ticket import TicketComment, TicketHistory, Ticket
-                
-                own_email = (self.settings.incoming_mail_username or '').lower()
-                if own_email:
-                    async with RepairSession(repair_engine) as repair_db:
-                        # Find all ProcessedMail records where support@kyotech.co.za
-                        # was incorrectly matched to a ticket (should have been skipped)
-                        result = await repair_db.execute(
-                            select(ProcessedMail).where(
-                                ProcessedMail.email_from == own_email,
-                                ProcessedMail.ticket_id != None,
-                                ProcessedMail.workspace_id == self.workspace_id
-                            )
-                        )
-                        bad_records = result.scalars().all()
-                        
-                        if bad_records:
-                            # Collect affected ticket IDs
-                            affected_ticket_ids = set()
-                            bad_message_ids = set()
-                            for rec in bad_records:
-                                affected_ticket_ids.add(rec.ticket_id)
-                                bad_message_ids.add(rec.message_id)
-                            
-                            # Delete comments from email replies from our own address on those tickets
-                            # These are the incorrectly added "Email reply from support@..." comments
-                            for ticket_id in affected_ticket_ids:
-                                comments_result = await repair_db.execute(
-                                    select(TicketComment).where(
-                                        TicketComment.ticket_id == ticket_id,
-                                        TicketComment.user_id == None,  # Guest/email comments
-                                        TicketComment.content.contains(own_email)
-                                    )
-                                )
-                                bad_comments = comments_result.scalars().all()
-                                for comment in bad_comments:
-                                    await repair_db.delete(comment)
-                                
-                                # Delete matching history entries
-                                history_result = await repair_db.execute(
-                                    select(TicketHistory).where(
-                                        TicketHistory.ticket_id == ticket_id,
-                                        TicketHistory.user_id == None,
-                                        TicketHistory.action == 'comment_added',
-                                        TicketHistory.new_value.contains(own_email)
-                                    )
-                                )
-                                bad_history = history_result.scalars().all()
-                                for hist in bad_history:
-                                    await repair_db.delete(hist)
-                            
-                            # Reset ProcessedMail records - set ticket_id back to NULL
-                            # so they'll be re-evaluated and correctly skipped
-                            for rec in bad_records:
-                                rec.ticket_id = None
-                            
-                            await repair_db.commit()
-                            print(f"[IMAP] DAMAGE REPAIR: Removed {len(bad_records)} incorrectly-matched records for {own_email}")
-                            print(f"[IMAP] DAMAGE REPAIR: Affected tickets: {affected_ticket_ids}")
-                            _syslog('INFO', 'IMAP', 'Damage repair complete',
-                                f'Removed {len(bad_records)} bad matches from {own_email} | Affected tickets: {affected_ticket_ids}')
-            except Exception as e:
-                print(f"[IMAP] Damage repair failed (non-fatal): {e}")
-                import traceback
-                traceback.print_exc()
-        
         try:
             # Run blocking IMAP connection in a thread pool
             def connect_and_fetch():
@@ -1588,33 +1508,6 @@ async def process_email_account(db: AsyncSession, account) -> List[Ticket]:
     tickets_created = []
     mail = None
     pop3_conn = None
-    
-    # One-time cleanup: remove ProcessedMail records that were incorrectly skipped
-    # as "own outgoing email" (ticket_id=None, from our own address).
-    # These self-addressed emails (forms, notifications) should now be re-evaluated.
-    global _outgoing_cleanup_done
-    if not _outgoing_cleanup_done:
-        try:
-            own_addrs = {imap_username.lower(), account_email.lower()} - {''}
-            if own_addrs:
-                async with NewAsyncSession(engine) as cleanup_db:
-                    for addr in own_addrs:
-                        result = await cleanup_db.execute(
-                            select(ProcessedMail).where(
-                                ProcessedMail.email_from == addr,
-                                ProcessedMail.ticket_id == None,
-                                ProcessedMail.workspace_id == workspace_id
-                            )
-                        )
-                        stale_records = result.scalars().all()
-                        if stale_records:
-                            for rec in stale_records:
-                                await cleanup_db.delete(rec)
-                            await cleanup_db.commit()
-                            print(f"[Email Account] Cleaned up {len(stale_records)} incorrectly-skipped 'own outgoing' records for {addr}")
-            _outgoing_cleanup_done = True
-        except Exception as e:
-            print(f"[Email Account] Cleanup of stale processed records failed (non-fatal): {e}")
     
     try:
         import imaplib

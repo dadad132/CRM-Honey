@@ -94,9 +94,6 @@ class EmailScheduler:
                     timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
                     print(f"[{timestamp}] [Email-to-Ticket] ✅ Check #{check_count} complete. Next check in {self.check_interval}s")
                 
-                self._checking = False
-                self._last_check_completed_at = datetime.now()
-                
                 # Wait for next check OR be woken up by check_now()
                 # If check_now() was called during processing, the event is already set
                 # and this will return immediately — no trigger lost
@@ -117,6 +114,9 @@ class EmailScheduler:
                 print(f"[Email-to-Ticket] Traceback: {traceback.format_exc()}")
                 # Wait before retrying (single sleep, not double)
                 await asyncio.sleep(self.check_interval)
+            finally:
+                self._checking = False
+                self._last_check_completed_at = datetime.now()
     
     async def _process_workspace(self, workspace_id: int):
         """Process emails for a single workspace with its own session (legacy single-account)"""
