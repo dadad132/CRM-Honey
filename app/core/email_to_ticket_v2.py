@@ -45,6 +45,9 @@ logger = logging.getLogger(__name__)
 # Timezone offset (UTC+2 for South Africa)
 LOCAL_TZ_OFFSET = timedelta(hours=2)
 
+# Track whether the one-time cleanup of incorrectly-skipped "own outgoing" emails has run
+_outgoing_cleanup_done = False
+
 def get_local_time() -> datetime:
     """Get current time in local timezone (UTC+2)"""
     return datetime.now(timezone(LOCAL_TZ_OFFSET))
@@ -955,6 +958,40 @@ class EmailToTicketService:
         tickets_created = []
         mail = None
         
+        # One-time cleanup: remove ProcessedMail records that were incorrectly skipped
+        # as "own outgoing email" (ticket_id=None, from our own address).
+        global _outgoing_cleanup_done
+        if not _outgoing_cleanup_done:
+            try:
+                from sqlmodel.ext.asyncio.session import AsyncSession as CleanupSession
+                from app.core.database import engine as cleanup_engine
+                own_addrs = set()
+                own_email = (self.settings.incoming_mail_username or '').lower()
+                smtp_from = (self.settings.smtp_from_email or '').lower() if hasattr(self.settings, 'smtp_from_email') else ''
+                if own_email:
+                    own_addrs.add(own_email)
+                if smtp_from:
+                    own_addrs.add(smtp_from)
+                if own_addrs:
+                    async with CleanupSession(cleanup_engine) as cleanup_db:
+                        for addr in own_addrs:
+                            result = await cleanup_db.execute(
+                                select(ProcessedMail).where(
+                                    ProcessedMail.email_from == addr,
+                                    ProcessedMail.ticket_id == None,
+                                    ProcessedMail.workspace_id == self.workspace_id
+                                )
+                            )
+                            stale = result.scalars().all()
+                            if stale:
+                                for rec in stale:
+                                    await cleanup_db.delete(rec)
+                                await cleanup_db.commit()
+                                print(f"[IMAP] Cleaned up {len(stale)} incorrectly-skipped 'own outgoing' records for {addr}")
+                _outgoing_cleanup_done = True
+            except Exception as e:
+                print(f"[IMAP] Cleanup of stale processed records failed (non-fatal): {e}")
+        
         try:
             # Run blocking IMAP connection in a thread pool
             def connect_and_fetch():
@@ -1070,10 +1107,14 @@ class EmailToTicketService:
                         _, to_email = self.extract_email_address(to_header)
                         
                         # Skip emails sent FROM our own support address (outgoing replies)
+                        # But ONLY if the email is NOT addressed TO our own address
+                        # (self-addressed emails like form notifications should still be processed)
                         own_email = (self.settings.incoming_mail_username or '').lower()
                         smtp_from = (self.settings.smtp_from_email or '').lower() if hasattr(self.settings, 'smtp_from_email') else ''
-                        if sender_email and (sender_email.lower() == own_email or sender_email.lower() == smtp_from):
-                            print(f"[IMAP] ⏭️ SKIPPING: Email sent from our own address ({sender_email})")
+                        is_from_self = sender_email and (sender_email.lower() == own_email or sender_email.lower() == smtp_from)
+                        is_to_self = to_email and (to_email.lower() == own_email or to_email.lower() == smtp_from)
+                        if is_from_self and not is_to_self:
+                            print(f"[IMAP] ⏭️ SKIPPING: Email sent from our own address ({sender_email}) to external recipient")
                             _syslog('INFO', 'IMAP', 'Skipped own outgoing email', f'From={sender_email}')
                             await self.mark_email_processed(fresh_db, message_id, sender_email,
                                 self.decode_header_value(msg.get('Subject', 'No Subject')), None)
@@ -1498,6 +1539,33 @@ async def process_email_account(db: AsyncSession, account) -> List[Ticket]:
     mail = None
     pop3_conn = None
     
+    # One-time cleanup: remove ProcessedMail records that were incorrectly skipped
+    # as "own outgoing email" (ticket_id=None, from our own address).
+    # These self-addressed emails (forms, notifications) should now be re-evaluated.
+    global _outgoing_cleanup_done
+    if not _outgoing_cleanup_done:
+        try:
+            own_addrs = {imap_username.lower(), account_email.lower()} - {''}
+            if own_addrs:
+                async with NewAsyncSession(engine) as cleanup_db:
+                    for addr in own_addrs:
+                        result = await cleanup_db.execute(
+                            select(ProcessedMail).where(
+                                ProcessedMail.email_from == addr,
+                                ProcessedMail.ticket_id == None,
+                                ProcessedMail.workspace_id == workspace_id
+                            )
+                        )
+                        stale_records = result.scalars().all()
+                        if stale_records:
+                            for rec in stale_records:
+                                await cleanup_db.delete(rec)
+                            await cleanup_db.commit()
+                            print(f"[Email Account] Cleaned up {len(stale_records)} incorrectly-skipped 'own outgoing' records for {addr}")
+            _outgoing_cleanup_done = True
+        except Exception as e:
+            print(f"[Email Account] Cleanup of stale processed records failed (non-fatal): {e}")
+    
     try:
         import imaplib
         import poplib
@@ -1690,14 +1758,24 @@ async def process_email_account(db: AsyncSession, account) -> List[Ticket]:
                             else:
                                 subject += part
                     
+                    # Extract To header for outgoing email detection
+                    to_header = msg.get('To', '')
+                    _, to_email_addr = parseaddr(to_header)
+                    to_email_addr = to_email_addr.lower() if to_email_addr else ''
+                    
                     print(f"[Email Account] From: {sender_name} <{sender_email_addr}>")
+                    print(f"[Email Account] To: {to_email_addr}")
                     print(f"[Email Account] Subject: {subject}")
                     _syslog('INFO', 'Email Account', f'Processing: {subject[:80]}', f'From={sender_email_addr} | MsgID={message_id[:80]}', workspace_id)
                     
-                    # Skip emails sent FROM our own support address (outgoing replies)
+                    # Skip emails sent FROM our own address (outgoing replies)
+                    # But ONLY if the email is NOT addressed TO our own address
+                    # (self-addressed emails like form notifications, toner requests etc. should still be processed)
                     own_addresses = {imap_username.lower(), account_email.lower()}
-                    if sender_email_addr and sender_email_addr in own_addresses:
-                        print(f"[Email Account] ⏭️ SKIPPING: Email sent from our own address ({sender_email_addr})")
+                    is_from_self = sender_email_addr and sender_email_addr in own_addresses
+                    is_to_self = to_email_addr and to_email_addr in own_addresses
+                    if is_from_self and not is_to_self:
+                        print(f"[Email Account] ⏭️ SKIPPING: Email sent from our own address ({sender_email_addr}) to external recipient ({to_email_addr})")
                         _syslog('INFO', 'Email Account', 'Skipped own outgoing email', f'From={sender_email_addr}', workspace_id)
                         processed = ProcessedMail(
                             message_id=message_id,
