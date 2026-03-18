@@ -178,10 +178,16 @@ class EmailScheduler:
                     from app.core.system_logger import log_fire_and_forget
                     log_fire_and_forget('ERROR', 'Scheduler', f'Timeout processing account: {account_name}', f'Exceeded {ACCOUNT_PROCESS_TIMEOUT}s')
                 except Exception as e:
-                    print(f"[Email-to-Ticket] Error processing email account '{account_name}': {e}")
-                    print(f"[Email-to-Ticket] Traceback: {traceback.format_exc()}")
-                    from app.core.system_logger import log_fire_and_forget
-                    log_fire_and_forget('ERROR', 'Scheduler', f'Error processing account: {account_name}', str(e)[:200])
+                    err_str = str(e).lower()
+                    if 'database is locked' in err_str or 'locked' in err_str:
+                        print(f"[Email-to-Ticket] ⚠️ DATABASE LOCKED for account '{account_name}' - will retry next cycle")
+                        from app.core.system_logger import log_fire_and_forget
+                        log_fire_and_forget('WARNING', 'Scheduler', f'Database locked for account: {account_name}', 'Will retry next cycle')
+                    else:
+                        print(f"[Email-to-Ticket] Error processing email account '{account_name}': {e}")
+                        print(f"[Email-to-Ticket] Traceback: {traceback.format_exc()}")
+                        from app.core.system_logger import log_fire_and_forget
+                        log_fire_and_forget('ERROR', 'Scheduler', f'Error processing account: {account_name}', str(e)[:200])
         
         except Exception as e:
             if "no such table" in str(e).lower():

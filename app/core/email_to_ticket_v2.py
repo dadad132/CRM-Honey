@@ -566,15 +566,30 @@ class EmailToTicketService:
             return re.sub(r'<[^>]+>', '', html)
     
     async def is_email_processed(self, db: AsyncSession, message_id: str) -> bool:
-        """Check if email was already processed by THIS account"""
+        """Check if email was already processed by THIS account.
+        Falls back to workspace-wide check to prevent duplicates if account email changed."""
         account_email = (self.settings.incoming_mail_username or '').lower()
+        # Primary check: exact account match
         result = await db.execute(
             select(ProcessedMail).where(
                 ProcessedMail.message_id == message_id,
                 ProcessedMail.email_account == account_email
             )
         )
-        return result.scalar_one_or_none() is not None
+        if result.scalar_one_or_none() is not None:
+            return True
+        # Fallback: check if this message_id was already processed by ANY account
+        # in this workspace (prevents re-processing after account email changes)
+        result2 = await db.execute(
+            select(ProcessedMail).where(
+                ProcessedMail.message_id == message_id,
+                ProcessedMail.workspace_id == self.workspace_id
+            )
+        )
+        if result2.scalar_one_or_none() is not None:
+            print(f"[IMAP] Email already processed by another account in this workspace: {message_id[:50]}")
+            return True
+        return False
     
     async def find_ticket_by_reply(self, db: AsyncSession, in_reply_to: str, references: str):
         """Find ticket from reply headers (In-Reply-To or References).
@@ -1174,6 +1189,27 @@ class EmailToTicketService:
                             
                             print(f"[IMAP] Added comment to ticket {existing_ticket_number} from {sender_email}")
                         else:
+                            # Safety check: prevent duplicate ticket creation if this Message-ID
+                            # already has a ticket in this workspace (regardless of email_account).
+                            # This catches cases where ProcessedMail records were lost/invalidated.
+                            existing_pm = await fresh_db.execute(
+                                select(ProcessedMail).where(
+                                    ProcessedMail.message_id == message_id,
+                                    ProcessedMail.workspace_id == self.workspace_id,
+                                    ProcessedMail.ticket_id.isnot(None)
+                                )
+                            )
+                            already_has_ticket = existing_pm.scalar_one_or_none()
+                            if already_has_ticket:
+                                print(f"[IMAP] ⏭️ SKIPPING: Message-ID already has ticket #{already_has_ticket.ticket_id} in this workspace (safety dedup)")
+                                _syslog('INFO', 'IMAP', 'Skipped duplicate Message-ID (safety)', f'From={sender_email} | Subject={subject[:80]} | ExistingTicket={already_has_ticket.ticket_id}')
+                                await self.mark_email_processed(fresh_db, message_id, sender_email, subject, already_has_ticket.ticket_id)
+                                try:
+                                    await mark_as_read_in_folder(email_id, folder)
+                                except Exception:
+                                    pass
+                                continue
+
                             # For spam/junk folders, check if this is a support query first
                             if requires_analysis:
                                 if not is_support_query(subject, body, sender_email):
@@ -1222,6 +1258,11 @@ class EmailToTicketService:
                             _syslog('INFO', 'IMAP', f'Created ticket #{ticket_number}', f'From={sender_email} | Subject={subject[:80]} | Folder={folder} | MsgID={message_id[:80]}')
                     
                 except Exception as e:
+                    err_str = str(e).lower()
+                    if 'database is locked' in err_str or 'locked' in err_str:
+                        print(f"[IMAP] ⚠️ Database locked while processing email {email_id} - will retry next cycle")
+                        _syslog('WARNING', 'IMAP', f'Database locked', f'UID={email_id} | Will retry next cycle')
+                        break  # Stop processing — DB unavailable
                     print(f"[IMAP] Error processing email {email_id}: {e}")
                     _syslog('ERROR', 'IMAP', f'Error processing email', f'UID={email_id} | Error={str(e)[:200]}')
                     continue
@@ -1667,7 +1708,19 @@ async def process_email_account(db: AsyncSession, account) -> List[Ticket]:
                             ProcessedMail.email_account == account_email.lower()
                         )
                     )
-                    if existing.scalar_one_or_none():
+                    already_processed = existing.scalar_one_or_none() is not None
+                    # Fallback: check workspace-wide (prevents re-processing after account changes)
+                    if not already_processed:
+                        existing2 = await fresh_db.execute(
+                            select(ProcessedMail).where(
+                                ProcessedMail.message_id == message_id,
+                                ProcessedMail.workspace_id == workspace_id
+                            )
+                        )
+                        if existing2.scalar_one_or_none():
+                            already_processed = True
+                            print(f"[Email Account] Email already processed by another account in this workspace")
+                    if already_processed:
                         print(f"[Email Account] Email already processed, marking as read")
                         if mail:
                             try:
@@ -1876,6 +1929,41 @@ async def process_email_account(db: AsyncSession, account) -> List[Ticket]:
                         print(f"[Email Account] Added comment to ticket #{existing_ticket_number} from {sender_email_addr}")
                         continue  # Move to next email, don't create new ticket
                     
+                    # Safety check: prevent duplicate ticket creation if this Message-ID
+                    # already has a ticket in this workspace (regardless of email_account).
+                    # This catches cases where ProcessedMail records were lost/invalidated.
+                    existing_pm = await fresh_db.execute(
+                        select(ProcessedMail).where(
+                            ProcessedMail.message_id == message_id,
+                            ProcessedMail.workspace_id == workspace_id,
+                            ProcessedMail.ticket_id.isnot(None)
+                        )
+                    )
+                    already_has_ticket = existing_pm.scalar_one_or_none()
+                    if already_has_ticket:
+                        print(f"[Email Account] ⏭️ SKIPPING: Message-ID already has ticket #{already_has_ticket.ticket_id} in this workspace (safety dedup)")
+                        _syslog('INFO', 'Email Account', 'Skipped duplicate Message-ID (safety)', f'From={sender_email_addr} | Subject={subject[:80]} | ExistingTicket={already_has_ticket.ticket_id}', workspace_id)
+                        processed = ProcessedMail(
+                            message_id=message_id,
+                            email_from=sender_email_addr or 'unknown@unknown.com',
+                            subject=subject,
+                            ticket_id=already_has_ticket.ticket_id,
+                            workspace_id=workspace_id,
+                            email_account=account_email.lower(),
+                            processed_at=get_local_time()
+                        )
+                        fresh_db.add(processed)
+                        await fresh_db.commit()
+                        if mail:
+                            try:
+                                def _mark_read_dedup(_folder=email_folder, _eid=email_id):
+                                    mail.select(_folder)
+                                    mail.uid('store', _eid, '+FLAGS', '\\Seen')
+                                await asyncio.to_thread(_mark_read_dedup)
+                            except Exception:
+                                pass
+                        continue
+
                     print(f"[Email Account] ❌ NO MATCH - Creating new ticket")
                     _syslog('INFO', 'Email Account', 'No match - creating new ticket', f'From={sender_email_addr} | Subject={subject[:80]} | InReplyTo={in_reply_to[:60]} | Refs={references[:60]}', workspace_id)
                     
@@ -1996,6 +2084,11 @@ async def process_email_account(db: AsyncSession, account) -> List[Ticket]:
                     _syslog('INFO', 'Email Account', f'Created ticket #{ticket_number}', f'From={sender_email_addr} | Subject={subject[:80]} | MsgID={message_id[:80]}', workspace_id)
                 
             except Exception as e:
+                err_str = str(e).lower()
+                if 'database is locked' in err_str or 'locked' in err_str:
+                    print(f"[Email Account] ⚠️ Database locked while processing email {email_id} - will retry next cycle")
+                    _syslog('WARNING', 'Email Account', f'Database locked', f'UID={email_id} | Will retry next cycle', workspace_id)
+                    break  # Stop processing this batch — DB is unavailable, retrying won't help
                 print(f"[Email Account] Error processing email {email_id}: {e}")
                 _syslog('ERROR', 'Email Account', f'Error processing email', f'UID={email_id} | Error={str(e)[:200]}', workspace_id)
                 import traceback

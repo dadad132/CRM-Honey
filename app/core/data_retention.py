@@ -98,30 +98,34 @@ async def cleanup_old_data():
     except Exception as e:
         print(f"[DataRetention] Error during data cleanup: {e}")
 
-    # 5. SQLite VACUUM — reclaim disk space after deletions
+    # 5. SQLite maintenance — checkpoint WAL file and optimize indexes
+    # NOTE: We no longer run VACUUM here because it acquires an EXCLUSIVE lock
+    # on the entire database, blocking ALL concurrent reads/writes (including the
+    # email scheduler). With WAL mode enabled, periodic checkpointing is sufficient.
     if total_deleted > 0:
         try:
             db_path = Path("data.db")
             if db_path.exists():
                 size_before = db_path.stat().st_size
-                # VACUUM must run outside of SQLAlchemy (requires exclusive lock, no transaction)
-                await asyncio.to_thread(_vacuum_database, str(db_path))
+                await asyncio.to_thread(_optimize_database, str(db_path))
                 size_after = db_path.stat().st_size
                 saved_kb = (size_before - size_after) / 1024
                 if saved_kb > 1:
-                    print(f"[DataRetention] VACUUM reclaimed {saved_kb:.1f} KB")
+                    print(f"[DataRetention] WAL checkpoint reclaimed {saved_kb:.1f} KB")
         except Exception as e:
-            print(f"[DataRetention] VACUUM error (non-critical): {e}")
+            print(f"[DataRetention] Database optimize error (non-critical): {e}")
 
     if total_deleted:
         print(f"[DataRetention] Total cleaned: {total_deleted} records")
 
 
-def _vacuum_database(db_path: str):
-    """Run SQLite VACUUM in a thread (blocking operation)."""
-    conn = sqlite3.connect(db_path)
+def _optimize_database(db_path: str):
+    """Run SQLite WAL checkpoint and optimize in a thread (non-blocking for other connections).
+    Unlike VACUUM, wal_checkpoint does NOT acquire an exclusive lock on the main database."""
+    conn = sqlite3.connect(db_path, timeout=10)
     try:
-        conn.execute("VACUUM")
+        conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+        conn.execute("PRAGMA optimize")
     finally:
         conn.close()
 

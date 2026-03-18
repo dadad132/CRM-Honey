@@ -7,6 +7,7 @@ from typing import AsyncGenerator
 from sqlmodel import SQLModel
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, create_async_engine
 from sqlalchemy.orm import sessionmaker
+from sqlalchemy import event
 
 from .config import get_settings
 
@@ -22,6 +23,17 @@ engine: AsyncEngine = create_async_engine(
     future=True,
     pool_pre_ping=True,  # Check connections are alive
 )
+
+# Enable WAL mode and busy timeout for SQLite to allow concurrent reads/writes.
+# Without WAL, every write acquires an exclusive lock blocking all other operations,
+# which causes the email scheduler to timeout when the database is busy.
+@event.listens_for(engine.sync_engine, "connect")
+def _set_sqlite_pragma(dbapi_connection, connection_record):
+    cursor = dbapi_connection.cursor()
+    cursor.execute("PRAGMA journal_mode=WAL")
+    cursor.execute("PRAGMA busy_timeout=30000")  # Wait up to 30s for locks
+    cursor.execute("PRAGMA synchronous=NORMAL")  # Safe with WAL, better performance
+    cursor.close()
 
 async_session_factory = sessionmaker(
     bind=engine,
