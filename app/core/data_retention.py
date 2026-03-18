@@ -122,9 +122,9 @@ async def cleanup_old_data():
 def _optimize_database(db_path: str):
     """Run SQLite WAL checkpoint and optimize in a thread (non-blocking for other connections).
     Unlike VACUUM, wal_checkpoint does NOT acquire an exclusive lock on the main database."""
-    conn = sqlite3.connect(db_path, timeout=10)
+    conn = sqlite3.connect(db_path, timeout=30)
     try:
-        conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+        conn.execute("PRAGMA wal_checkpoint(PASSIVE)")
         conn.execute("PRAGMA optimize")
     finally:
         conn.close()

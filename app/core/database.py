@@ -48,6 +48,11 @@ async def init_models() -> None:
     # Import models to register tables
     from app import models  # noqa: F401
     async with engine.begin() as conn:
+        # Ensure WAL mode is active (belt-and-suspenders with the connect event listener)
+        if engine.url.get_backend_name().startswith("sqlite"):
+            await conn.exec_driver_sql("PRAGMA journal_mode=WAL")
+            await conn.exec_driver_sql("PRAGMA busy_timeout=30000")
+            await conn.exec_driver_sql("PRAGMA synchronous=NORMAL")
         # For SQLite dev usage: if schema drift is detected (e.g., missing columns
         # after model changes), drop and recreate all tables to avoid runtime errors.
         try:
@@ -95,42 +100,13 @@ async def lifespan(app):  # FastAPI lifespan
     from app.core.shutdown import shutdown_handler
     shutdown_handler.setup_handlers()
     
-    # Start automatic backup system
-    from app.core.backup import backup_manager
     import logging
     logger = logging.getLogger(__name__)
     
-    try:
-        await backup_manager.start_auto_backup()
-        logger.info("✅ Automatic backup system started")
-    except Exception as e:
-        logger.error(f"⚠️  Failed to start backup system: {e}")
-    
-    # Start email-to-ticket scheduler (V2 - uses database settings)
-    try:
-        from app.core.email_scheduler_v2 import start_email_scheduler
-        await start_email_scheduler()
-        logger.info("✅ Email-to-Ticket scheduler started (V2 - database config)")
-    except Exception as e:
-        logger.warning(f"⚠️  Email-to-Ticket scheduler not started: {e}")
-    
-    # Start system log cleanup scheduler (deletes logs older than 7 days)
-    try:
-        from app.core.system_logger import start_log_cleanup_scheduler, cleanup_old_logs
-        await cleanup_old_logs()  # Run once on startup
-        asyncio.create_task(start_log_cleanup_scheduler())
-        logger.info("✅ System log cleanup scheduler started")
-    except Exception as e:
-        logger.warning(f"⚠️  System log cleanup scheduler not started: {e}")
-    
-    # Start data retention scheduler (cleans notifications, bot conversations, behavior tracking)
-    try:
-        from app.core.data_retention import start_data_retention_scheduler, cleanup_old_data
-        await cleanup_old_data()  # Run once on startup
-        asyncio.create_task(start_data_retention_scheduler())
-        logger.info("✅ Data retention scheduler started")
-    except Exception as e:
-        logger.warning(f"⚠️  Data retention scheduler not started: {e}")
+    # ─── Schema fixes ───────────────────────────────────────────────
+    # These MUST run before any schedulers start, since the schedulers
+    # read/write these tables. Direct sqlite3 connections use timeout
+    # to avoid hanging if another process holds a lock.
     
     # Fix ticketattachment.uploaded_by_id NOT NULL constraint
     # The model says Optional[int] but the DB column may still have NOT NULL from original create
@@ -141,7 +117,7 @@ async def lifespan(app):  # FastAPI lifespan
         
         db_path = Path("data.db")
         if db_path.exists():
-            conn = sqlite3.connect(str(db_path))
+            conn = sqlite3.connect(str(db_path), timeout=30)
             cursor = conn.cursor()
             
             # Check if uploaded_by_id is NOT NULL (notnull=1 in pragma)
@@ -196,7 +172,7 @@ async def lifespan(app):  # FastAPI lifespan
         
         db_path = Path("data.db")
         if db_path.exists():
-            conn = sqlite3.connect(str(db_path))
+            conn = sqlite3.connect(str(db_path), timeout=30)
             cursor = conn.cursor()
             
             # Quick fix for comment_attachment
@@ -223,7 +199,7 @@ async def lifespan(app):  # FastAPI lifespan
         
         db_path = Path("data.db")
         if db_path.exists():
-            conn = sqlite3.connect(str(db_path))
+            conn = sqlite3.connect(str(db_path), timeout=30)
             cursor = conn.cursor()
             
             cursor.execute('PRAGMA table_info("processedmail")')
@@ -255,18 +231,44 @@ async def lifespan(app):  # FastAPI lifespan
     except Exception as e:
         logger.warning(f"⚠️  Could not migrate processedmail schema: {e}")
     
-    # Seed IT Knowledge Base with common troubleshooting data (runs once if empty)
+    # ─── Background schedulers ──────────────────────────────────────
+    # Start these AFTER all schema fixes are done, so they don't read
+    # tables that are being modified.
+    
+    # Start automatic backup system
+    from app.core.backup import backup_manager
+    
     try:
-        from app.core.kb_seed import seed_knowledge_base
-        from sqlmodel import select as _sel
-        from app.models.workspace import Workspace
-        async with AsyncSession(engine) as _session:
-            ws = (await _session.execute(_sel(Workspace).limit(1))).scalar_one_or_none()
-            if ws:
-                await seed_knowledge_base(ws.id)
-                logger.info("✅ IT Knowledge Base seed check complete")
+        await backup_manager.start_auto_backup()
+        logger.info("✅ Automatic backup system started")
     except Exception as e:
-        logger.warning(f"⚠️  Could not seed Knowledge Base: {e}")
+        logger.error(f"⚠️  Failed to start backup system: {e}")
+    
+    # Start email-to-ticket scheduler (V2 - uses database settings)
+    try:
+        from app.core.email_scheduler_v2 import start_email_scheduler
+        await start_email_scheduler()
+        logger.info("✅ Email-to-Ticket scheduler started (V2 - database config)")
+    except Exception as e:
+        logger.warning(f"⚠️  Email-to-Ticket scheduler not started: {e}")
+    
+    # Start system log cleanup scheduler (deletes logs older than 7 days)
+    try:
+        from app.core.system_logger import start_log_cleanup_scheduler, cleanup_old_logs
+        await cleanup_old_logs()  # Run once on startup
+        asyncio.create_task(start_log_cleanup_scheduler())
+        logger.info("✅ System log cleanup scheduler started")
+    except Exception as e:
+        logger.warning(f"⚠️  System log cleanup scheduler not started: {e}")
+    
+    # Start data retention scheduler (cleans notifications, bot conversations, behavior tracking)
+    try:
+        from app.core.data_retention import start_data_retention_scheduler, cleanup_old_data
+        await cleanup_old_data()  # Run once on startup
+        asyncio.create_task(start_data_retention_scheduler())
+        logger.info("✅ Data retention scheduler started")
+    except Exception as e:
+        logger.warning(f"⚠️  Data retention scheduler not started: {e}")
     
     yield
     
