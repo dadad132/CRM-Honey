@@ -567,29 +567,17 @@ class EmailToTicketService:
     
     async def is_email_processed(self, db: AsyncSession, message_id: str) -> bool:
         """Check if email was already processed by THIS account.
-        Falls back to workspace-wide check to prevent duplicates if account email changed."""
+        Only checks the specific account — different accounts are allowed to
+        independently process the same Message-ID (e.g. same email sent to
+        multiple support addresses should create separate tickets)."""
         account_email = (self.settings.incoming_mail_username or '').lower()
-        # Primary check: exact account match
         result = await db.execute(
             select(ProcessedMail).where(
                 ProcessedMail.message_id == message_id,
                 ProcessedMail.email_account == account_email
             )
         )
-        if result.scalar_one_or_none() is not None:
-            return True
-        # Fallback: check if this message_id was already processed by ANY account
-        # in this workspace (prevents re-processing after account email changes)
-        result2 = await db.execute(
-            select(ProcessedMail).where(
-                ProcessedMail.message_id == message_id,
-                ProcessedMail.workspace_id == self.workspace_id
-            )
-        )
-        if result2.scalar_one_or_none() is not None:
-            print(f"[IMAP] Email already processed by another account in this workspace: {message_id[:50]}")
-            return True
-        return False
+        return result.scalar_one_or_none() is not None
     
     async def find_ticket_by_reply(self, db: AsyncSession, in_reply_to: str, references: str):
         """Find ticket from reply headers (In-Reply-To or References).
@@ -1701,7 +1689,9 @@ async def process_email_account(db: AsyncSession, account) -> List[Ticket]:
                 
                 # Use a fresh database session for each email to avoid greenlet issues
                 async with NewAsyncSession(engine) as fresh_db:
-                    # Check if already processed by THIS account
+                    # Check if already processed by THIS account only.
+                    # Different accounts process independently — same email sent to
+                    # multiple support addresses should create separate tickets.
                     existing = await fresh_db.execute(
                         select(ProcessedMail).where(
                             ProcessedMail.message_id == message_id,
@@ -1709,17 +1699,6 @@ async def process_email_account(db: AsyncSession, account) -> List[Ticket]:
                         )
                     )
                     already_processed = existing.scalar_one_or_none() is not None
-                    # Fallback: check workspace-wide (prevents re-processing after account changes)
-                    if not already_processed:
-                        existing2 = await fresh_db.execute(
-                            select(ProcessedMail).where(
-                                ProcessedMail.message_id == message_id,
-                                ProcessedMail.workspace_id == workspace_id
-                            )
-                        )
-                        if existing2.scalar_one_or_none():
-                            already_processed = True
-                            print(f"[Email Account] Email already processed by another account in this workspace")
                     if already_processed:
                         print(f"[Email Account] Email already processed, marking as read")
                         if mail:
