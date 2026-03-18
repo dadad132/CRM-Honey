@@ -1178,12 +1178,14 @@ class EmailToTicketService:
                             print(f"[IMAP] Added comment to ticket {existing_ticket_number} from {sender_email}")
                         else:
                             # Safety check: prevent duplicate ticket creation if this Message-ID
-                            # already has a ticket in this workspace (regardless of email_account).
+                            # was already processed by THIS account and has a ticket.
                             # This catches cases where ProcessedMail records were lost/invalidated.
+                            # Per-account only — different accounts create their own tickets.
+                            account_email_imap = (self.settings.incoming_mail_username or '').lower()
                             existing_pm = await fresh_db.execute(
                                 select(ProcessedMail).where(
                                     ProcessedMail.message_id == message_id,
-                                    ProcessedMail.workspace_id == self.workspace_id,
+                                    ProcessedMail.email_account == account_email_imap,
                                     ProcessedMail.ticket_id.isnot(None)
                                 )
                             )
@@ -1909,12 +1911,13 @@ async def process_email_account(db: AsyncSession, account) -> List[Ticket]:
                         continue  # Move to next email, don't create new ticket
                     
                     # Safety check: prevent duplicate ticket creation if this Message-ID
-                    # already has a ticket in this workspace (regardless of email_account).
+                    # was already processed by THIS account and has a ticket.
                     # This catches cases where ProcessedMail records were lost/invalidated.
+                    # Per-account only — different accounts create their own tickets.
                     existing_pm = await fresh_db.execute(
                         select(ProcessedMail).where(
                             ProcessedMail.message_id == message_id,
-                            ProcessedMail.workspace_id == workspace_id,
+                            ProcessedMail.email_account == account_email.lower(),
                             ProcessedMail.ticket_id.isnot(None)
                         )
                     )
