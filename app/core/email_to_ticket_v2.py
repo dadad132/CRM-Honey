@@ -577,7 +577,7 @@ class EmailToTicketService:
                 ProcessedMail.email_account == account_email
             )
         )
-        return result.scalar_one_or_none() is not None
+        return result.scalars().first() is not None
     
     async def find_ticket_by_reply(self, db: AsyncSession, in_reply_to: str, references: str):
         """Find ticket from reply headers (In-Reply-To or References).
@@ -1187,7 +1187,7 @@ class EmailToTicketService:
                                     ProcessedMail.ticket_id.isnot(None)
                                 )
                             )
-                            already_has_ticket = existing_pm.scalar_one_or_none()
+                            already_has_ticket = existing_pm.scalars().first()
                             if already_has_ticket:
                                 print(f"[IMAP] ⏭️ SKIPPING: Message-ID already has ticket #{already_has_ticket.ticket_id} in this workspace (safety dedup)")
                                 _syslog('INFO', 'IMAP', 'Skipped duplicate Message-ID (safety)', f'From={sender_email} | Subject={subject[:80]} | ExistingTicket={already_has_ticket.ticket_id}')
@@ -1698,7 +1698,7 @@ async def process_email_account(db: AsyncSession, account) -> List[Ticket]:
                             ProcessedMail.email_account == account_email.lower()
                         )
                     )
-                    already_processed = existing.scalar_one_or_none() is not None
+                    already_processed = existing.scalars().first() is not None
                     if already_processed:
                         print(f"[Email Account] Email already processed, marking as read")
                         if mail:
@@ -1918,7 +1918,7 @@ async def process_email_account(db: AsyncSession, account) -> List[Ticket]:
                             ProcessedMail.ticket_id.isnot(None)
                         )
                     )
-                    already_has_ticket = existing_pm.scalar_one_or_none()
+                    already_has_ticket = existing_pm.scalars().first()
                     if already_has_ticket:
                         print(f"[Email Account] ⏭️ SKIPPING: Message-ID already has ticket #{already_has_ticket.ticket_id} in this workspace (safety dedup)")
                         _syslog('INFO', 'Email Account', 'Skipped duplicate Message-ID (safety)', f'From={sender_email_addr} | Subject={subject[:80]} | ExistingTicket={already_has_ticket.ticket_id}', workspace_id)
