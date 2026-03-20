@@ -103,6 +103,7 @@ def extract_email_attachments(msg) -> List[dict]:
             # Skip oversized attachments
             if len(content) > MAX_ATTACHMENT_SIZE:
                 print(f"[Email Attachment] Skipping '{filename}' - too large ({len(content)} bytes, max {MAX_ATTACHMENT_SIZE})")
+                _syslog('WARNING', 'IMAP', 'Attachment skipped - oversized', f'File={filename} | Size={len(content)} | Max={MAX_ATTACHMENT_SIZE}')
                 continue
             
             content_type = part.get_content_type() or 'application/octet-stream'
@@ -116,6 +117,7 @@ def extract_email_attachments(msg) -> List[dict]:
             print(f"[Email Attachment] Found: '{filename}' ({content_type}, {len(content)} bytes)")
         except Exception as e:
             print(f"[Email Attachment] Error extracting '{filename}': {e}")
+            _syslog('ERROR', 'IMAP', f'Attachment extraction failed: {filename}', str(e)[:200])
             continue
     
     return attachments
@@ -172,6 +174,7 @@ async def save_email_attachments(
             print(f"[Email Attachment] Saved: '{original_name}' -> {relative_path}")
         except Exception as e:
             print(f"[Email Attachment] Error saving '{att.get('filename', '?')}': {e}")
+            _syslog('ERROR', 'IMAP', f'Attachment save error: {att.get("filename", "?")}', str(e)[:200])
             continue
     
     if saved:
@@ -298,6 +301,7 @@ class EmailToTicketService:
             if is_gmail:
                 if not use_ssl or port in (None, 110, 143, 0):
                     print(f"[IMAP] Gmail detected ({host}) - forcing SSL on port 993 (was port={port}, ssl={use_ssl})")
+                    _syslog('INFO', 'IMAP', f'Gmail detected - forcing SSL on port 993', f'Host={host} | OrigPort={port} | OrigSSL={use_ssl}')
                     use_ssl = True
                     port = 993
             
@@ -394,7 +398,8 @@ class EmailToTicketService:
                         payload = part.get_payload(decode=True)
                         charset = part.get_content_charset() or 'utf-8'
                         body = payload.decode(charset, errors='ignore')
-                    except:
+                    except Exception as e:
+                        _syslog('WARNING', 'IMAP', 'Failed to decode text/plain part', str(e)[:200])
                         continue
                 
                 elif content_type == "text/html" and not html_body:
@@ -402,7 +407,8 @@ class EmailToTicketService:
                         payload = part.get_payload(decode=True)
                         charset = part.get_content_charset() or 'utf-8'
                         html_body = payload.decode(charset, errors='ignore')
-                    except:
+                    except Exception as e:
+                        _syslog('WARNING', 'IMAP', 'Failed to decode text/html part', str(e)[:200])
                         continue
         else:
             content_type = msg.get_content_type()
@@ -415,7 +421,8 @@ class EmailToTicketService:
                     html_body = decoded
                 else:
                     body = decoded
-            except:
+            except Exception as e:
+                _syslog('WARNING', 'IMAP', 'Failed to decode email body, using raw payload', str(e)[:200])
                 body = str(msg.get_payload())
         
         # If we only have HTML, convert it to plain text
@@ -562,6 +569,7 @@ class EmailToTicketService:
             return text
         except Exception as e:
             print(f"Error converting HTML to text: {e}")
+            _syslog('WARNING', 'IMAP', 'HTML to text conversion failed', str(e)[:200])
             # Fallback: strip all HTML tags
             return re.sub(r'<[^>]+>', '', html)
     
@@ -753,6 +761,7 @@ class EmailToTicketService:
             # Handle duplicate key error gracefully (already processed by another worker)
             if 'UNIQUE constraint' in str(e) or 'duplicate' in str(e).lower():
                 print(f"[IMAP] Email already marked as processed (race condition handled): {message_id[:50]}")
+                _syslog('WARNING', 'IMAP', 'Duplicate ProcessedMail entry (race condition)', f'MsgID={message_id[:80]}')
                 await db.rollback()
             else:
                 raise
@@ -951,6 +960,7 @@ class EmailToTicketService:
         
         await db.commit()
         await db.refresh(comment)
+        _syslog('INFO', 'IMAP', f'Comment added to ticket #{ticket.ticket_number}', f'From={sender_email} | CommentID={comment.id}', ticket.workspace_id)
         
         return comment
     
@@ -1014,9 +1024,11 @@ class EmailToTicketService:
                                     })
                             except Exception as e:
                                 print(f"[IMAP] Error fetching email UID {email_id} from {folder_name}: {e}")
+                                _syslog('WARNING', 'IMAP', f'Failed to fetch email UID {email_id} from {folder_name}', str(e)[:200])
                                 continue
                     except Exception as e:
-                        # Folder doesn't exist or can't be selected - skip silently
+                        # Folder doesn't exist or can't be selected
+                        _syslog('INFO', 'IMAP', f'Folder not available: {folder_name}', str(e)[:100])
                         continue
                 
                 # Don't re-select INBOX here - we'll select the correct folder when marking as read
@@ -1051,6 +1063,7 @@ class EmailToTicketService:
                         content_hash = hashlib.sha256(content_key.encode()).hexdigest()[:32]
                         message_id = f'<no-id-{content_hash}@generated>'
                         print(f"[IMAP] No Message-ID header, generated stable ID from content hash: {message_id}")
+                        _syslog('WARNING', 'IMAP', 'No Message-ID header, generated synthetic ID', f'ID={message_id}')
                     
                     # Helper to mark email as read in correct folder (using UID)
                     async def mark_as_read_in_folder(eid, fld):
@@ -1069,6 +1082,7 @@ class EmailToTicketService:
                                 await mark_as_read_in_folder(email_id, folder)
                             except Exception as e:
                                 print(f"[IMAP] Warning: Could not mark email as read in {folder}: {e}")
+                                _syslog('WARNING', 'IMAP', f'Failed to mark email as read in {folder}', str(e)[:200])
                             continue
                         
                         # Extract email info
@@ -1094,6 +1108,7 @@ class EmailToTicketService:
                                 await mark_as_read_in_folder(email_id, folder)
                             except Exception as e:
                                 print(f"[IMAP] Warning: Could not mark email as read in {folder}: {e}")
+                                _syslog('WARNING', 'IMAP', f'Failed to mark email as read in {folder}', str(e)[:200])
                             continue
                         
                         subject = self.decode_header_value(msg.get('Subject', 'No Subject'))
@@ -1129,6 +1144,7 @@ class EmailToTicketService:
                                 await mark_as_read_in_folder(email_id, folder)
                             except Exception as e:
                                 print(f"[IMAP] Warning: Could not mark email as read in {folder}: {e}")
+                                _syslog('WARNING', 'IMAP', f'Failed to mark email as read in {folder}', str(e)[:200])
                             continue
                         
                         # If not found via headers, try by sender email
@@ -1174,6 +1190,7 @@ class EmailToTicketService:
                                 await mark_as_read_in_folder(email_id, folder)
                             except Exception as e:
                                 print(f"[IMAP] Warning: Could not mark email as read in {folder}: {e}")
+                                _syslog('WARNING', 'IMAP', f'Failed to mark email as read in {folder}', str(e)[:200])
                             
                             print(f"[IMAP] Added comment to ticket {existing_ticket_number} from {sender_email}")
                         else:
@@ -1205,6 +1222,7 @@ class EmailToTicketService:
                                 if not is_support_query(subject, body, sender_email):
                                     print(f"[IMAP] ⏭️ SKIPPING: Email from {folder} folder doesn't look like a support query")
                                     print(f"[IMAP]    Subject: {subject[:50]}...")
+                                    _syslog('INFO', 'IMAP', f'Non-support email skipped from {folder}', f'From={sender_email} | Subject={subject[:80]}')
                                     # Mark as read but don't create ticket
                                     try:
                                         await mark_as_read_in_folder(email_id, folder)
@@ -1217,6 +1235,7 @@ class EmailToTicketService:
                                     continue
                                 else:
                                     print(f"[IMAP] ✅ Email from {folder} folder looks like a support query - creating ticket")
+                                    _syslog('INFO', 'IMAP', f'Support query found in {folder} - creating ticket', f'From={sender_email} | Subject={subject[:80]}')
                             
                             # Always create tickets (linked to project if matched)
                             ticket = await self.create_ticket_from_email(
@@ -1239,6 +1258,7 @@ class EmailToTicketService:
                                 await mark_as_read_in_folder(email_id, folder)
                             except Exception as e:
                                 print(f"[IMAP] Warning: Could not mark email as read in {folder}: {e}")
+                                _syslog('WARNING', 'IMAP', f'Failed to mark email as read in {folder}', str(e)[:200])
                             
                             tickets_created.append(ticket)
                             if project:
@@ -1260,6 +1280,7 @@ class EmailToTicketService:
             # Close connection in thread pool
             if mail:
                 await asyncio.to_thread(lambda: (mail.close(), mail.logout()))
+                _syslog('INFO', 'IMAP', 'IMAP connection closed successfully')
             
         except Exception as e:
             print(f"[IMAP] Error fetching emails: {e}")
@@ -1267,8 +1288,8 @@ class EmailToTicketService:
             if mail:
                 try:
                     await asyncio.to_thread(lambda: (mail.close(), mail.logout()))
-                except:
-                    pass
+                except Exception as close_e:
+                    _syslog('WARNING', 'IMAP', 'IMAP close/logout failed on error path', str(close_e)[:200])
         
         return tickets_created
     
@@ -1482,6 +1503,7 @@ async def add_comment_from_email_for_account(
     
     await db.commit()
     await db.refresh(comment)
+    _syslog('INFO', 'Email Account', f'Comment added to ticket #{ticket.ticket_number}', f'From={sender_email} | CommentID={comment.id}', ticket.workspace_id)
     
     return comment
 
@@ -1581,6 +1603,7 @@ async def process_email_account(db: AsyncSession, account) -> List[Ticket]:
                 # Get message count
                 num_messages = len(pop3_conn.list()[1])
                 print(f"[Email Account] POP3: Found {num_messages} messages")
+                _syslog('INFO', 'Email Account', f'POP3 connected to {imap_host}:{imap_port}', f'Messages={num_messages}', workspace_id)
                 
                 raw_emails = []
                 # Only get last 50 messages to avoid overwhelming
@@ -1595,6 +1618,7 @@ async def process_email_account(db: AsyncSession, account) -> List[Ticket]:
                         })
                     except Exception as e:
                         print(f"[Email Account] POP3 error fetching message {i}: {e}")
+                        _syslog('WARNING', 'Email Account', f'POP3 fetch error for message {i}', str(e)[:200], workspace_id)
                         continue
                 
                 return raw_emails
@@ -1608,11 +1632,12 @@ async def process_email_account(db: AsyncSession, account) -> List[Ticket]:
                     mail = imaplib.IMAP4(imap_host, effective_port or 143)
                     try:
                         mail.starttls()
-                    except Exception:
+                    except Exception as e:
                         # Server doesn't support STARTTLS, continue without encryption
-                        pass
+                        _syslog('WARNING', 'Email Account', f'STARTTLS failed for {imap_host}', str(e)[:200], workspace_id)
                 
                 mail.login(imap_username, imap_password)
+                _syslog('INFO', 'Email Account', f'IMAP connected to {imap_host}:{effective_port}', f'SSL={effective_ssl}', workspace_id)
                 
                 # Check multiple folders - INBOX plus Gmail-specific folders
                 # Gmail may route emails to spam/promotions/etc.
@@ -1656,9 +1681,11 @@ async def process_email_account(db: AsyncSession, account) -> List[Ticket]:
                                     })
                             except Exception as e:
                                 print(f"[Email Account] Error fetching email {email_id} from {folder}: {e}")
+                                _syslog('WARNING', 'Email Account', f'Failed to fetch email {email_id} from {folder}', str(e)[:200], workspace_id)
                                 continue
                     except Exception as e:
-                        # Folder doesn't exist or can't be selected - skip silently
+                        # Folder doesn't exist or can't be selected
+                        _syslog('INFO', 'Email Account', f'Folder not available: {folder}', str(e)[:100], workspace_id)
                         continue
                 
                 return raw_emails
@@ -1686,6 +1713,7 @@ async def process_email_account(db: AsyncSession, account) -> List[Ticket]:
                     content_hash = hashlib.sha256(content_key.encode()).hexdigest()[:32]
                     message_id = f'<no-id-{content_hash}@generated>'
                     print(f"[Email Account] No Message-ID header, generated stable ID from content hash: {message_id}")
+                    _syslog('WARNING', 'Email Account', 'No Message-ID header, generated synthetic ID', f'ID={message_id}', workspace_id)
                 
                 print(f"[Email Account] Processing email {email_id}: Message-ID={message_id[:50]}...")
                 
@@ -1712,6 +1740,7 @@ async def process_email_account(db: AsyncSession, account) -> List[Ticket]:
                                 await asyncio.to_thread(_mark_read_1)
                             except Exception as e:
                                 print(f"[Email Account] Warning: Could not mark email as read: {e}")
+                                _syslog('WARNING', 'Email Account', 'Failed to mark email as read', str(e)[:200], workspace_id)
                         continue
                     
                     # Extract email info
@@ -1779,6 +1808,7 @@ async def process_email_account(db: AsyncSession, account) -> List[Ticket]:
                                 await asyncio.to_thread(_mark_read_self)
                             except Exception as e:
                                 print(f"[Email Account] Warning: Could not mark email as read: {e}")
+                                _syslog('WARNING', 'Email Account', 'Failed to mark email as read', str(e)[:200], workspace_id)
                         continue
                     
                     # Get reply headers for threading detection
@@ -1854,6 +1884,7 @@ async def process_email_account(db: AsyncSession, account) -> List[Ticket]:
                                 await asyncio.to_thread(_mark_read_closed)
                             except Exception as e:
                                 print(f"[Email Account] Warning: Could not mark email as read: {e}")
+                                _syslog('WARNING', 'Email Account', 'Failed to mark email as read', str(e)[:200], workspace_id)
                         continue
                     
                     # If not found via headers, try by sender email
@@ -1906,8 +1937,10 @@ async def process_email_account(db: AsyncSession, account) -> List[Ticket]:
                                 await asyncio.to_thread(_mark_read_2)
                             except Exception as e:
                                 print(f"[Email Account] Warning: Could not mark email as read: {e}")
+                                _syslog('WARNING', 'Email Account', 'Failed to mark email as read', str(e)[:200], workspace_id)
                         
                         print(f"[Email Account] Added comment to ticket #{existing_ticket_number} from {sender_email_addr}")
+                        _syslog('INFO', 'Email Account', f'Comment added to ticket #{existing_ticket_number}', f'From={sender_email_addr}', workspace_id)
                         continue  # Move to next email, don't create new ticket
                     
                     # Safety check: prevent duplicate ticket creation if this Message-ID
@@ -1942,8 +1975,8 @@ async def process_email_account(db: AsyncSession, account) -> List[Ticket]:
                                     mail.select(_folder)
                                     mail.uid('store', _eid, '+FLAGS', '\\Seen')
                                 await asyncio.to_thread(_mark_read_dedup)
-                            except Exception:
-                                pass
+                            except Exception as e:
+                                _syslog('WARNING', 'Email Account', 'Failed to mark email as read', str(e)[:200], workspace_id)
                         continue
 
                     print(f"[Email Account] ❌ NO MATCH - Creating new ticket")
@@ -2036,6 +2069,7 @@ async def process_email_account(db: AsyncSession, account) -> List[Ticket]:
                             await asyncio.to_thread(_mark_read_3)
                         except Exception as e:
                             print(f"[Email Account] Warning: Could not mark email as read: {e}")
+                            _syslog('WARNING', 'Email Account', 'Failed to mark email as read', str(e)[:200], workspace_id)
                     
                     # Notify all admins and users with can_see_all_tickets permission
                     admin_query = select(User).where(
@@ -2086,6 +2120,7 @@ async def process_email_account(db: AsyncSession, account) -> List[Ticket]:
                 )
             except (asyncio.TimeoutError, Exception) as e:
                 print(f"[Email Account] Warning: IMAP close/logout issue: {e}")
+                _syslog('WARNING', 'Email Account', 'IMAP close/logout issue', str(e)[:200], workspace_id)
         if pop3_conn:
             try:
                 await asyncio.wait_for(
@@ -2094,6 +2129,7 @@ async def process_email_account(db: AsyncSession, account) -> List[Ticket]:
                 )
             except (asyncio.TimeoutError, Exception) as e:
                 print(f"[Email Account] Warning: POP3 quit issue: {e}")
+                _syslog('WARNING', 'Email Account', 'POP3 quit issue', str(e)[:200], workspace_id)
         
     except Exception as e:
         print(f"[Email Account] ❌ Error fetching emails for account {account_name}: {e}")
@@ -2106,16 +2142,16 @@ async def process_email_account(db: AsyncSession, account) -> List[Ticket]:
                     asyncio.to_thread(lambda: (mail.close(), mail.logout())),
                     timeout=15
                 )
-            except (asyncio.TimeoutError, Exception):
-                pass
+            except (asyncio.TimeoutError, Exception) as e:
+                _syslog('WARNING', 'Email Account', 'IMAP close/logout failed on error path', str(e)[:200], workspace_id)
         if pop3_conn:
             try:
                 await asyncio.wait_for(
                     asyncio.to_thread(lambda: pop3_conn.quit()),
                     timeout=15
                 )
-            except (asyncio.TimeoutError, Exception):
-                pass
+            except (asyncio.TimeoutError, Exception) as e:
+                _syslog('WARNING', 'Email Account', 'POP3 quit failed on error path', str(e)[:200], workspace_id)
         # Re-raise so the caller can report the error per-account
         raise
     

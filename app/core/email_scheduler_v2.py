@@ -11,6 +11,7 @@ from sqlmodel import select
 
 from app.core.database import engine
 from app.core.email_to_ticket_v2 import process_workspace_emails, process_email_account
+from app.core.system_logger import log_fire_and_forget
 from app.models.workspace import Workspace
 from app.models.email_settings import EmailSettings
 from app.models.incoming_email_account import IncomingEmailAccount
@@ -50,6 +51,7 @@ class EmailScheduler:
         """Background task to check emails periodically"""
         
         print(f"[Email-to-Ticket] ✅ Scheduler started (checking every {self.check_interval}s)")
+        log_fire_and_forget('INFO', 'Scheduler', 'Scheduler', f'Scheduler started (interval={self.check_interval}s)')
         check_count = 0
         
         while self.running:
@@ -63,6 +65,7 @@ class EmailScheduler:
                 async with self._lock:
                     timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
                     print(f"[{timestamp}] [Email-to-Ticket] 📧 Check #{check_count} starting...")
+                    log_fire_and_forget('INFO', 'Scheduler', 'Scheduler', f'Email check #{check_count} starting')
                     
                     total_tickets_created = 0
                     
@@ -85,14 +88,17 @@ class EmailScheduler:
                     except Exception as e:
                         if "no such table" in str(e).lower():
                             print(f"[Email-to-Ticket] EmailSettings table not found - skipping legacy email check")
+                            log_fire_and_forget('WARNING', 'Scheduler', 'Scheduler', 'EmailSettings table not found - skipping legacy check')
                         else:
                             print(f"[Email-to-Ticket] Error checking legacy email settings: {e}")
+                            log_fire_and_forget('ERROR', 'Scheduler', 'Scheduler', f'Error checking legacy email settings: {str(e)[:200]}')
                     
                     # Process new multi-account email settings
                     await self._process_email_accounts()
                     
                     timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
                     print(f"[{timestamp}] [Email-to-Ticket] ✅ Check #{check_count} complete. Next check in {self.check_interval}s")
+                    log_fire_and_forget('INFO', 'Scheduler', 'Scheduler', f'Email check #{check_count} complete')
                 
                 # Mark done BEFORE the wait so the polling UI sees it immediately
                 self._checking = False
@@ -118,6 +124,7 @@ class EmailScheduler:
                 self._last_check_completed_at = datetime.now()
                 print(f"[Email-to-Ticket] Error in background task: {e}")
                 print(f"[Email-to-Ticket] Traceback: {traceback.format_exc()}")
+                log_fire_and_forget('ERROR', 'Scheduler', 'Scheduler', f'Background task error: {str(e)[:200]}')
                 # Wait before retrying (single sleep, not double)
                 await asyncio.sleep(self.check_interval)
     
@@ -130,9 +137,11 @@ class EmailScheduler:
                 if tickets:
                     timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
                     print(f"[{timestamp}] Workspace {workspace_id}: Created {len(tickets)} ticket(s) from emails")
+                    log_fire_and_forget('INFO', 'Scheduler', 'Scheduler', f'Workspace {workspace_id}: Created {len(tickets)} ticket(s)')
         
         except Exception as e:
             print(f"[Email-to-Ticket] Error processing workspace {workspace_id}: {e}")
+            log_fire_and_forget('ERROR', 'Scheduler', 'Scheduler', f'Error processing workspace {workspace_id}: {str(e)[:200]}')
     
     async def _process_email_accounts(self):
         """Process emails for all active incoming email accounts (new multi-account)"""
@@ -175,26 +184,25 @@ class EmailScheduler:
                         await account_db.commit()
                 except asyncio.TimeoutError:
                     print(f"[Email-to-Ticket] ⚠️ TIMEOUT: Account '{account_name}' exceeded {ACCOUNT_PROCESS_TIMEOUT}s - skipping")
-                    from app.core.system_logger import log_fire_and_forget
                     log_fire_and_forget('ERROR', 'Scheduler', f'Timeout processing account: {account_name}', f'Exceeded {ACCOUNT_PROCESS_TIMEOUT}s')
                 except Exception as e:
                     err_str = str(e).lower()
                     if 'database is locked' in err_str or 'locked' in err_str:
                         print(f"[Email-to-Ticket] ⚠️ DATABASE LOCKED for account '{account_name}' - will retry next cycle")
-                        from app.core.system_logger import log_fire_and_forget
                         log_fire_and_forget('WARNING', 'Scheduler', f'Database locked for account: {account_name}', 'Will retry next cycle')
                     else:
                         print(f"[Email-to-Ticket] Error processing email account '{account_name}': {e}")
                         print(f"[Email-to-Ticket] Traceback: {traceback.format_exc()}")
-                        from app.core.system_logger import log_fire_and_forget
                         log_fire_and_forget('ERROR', 'Scheduler', f'Error processing account: {account_name}', str(e)[:200])
         
         except Exception as e:
             if "no such table" in str(e).lower():
                 print(f"[Email-to-Ticket] IncomingEmailAccount table not found - skipping multi-account check")
+                log_fire_and_forget('WARNING', 'Scheduler', 'Scheduler', 'IncomingEmailAccount table not found - skipping')
             else:
                 print(f"[Email-to-Ticket] Error processing email accounts: {e}")
                 print(f"[Email-to-Ticket] Traceback: {traceback.format_exc()}")
+                log_fire_and_forget('ERROR', 'Scheduler', 'Scheduler', f'Error processing email accounts: {str(e)[:200]}')
     
     async def start(self):
         """Start the scheduler"""
@@ -215,6 +223,7 @@ class EmailScheduler:
             if exception:
                 print(f"[Email-to-Ticket] ❌ Background task crashed: {exception}")
                 print(f"[Email-to-Ticket] Traceback: {traceback.format_exception(type(exception), exception, exception.__traceback__)}")
+                log_fire_and_forget('ERROR', 'Scheduler', 'Scheduler', f'Background task crashed: {str(exception)[:200]}')
                 # Auto-restart the scheduler after a crash
                 if self.running:
                     print("[Email-to-Ticket] 🔄 Auto-restarting scheduler after crash...")
@@ -232,8 +241,10 @@ class EmailScheduler:
             self.task = asyncio.create_task(self.check_emails_task())
             self.task.add_done_callback(self._task_done_callback)
             print("[Email-to-Ticket] ✅ Scheduler restarted successfully")
+            log_fire_and_forget('INFO', 'Scheduler', 'Scheduler', 'Scheduler restarted after crash')
         except Exception as e:
             print(f"[Email-to-Ticket] ❌ Failed to restart scheduler: {e}")
+            log_fire_and_forget('ERROR', 'Scheduler', 'Scheduler', f'Failed to restart scheduler: {str(e)[:200]}')
     
     async def stop(self):
         """Stop the scheduler"""
