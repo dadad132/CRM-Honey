@@ -167,10 +167,6 @@ app.include_router(web_routes.router, prefix="/web")
 # Minimal server-rendered pages
 @app.get("/", response_class=HTMLResponse)
 async def index(request: Request):
-    # Get workspace from request state (added by middleware)
-    workspace = getattr(request.state, 'workspace', None)
-    # Render the landing page template
-    return templates.TemplateResponse("index.html", {
-        "request": request,
-        "workspace": workspace
-    })
+    # Redirect to login page
+    from fastapi.responses import RedirectResponse
+    return RedirectResponse('/web/login', status_code=302)

@@ -147,19 +147,6 @@
                 </div>
             </div>
         </div>
-        <div class="bg-white rounded-lg shadow-sm p-5">
-            <div class="flex items-center justify-between">
-                <div>
-                    <p class="text-sm text-gray-500">Tickets Closed</p>
-                    <p class="text-2xl font-bold text-purple-600">{{ metrics.tickets_closed }}</p>
-                </div>
-                <div class="w-12 h-12 bg-purple-100 rounded-full flex items-center justify-center">
-                    <svg class="w-6 h-6 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
-                    </svg>
-                </div>
-            </div>
-        </div>
     </div>
 
     <!-- Activity Summary -->
@@ -196,18 +183,7 @@
                             <td class="py-2 text-gray-600">Activities Logged</td>
                             <td class="py-2 text-right font-semibold">{{ summary.activities }}</td>
                         </tr>
-                        <tr>
-                            <td class="py-2 text-gray-600">Tickets Assigned</td>
-                            <td class="py-2 text-right font-semibold">{{ summary.tickets_assigned }}</td>
-                        </tr>
-                        <tr>
-                            <td class="py-2 text-gray-600">Ticket Comments</td>
-                            <td class="py-2 text-right font-semibold">{{ summary.ticket_comments }}</td>
-                        </tr>
-                        <tr>
-                            <td class="py-2 text-gray-600">Tickets Closed</td>
-                            <td class="py-2 text-right font-semibold">{{ summary.tickets_closed }}</td>
-                        </tr>
+
                     </tbody>
                 </table>
             </div>
@@ -420,12 +396,6 @@
                                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
                                         </svg>
                                     </span>
-                                    {% elif activity.type == 'ticket_closed' %}
-                                    <span class="h-8 w-8 rounded-full bg-purple-500 flex items-center justify-center ring-8 ring-white">
-                                        <svg class="h-4 w-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
-                                        </svg>
-                                    </span>
                                     {% elif activity.type == 'comment' %}
                                     <span class="h-8 w-8 rounded-full bg-yellow-500 flex items-center justify-center ring-8 ring-white">
                                         <svg class="h-4 w-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -458,85 +428,6 @@
                     <li class="text-center text-gray-500 py-8">No recent activity</li>
                     {% endfor %}
                 </ul>
-            </div>
-        </div>
-    </div>
-
-    <!-- Tickets Section -->
-    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
-        <!-- Tickets Assigned -->
-        <div class="bg-white rounded-lg shadow-sm">
-            <div class="px-6 py-4 border-b border-gray-200">
-                <h3 class="text-lg font-semibold text-gray-900">Tickets Assigned ({{ tickets_assigned|length }})</h3>
-            </div>
-            <div class="overflow-x-auto max-h-96">
-                <table class="w-full">
-                    <thead class="bg-gray-50 sticky top-0">
-                        <tr>
-                            <th class="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Ticket</th>
-                            <th class="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Status</th>
-                        </tr>
-                    </thead>
-                    <tbody class="divide-y divide-gray-200">
-                        {% for ticket in tickets_assigned %}
-                        <tr class="hover:bg-gray-50">
-                            <td class="px-4 py-3">
-                                <a href="/web/tickets/{{ ticket.id }}" class="font-medium text-gray-900 hover:text-indigo-600 text-sm">
-                                    {{ ticket.ticket_number }}
-                                </a>
-                                <p class="text-xs text-gray-500 truncate max-w-xs">{{ ticket.subject }}</p>
-                            </td>
-                            <td class="px-4 py-3">
-                                <span class="px-2 py-1 text-xs font-medium rounded 
-                                    {% if ticket.status == 'closed' %}bg-gray-100 text-gray-800
-                                    {% elif ticket.status == 'resolved' %}bg-green-100 text-green-800
-                                    {% elif ticket.status == 'in_progress' %}bg-blue-100 text-blue-800
-                                    {% else %}bg-yellow-100 text-yellow-800{% endif %}">
-                                    {{ ticket.status|title }}
-                                </span>
-                            </td>
-                        </tr>
-                        {% else %}
-                        <tr>
-                            <td colspan="2" class="px-4 py-8 text-center text-gray-500">No tickets assigned</td>
-                        </tr>
-                        {% endfor %}
-                    </tbody>
-                </table>
-            </div>
-        </div>
-
-        <!-- Tickets Closed -->
-        <div class="bg-white rounded-lg shadow-sm">
-            <div class="px-6 py-4 border-b border-gray-200">
-                <h3 class="text-lg font-semibold text-gray-900">Tickets Closed ({{ tickets_closed|length }})</h3>
-            </div>
-            <div class="overflow-x-auto max-h-96">
-                <table class="w-full">
-                    <thead class="bg-gray-50 sticky top-0">
-                        <tr>
-                            <th class="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Ticket</th>
-                            <th class="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Closed At</th>
-                        </tr>
-                    </thead>
-                    <tbody class="divide-y divide-gray-200">
-                        {% for ticket in tickets_closed %}
-                        <tr class="hover:bg-gray-50">
-                            <td class="px-4 py-3">
-                                <span class="font-medium text-gray-900 text-sm">{{ ticket.ticket_number }}</span>
-                                <p class="text-xs text-gray-500 truncate max-w-xs">{{ ticket.subject }}</p>
-                            </td>
-                            <td class="px-4 py-3 text-sm text-gray-600">
-                                {{ ticket.closed_at | format_datetime_tz(workspace.timezone if workspace else 'UTC', '%b %d, %H:%M') }}
-                            </td>
-                        </tr>
-                        {% else %}
-                        <tr>
-                            <td colspan="2" class="px-4 py-8 text-center text-gray-500">No tickets closed</td>
-                        </tr>
-                        {% endfor %}
-                    </tbody>
-                </table>
             </div>
         </div>
     </div>

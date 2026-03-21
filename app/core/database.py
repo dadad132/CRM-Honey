@@ -244,14 +244,6 @@ async def lifespan(app):  # FastAPI lifespan
     except Exception as e:
         logger.error(f"⚠️  Failed to start backup system: {e}")
     
-    # Start email-to-ticket scheduler (V2 - uses database settings)
-    try:
-        from app.core.email_scheduler_v2 import start_email_scheduler
-        await start_email_scheduler()
-        logger.info("✅ Email-to-Ticket scheduler started (V2 - database config)")
-    except Exception as e:
-        logger.warning(f"⚠️  Email-to-Ticket scheduler not started: {e}")
-    
     # Start system log cleanup scheduler (deletes logs older than 7 days)
     try:
         from app.core.system_logger import start_log_cleanup_scheduler, cleanup_old_logs
@@ -276,11 +268,7 @@ async def lifespan(app):  # FastAPI lifespan
     try:
         logger.info("🛑 Application shutdown requested...")
         await shutdown_handler.shutdown_sequence()
-        
-        # Stop email scheduler
-        from app.core.email_scheduler_v2 import stop_email_scheduler
-        await stop_email_scheduler()
-        logger.info("✅ Email-to-Ticket scheduler stopped")
+        logger.info("✅ Graceful shutdown complete")
     except Exception as e:
         logger.error(f"⚠️  Error during graceful shutdown: {e}")
 

@@ -12,7 +12,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.user_behavior import UserBehavior, UserPreference, SmartSuggestion
 from app.models.task import Task
-from app.models.ticket import Ticket
 from app.models.assignment import Assignment
 from app.models.user import User
 

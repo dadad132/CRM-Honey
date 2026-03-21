@@ -76,23 +76,6 @@ async def cleanup_old_data():
                 if "no such table" not in str(e).lower():
                     print(f"[DataRetention] UserBehavior cleanup error: {e}")
 
-            # 4. Processed email records — delete older than 30 days
-            # Only needs 7 days for dedup but keeping 30 for safety margin
-            try:
-                from app.models.processed_mail import ProcessedMail
-                cutoff_30 = now - timedelta(days=30)
-                stmt = sa_delete(ProcessedMail).where(
-                    ProcessedMail.processed_at < cutoff_30
-                )
-                result = await db.execute(stmt)
-                count = result.rowcount or 0
-                if count:
-                    print(f"[DataRetention] Cleaned {count} old processed email records (>30 days)")
-                total_deleted += count
-            except Exception as e:
-                if "no such table" not in str(e).lower():
-                    print(f"[DataRetention] ProcessedMail cleanup error: {e}")
-
             await db.commit()
 
     except Exception as e:

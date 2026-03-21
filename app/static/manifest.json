@@ -70,11 +70,6 @@
       "name": "Tasks",
       "url": "/web/tasks",
       "icons": [{ "src": "/static/icons/icon-96x96.png", "sizes": "96x96" }]
-    },
-    {
-      "name": "Tickets",
-      "url": "/web/tickets",
-      "icons": [{ "src": "/static/icons/icon-96x96.png", "sizes": "96x96" }]
     }
   ]
 }
