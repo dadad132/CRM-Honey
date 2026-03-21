@@ -61,21 +61,6 @@ async def cleanup_old_data():
                 if "no such table" not in str(e).lower():
                     print(f"[DataRetention] SupportConversation cleanup error: {e}")
 
-            # 3. User behavior tracking — delete older than 90 days
-            try:
-                from app.models.user_behavior import UserBehavior
-                stmt = sa_delete(UserBehavior).where(
-                    UserBehavior.created_at < cutoff_90
-                )
-                result = await db.execute(stmt)
-                count = result.rowcount or 0
-                if count:
-                    print(f"[DataRetention] Cleaned {count} old user behavior records (>90 days)")
-                total_deleted += count
-            except Exception as e:
-                if "no such table" not in str(e).lower():
-                    print(f"[DataRetention] UserBehavior cleanup error: {e}")
-
             await db.commit()
 
     except Exception as e:

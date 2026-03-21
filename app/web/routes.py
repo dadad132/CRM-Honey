@@ -1130,14 +1130,6 @@ async def web_dashboard_quick_task(
     )
     db.add(history)
     
-    # Track user behavior for learning
-    from app.core.smart_suggestions import track_user_action
-    await track_user_action(
-        db, user_id, user.workspace_id, 'task_created', 'task',
-        entity_id=task.id, project_id=project_id,
-        field_name='priority', field_value=priority
-    )
-    
     await db.commit()
     
     return RedirectResponse('/web/dashboard', status_code=303)
@@ -1436,89 +1428,6 @@ async def web_verify_email_confirm(request: Request, code: str = Form(...), db: 
 
 
 # --------------------------
-# Smart Suggestions API
-# --------------------------
-@router.get('/api/suggestions/assignees')
-async def api_get_suggested_assignees(
-    request: Request,
-    project_id: Optional[int] = None,
-    db: AsyncSession = Depends(get_session)
-):
-    """Get suggested assignees based on user's history"""
-    user_id = request.session.get('user_id')
-    if not user_id:
-        return JSONResponse({'suggestions': []})
-    
-    user = (await db.execute(select(User).where(User.id == user_id))).scalar_one_or_none()
-    if not user:
-        return JSONResponse({'suggestions': []})
-    
-    from app.core.smart_suggestions import get_suggested_assignees
-    suggestions = await get_suggested_assignees(db, user_id, user.workspace_id, project_id)
-    return JSONResponse({'suggestions': suggestions})
-
-
-@router.get('/api/suggestions/priority')
-async def api_get_suggested_priority(
-    request: Request,
-    project_id: Optional[int] = None,
-    db: AsyncSession = Depends(get_session)
-):
-    """Get suggested priority based on user's history"""
-    user_id = request.session.get('user_id')
-    if not user_id:
-        return JSONResponse({'suggestion': None})
-    
-    user = (await db.execute(select(User).where(User.id == user_id))).scalar_one_or_none()
-    if not user:
-        return JSONResponse({'suggestion': None})
-    
-    from app.core.smart_suggestions import get_suggested_priority
-    suggestion = await get_suggested_priority(db, user_id, user.workspace_id, project_id)
-    return JSONResponse({'suggestion': suggestion})
-
-
-@router.get('/api/suggestions/similar-tasks')
-async def api_get_similar_tasks(
-    request: Request,
-    title: str,
-    project_id: Optional[int] = None,
-    db: AsyncSession = Depends(get_session)
-):
-    """Find similar tasks based on title keywords"""
-    user_id = request.session.get('user_id')
-    if not user_id or not title:
-        return JSONResponse({'similar_tasks': []})
-    
-    user = (await db.execute(select(User).where(User.id == user_id))).scalar_one_or_none()
-    if not user:
-        return JSONResponse({'similar_tasks': []})
-    
-    from app.core.smart_suggestions import get_similar_tasks
-    similar = await get_similar_tasks(db, user_id, user.workspace_id, title, project_id)
-    return JSONResponse({'similar_tasks': similar})
-
-
-@router.get('/api/suggestions/insights')
-async def api_get_work_insights(
-    request: Request,
-    db: AsyncSession = Depends(get_session)
-):
-    """Get work pattern insights for current user"""
-    user_id = request.session.get('user_id')
-    if not user_id:
-        return JSONResponse({'insights': {}})
-    
-    user = (await db.execute(select(User).where(User.id == user_id))).scalar_one_or_none()
-    if not user:
-        return JSONResponse({'insights': {}})
-    
-    from app.core.smart_suggestions import get_work_pattern_insights
-    insights = await get_work_pattern_insights(db, user_id, user.workspace_id)
-    return JSONResponse({'insights': insights})
-
-
-# --------------------------
 # Global Search
 # --------------------------
 # TODO: FUTURE FEATURE - Add Attachment Search
@@ -1801,13 +1710,6 @@ async def web_task_duplicate(
     )
     db.add(history)
     
-    # Track behavior
-    from app.core.smart_suggestions import track_user_action
-    await track_user_action(
-        db, user_id, user.workspace_id, 'task_duplicated', 'task',
-        entity_id=new_task.id, project_id=new_task.project_id
-    )
-    
     await db.commit()
     
     return RedirectResponse(f'/web/tasks/{new_task.id}', status_code=303)
@@ -1853,14 +1755,6 @@ async def web_task_add_time_log(
         description=description
     )
     db.add(time_log)
-    
-    # Track behavior
-    from app.core.smart_suggestions import track_user_action
-    await track_user_action(
-        db, user_id, user.workspace_id, 'time_logged', 'task',
-        entity_id=task_id, project_id=task.project_id,
-        field_name='hours', field_value=str(hours)
-    )
     
     await db.commit()
     
@@ -3856,140 +3750,6 @@ async def web_admin_update_rollback(
         return RedirectResponse(f'/web/admin/updates?error={error_msg}', status_code=303)
 
 
-# --------------------------
-# Task Completion Email Helper
-# --------------------------
-async def send_completion_notification_email(
-    db: AsyncSession,
-    workspace_id: int,
-    notification_type: str,  # 'task'
-    item_id: str,  # Task ID
-    title: str,
-    status: str,
-    priority: str,
-    completed_by_name: str,
-    created_at: datetime,
-    completed_at: datetime,
-    additional_details: str = ""
-):
-    """Send completion notification email for tasks"""
-    from app.models.email_settings import EmailSettings
-    import smtplib
-    from email.mime.text import MIMEText
-    from email.mime.multipart import MIMEMultipart
-    
-    try:
-        # Get email settings
-        settings = (await db.execute(
-            select(EmailSettings).where(EmailSettings.workspace_id == workspace_id)
-        )).scalar_one_or_none()
-        
-        if not settings:
-            logger.warning(f"No email settings for workspace {workspace_id}, skipping completion notification")
-            return False
-        
-        if not settings.completion_notify_enabled:
-            logger.debug(f"Completion notifications disabled for workspace {workspace_id}")
-            return False
-        
-        if not settings.completion_notify_email:
-            logger.warning(f"No completion notify email set for workspace {workspace_id}")
-            return False
-        
-        # Check if we should notify for this type
-        if notification_type == 'task' and not settings.completion_notify_task:
-            return False
-        
-        # Calculate time to complete
-        time_diff = completed_at - created_at
-        days = time_diff.days
-        hours, remainder = divmod(time_diff.seconds, 3600)
-        minutes, _ = divmod(remainder, 60)
-        
-        if days > 0:
-            time_to_complete = f"{days} day(s), {hours} hour(s), {minutes} minute(s)"
-        elif hours > 0:
-            time_to_complete = f"{hours} hour(s), {minutes} minute(s)"
-        else:
-            time_to_complete = f"{minutes} minute(s)"
-        
-        # Prepare variables
-        type_display = "Task"
-        type_id_label = "Task ID"
-        
-        # Build email subject
-        subject = (settings.completion_email_subject or "{type} Completed - {title}").format(
-            type=type_display,
-            title=title,
-            type_id=item_id
-        )
-        
-        # Build email body
-        default_body = """Good day,
-
-Please see the {type} that has been completed:
-
-{type} Details:
---------------
-{type_id_label}: {type_id}
-Title/Subject: {title}
-Status: {status}
-Priority: {priority}
-Completed By: {completed_by}
-Completed At: {completed_at}
-
-Time to Complete: {time_to_complete}
-Created At: {created_at}
-
-{additional_details}
-
-Best regards,
-{company_name}
-
----
-This is an automated notification from your CRM system."""
-        
-        body_template = settings.completion_email_body or default_body
-        body = body_template.format(
-            type=type_display,
-            type_id=item_id,
-            type_id_label=type_id_label,
-            title=title,
-            status=status,
-            priority=priority,
-            completed_by=completed_by_name,
-            completed_at=completed_at.strftime('%Y-%m-%d %H:%M'),
-            time_to_complete=time_to_complete,
-            created_at=created_at.strftime('%Y-%m-%d %H:%M'),
-            additional_details=additional_details,
-            company_name=settings.company_name or "Support Team"
-        )
-        
-        # Send email
-        msg = MIMEMultipart()
-        msg['From'] = f"{settings.smtp_from_name} <{settings.smtp_from_email}>"
-        msg['To'] = settings.completion_notify_email
-        msg['Subject'] = subject
-        msg.attach(MIMEText(body, 'plain'))
-        
-        if settings.smtp_use_tls:
-            server = smtplib.SMTP(settings.smtp_host, settings.smtp_port)
-            server.starttls()
-        else:
-            server = smtplib.SMTP_SSL(settings.smtp_host, settings.smtp_port)
-        
-        server.login(settings.smtp_username, settings.smtp_password)
-        server.sendmail(settings.smtp_from_email, settings.completion_notify_email, msg.as_string())
-        server.quit()
-        
-        logger.info(f"Sent {notification_type} completion notification for {item_id} to {settings.completion_notify_email}")
-        return True
-        
-    except Exception as e:
-        logger.error(f"Failed to send completion notification: {e}")
-        return False
-
-
 # Site Settings (Admin Only)
 # --------------------------
 @router.get('/admin/site-settings', response_class=HTMLResponse)
@@ -5359,23 +5119,6 @@ async def web_task_create(request: Request, db: AsyncSession = Depends(get_sessi
         db.add(assignment)
         await db.commit()
     
-    # Track user behavior for learning
-    try:
-        from app.core.smart_suggestions import track_user_action
-        await track_user_action(
-            db=db,
-            user_id=user_id,
-            workspace_id=user.workspace_id,
-            action_type="task_create",
-            entity_type="task",
-            entity_id=task.id,
-            project_id=project_id,
-            field_name="priority",
-            field_value=priority
-        )
-    except Exception:
-        pass  # Don't fail task creation if tracking fails
-    
     return RedirectResponse(f'/web/projects/{project_id}', status_code=303)
 
 
@@ -5768,29 +5511,6 @@ async def web_task_update(
     
     await db.commit()
     
-    # Send completion notification email if task was just marked as done
-    if task_just_completed:
-        try:
-            # Get project for additional details
-            project = (await db.execute(select(Project).where(Project.id == task.project_id))).scalar_one_or_none()
-            additional_details = f"Project: {project.name}" if project else ""
-            
-            await send_completion_notification_email(
-                db=db,
-                workspace_id=user.workspace_id,
-                notification_type='task',
-                item_id=str(task_id),
-                title=task.title,
-                status='Done',
-                priority=task.priority.value.title(),
-                completed_by_name=user.full_name or user.username,
-                created_at=task.created_at,
-                completed_at=task.archived_at or datetime.utcnow(),
-                additional_details=additional_details
-            )
-        except Exception as e:
-            logger.error(f"Failed to send task completion notification: {e}")
-    
     return RedirectResponse(f'/web/tasks/{task_id}', status_code=303)
 
 
@@ -5900,34 +5620,6 @@ async def web_task_complete_with_details(
         if billing_details:
             billing_details.append("")  # Empty line separator
         billing_details.append(f"COMPLETION NOTES:\n{task.completion_notes}")
-    
-    # Build additional details for email
-    project = (await db.execute(select(Project).where(Project.id == task.project_id))).scalar_one_or_none()
-    additional_details_parts = []
-    if project:
-        additional_details_parts.append(f"Project: {project.name}")
-    if billing_details:
-        additional_details_parts.append("\n" + "\n".join(billing_details))
-    
-    additional_details = "\n".join(additional_details_parts)
-    
-    # Send completion notification email
-    try:
-        await send_completion_notification_email(
-            db=db,
-            workspace_id=user.workspace_id,
-            notification_type='task',
-            item_id=str(task_id),
-            title=task.title,
-            status='Done',
-            priority=task.priority.value.title(),
-            completed_by_name=user.full_name or user.username,
-            created_at=task.created_at,
-            completed_at=task.archived_at,
-            additional_details=additional_details
-        )
-    except Exception as e:
-        logger.error(f"Failed to send task completion notification: {e}")
     
     # Check if this is an AJAX request
     if request.headers.get('accept', '').find('application/json') != -1 or request.headers.get('x-requested-with') == 'XMLHttpRequest':
@@ -6620,23 +6312,6 @@ async def web_task_update_status(request: Request, task_id: int, status_value: s
     
     await db.commit()
     
-    # Track user behavior for learning
-    try:
-        from app.core.smart_suggestions import track_user_action
-        await track_user_action(
-            db=db,
-            user_id=user_id,
-            workspace_id=user.workspace_id,
-            action_type="task_status_change",
-            entity_type="task",
-            entity_id=task_id,
-            project_id=task.project_id,
-            field_name="status",
-            field_value=status_value
-        )
-    except Exception:
-        pass
-    
     # Check if this is an AJAX request (fetch)
     if request.headers.get('accept', '').find('application/json') != -1 or request.headers.get('x-requested-with') == 'XMLHttpRequest':
         from fastapi.responses import JSONResponse
@@ -6689,23 +6364,6 @@ async def web_task_assign(request: Request, task_id: int, assignee_id: int = For
             db.add(notification)
         
         await db.commit()
-        
-        # Track user behavior for learning
-        try:
-            from app.core.smart_suggestions import track_user_action
-            await track_user_action(
-                db=db,
-                user_id=user_id,
-                workspace_id=user.workspace_id,
-                action_type="task_assign",
-                entity_type="task",
-                entity_id=task_id,
-                project_id=task.project_id,
-                field_name="assignee",
-                field_value=str(assignee_id)
-            )
-        except Exception:
-            pass
     return RedirectResponse(f'/web/projects/{task.project_id}', status_code=303)
 
 

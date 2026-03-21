@@ -34,7 +34,6 @@ from .task_extensions import (
     TaskTemplate,
     FocusTask,
 )
-from .user_behavior import UserBehavior, UserPreference, SmartSuggestion
 from .support_kb import SupportArticle, SupportConversation, SupportCategory
 from .knowledge_base import KBDiagnosticTree, KBResolvedCase
 from .system_log import SystemLog
@@ -68,13 +67,6 @@ __all__ = [
     "DealStage",
     "Activity",
     "ActivityType",
-    "Ticket",
-    "TicketComment",
-    "TicketAttachment",
-    "TicketHistory",
-    "EmailSettings",
-    "ProcessedMail",
-    "IncomingEmailAccount",
     "TaskDependency",
     "TaskAttachment",
     "TimeLog",
@@ -83,16 +75,12 @@ __all__ = [
     "CustomFieldValue",
     "SavedView",
     "TaskWatcher",
-    "TicketWatcher",
     "RecurringTask",
     "RecurringTaskInstance",
     "Goal",
     "Milestone",
     "TaskTemplate",
     "FocusTask",
-    "UserBehavior",
-    "UserPreference",
-    "SmartSuggestion",
     "SupportArticle",
     "SupportConversation",
     "SupportCategory",
