@@ -1,7 +1,7 @@
 [Unit]
 Description=CRM Backend Application
 After=network.target
-Documentation=https://github.com/your-repo/crm-backend
+Documentation=https://github.com/dadad132/CRM-Honey
 
 [Service]
 Type=simple
@@ -33,7 +33,7 @@ NoNewPrivileges=true
 PrivateTmp=true
 ProtectSystem=strict
 ProtectHome=true
-ReadWritePaths=/opt/crm-backend/data.db /opt/crm-backend/backups /opt/crm-backend/uploads
+ReadWritePaths=/opt/crm-backend
 
 [Install]
 WantedBy=multi-user.target
