@@ -324,7 +324,7 @@ generate_env() {
     fi
 
     local secret_key
-    secret_key=$(python3 -c "import secrets; print(secrets.token_urlsafe(48))")
+    secret_key=$("$INSTALL_DIR/venv/bin/python" -c "import secrets; print(secrets.token_urlsafe(48))")
 
     cat > "$env_file" <<ENVEOF
 # CRM-Honey Configuration
@@ -392,13 +392,14 @@ run_all_migrations() {
     step "Initializing database and running migrations"
 
     cd "$INSTALL_DIR"
+    local VENV_PYTHON="$INSTALL_DIR/venv/bin/python"
 
     # 9a — Let SQLModel create all tables (init_models)
     echo "  → Initializing database schema..."
-    python3 -c "
+    "$VENV_PYTHON" -c "
 import asyncio
 import sys, os
-sys.path.insert(0, '.')
+sys.path.insert(0, '$INSTALL_DIR')
 os.chdir('$INSTALL_DIR')
 
 async def init():
@@ -425,7 +426,7 @@ asyncio.run(init())
             local name
             name=$(basename "$script")
             echo "    Running $name ..."
-            if python3 "$script" 2>&1; then
+            if PYTHONPATH="$INSTALL_DIR" "$VENV_PYTHON" "$script" 2>&1; then
                 migration_count=$((migration_count + 1))
             else
                 warn "Migration $name had errors (non-fatal)"
@@ -442,7 +443,7 @@ asyncio.run(init())
         run_migrations.py; do
         if [ -f "$INSTALL_DIR/$script" ]; then
             echo "    Running $script ..."
-            if python3 "$INSTALL_DIR/$script" 2>&1; then
+            if (cd "$INSTALL_DIR" && PYTHONPATH="$INSTALL_DIR" "$VENV_PYTHON" "$INSTALL_DIR/$script") 2>&1; then
                 migration_count=$((migration_count + 1))
             else
                 warn "$script had errors (non-fatal)"
@@ -454,7 +455,7 @@ asyncio.run(init())
     # 9d — Run Alembic migrations if alembic directory exists
     if [ -f "$INSTALL_DIR/alembic.ini" ] && [ -d "$INSTALL_DIR/alembic" ]; then
         echo "  → Running Alembic migrations..."
-        if alembic upgrade head 2>&1; then
+        if "$INSTALL_DIR/venv/bin/alembic" upgrade head 2>&1; then
             ok "Alembic migrations applied"
         else
             warn "Alembic migrations had errors (non-fatal — likely already applied)"
