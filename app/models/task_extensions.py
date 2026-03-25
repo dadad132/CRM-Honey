@@ -87,7 +87,7 @@ class TaskWatcher(SQLModel, table=True):
 class TicketWatcher(SQLModel, table=True):
     """Users watching a ticket for updates"""
     id: Optional[int] = Field(default=None, primary_key=True)
-    ticket_id: int = Field(foreign_key="ticket.id", index=True)
+    ticket_id: int = Field(index=True)
     user_id: int = Field(foreign_key="user.id", index=True)
     created_at: datetime = Field(default_factory=datetime.utcnow)
 

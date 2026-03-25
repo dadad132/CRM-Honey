@@ -70,8 +70,8 @@ class KBResolvedCase(SQLModel, table=True):
     root_cause: Optional[str] = Field(default=None, sa_column=Column(Text))  # What was the underlying cause
     time_to_resolve: Optional[int] = None  # Minutes it took
     
-    # Source ticket link (optional)
-    ticket_id: Optional[int] = Field(default=None, foreign_key="ticket.id")
+    # Source ticket link (optional — no FK constraint, ticket may be in tasks table)
+    ticket_id: Optional[int] = Field(default=None, index=True)
     ticket_number: Optional[str] = None  # e.g. TKT-2026-00933
     
     # Helpfulness tracking

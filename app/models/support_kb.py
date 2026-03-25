@@ -22,7 +22,7 @@ class SupportArticle(SQLModel, table=True):
     solution_steps: str  # Step-by-step solution (stored as numbered list or JSON)
     solution_source: str = Field(default="web")  # "web", "manual", "ticket"
     source_url: Optional[str] = None  # URL if sourced from web
-    source_ticket_id: Optional[int] = Field(default=None, foreign_key="ticket.id")
+    source_ticket_id: Optional[int] = Field(default=None, index=True)
     
     # Learning metrics
     times_shown: int = Field(default=0)  # How many times this solution was shown
@@ -55,7 +55,7 @@ class SupportConversation(SQLModel, table=True):
     resolution_type: Optional[str] = None  # 'kb_article', 'web_search', 'pre_trained', etc.
     article_id: Optional[int] = Field(default=None, foreign_key="supportarticle.id")  # Which article helped
     escalated_to_ticket: bool = Field(default=False)  # Did they create a ticket?
-    ticket_id: Optional[int] = Field(default=None, foreign_key="ticket.id")
+    ticket_id: Optional[int] = Field(default=None, index=True)
     
     # Enhanced tracking
     conversation_json: Optional[str] = None  # Full conversation history as JSON
