@@ -396,20 +396,32 @@ run_all_migrations() {
 
     # 9a — Let SQLModel create all tables (init_models)
     echo "  → Initializing database schema..."
+    echo "  → Using Python: $VENV_PYTHON"
+
+    # Verify venv python has required packages
+    if ! "$VENV_PYTHON" -c "import sqlmodel; import aiosqlite" 2>/dev/null; then
+        echo "  → Packages missing in venv, reinstalling..."
+        "$INSTALL_DIR/venv/bin/pip" install -r "$INSTALL_DIR/requirements.txt" -q || true
+    fi
+
     "$VENV_PYTHON" -c "
 import asyncio
-import sys, os
+import sys, os, traceback
 sys.path.insert(0, '$INSTALL_DIR')
 os.chdir('$INSTALL_DIR')
 
-async def init():
-    from app.core.database import init_models
-    await init_models()
-    print('    Database tables created')
-
-asyncio.run(init())
+try:
+    async def init():
+        from app.core.database import init_models
+        await init_models()
+        print('    Database tables created')
+    asyncio.run(init())
+except Exception as e:
+    print(f'ERROR: {e}')
+    traceback.print_exc()
+    sys.exit(1)
 " || {
-        fail "Database init_models() failed"
+        fail "Database init_models() failed — see error above"
         return
     }
     ok "Database schema initialized"
@@ -426,7 +438,7 @@ asyncio.run(init())
             local name
             name=$(basename "$script")
             echo "    Running $name ..."
-            if PYTHONPATH="$INSTALL_DIR" "$VENV_PYTHON" "$script" 2>&1; then
+            if (cd "$INSTALL_DIR" && PYTHONPATH="$INSTALL_DIR" "$VENV_PYTHON" "$script") 2>&1; then
                 migration_count=$((migration_count + 1))
             else
                 warn "Migration $name had errors (non-fatal)"
@@ -455,7 +467,7 @@ asyncio.run(init())
     # 9d — Run Alembic migrations if alembic directory exists
     if [ -f "$INSTALL_DIR/alembic.ini" ] && [ -d "$INSTALL_DIR/alembic" ]; then
         echo "  → Running Alembic migrations..."
-        if "$INSTALL_DIR/venv/bin/alembic" upgrade head 2>&1; then
+        if (cd "$INSTALL_DIR" && "$INSTALL_DIR/venv/bin/alembic" upgrade head) 2>&1; then
             ok "Alembic migrations applied"
         else
             warn "Alembic migrations had errors (non-fatal — likely already applied)"
