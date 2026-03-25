@@ -198,7 +198,7 @@ install_system_packages() {
         dnf|yum)
             "$PKG_MANAGER" install -y epel-release 2>/dev/null || true
             "$PKG_MANAGER" install -y \
-                git gcc make \
+                git gcc make rsync \
                 python3 python3-devel python3-pip \
                 sqlite sqlite-libs \
                 curl wget \
@@ -212,7 +212,7 @@ install_system_packages() {
             export DEBIAN_FRONTEND=noninteractive
             apt-get update -qq
             apt-get install -y -qq \
-                git gcc make \
+                git gcc make rsync \
                 python3 python3-dev python3-pip python3-venv \
                 sqlite3 libsqlite3-dev \
                 curl wget \
@@ -505,7 +505,7 @@ WorkingDirectory=$INSTALL_DIR
 Environment="PATH=$INSTALL_DIR/venv/bin:/usr/local/bin:/usr/bin:/bin"
 Environment="PYTHONUNBUFFERED=1"
 
-ExecStart=$INSTALL_DIR/venv/bin/python start_server.py
+ExecStart=$INSTALL_DIR/venv/bin/python start_server.py --port $APP_PORT
 
 TimeoutStopSec=30
 KillMode=mixed
