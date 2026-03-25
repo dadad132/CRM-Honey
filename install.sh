@@ -467,7 +467,7 @@ except Exception as e:
     # 9d — Run Alembic migrations if alembic directory exists
     if [ -f "$INSTALL_DIR/alembic.ini" ] && [ -d "$INSTALL_DIR/alembic" ]; then
         echo "  → Running Alembic migrations..."
-        if (cd "$INSTALL_DIR" && "$INSTALL_DIR/venv/bin/alembic" upgrade head) 2>&1; then
+        if (cd "$INSTALL_DIR" && PYTHONPATH="$INSTALL_DIR" "$INSTALL_DIR/venv/bin/alembic" upgrade head) 2>&1; then
             ok "Alembic migrations applied"
         else
             warn "Alembic migrations had errors (non-fatal — likely already applied)"
