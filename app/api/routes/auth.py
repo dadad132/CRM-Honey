@@ -45,7 +45,7 @@ async def signup(data: UserCreate, db: AsyncSession = Depends(get_db)):
     db.add(ws)
     await db.flush()
 
-    user = User(email=data.email, full_name=data.full_name or "", hashed_password=get_password_hash(data.password), workspace_id=ws.id)
+    user = User(username=data.username, email=data.email, full_name=data.full_name or "", hashed_password=get_password_hash(data.password), workspace_id=ws.id)
     db.add(user)
     await db.commit()
     await db.refresh(user)

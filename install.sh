@@ -516,6 +516,7 @@ User=$APP_USER
 Group=$APP_GROUP
 WorkingDirectory=$INSTALL_DIR
 Environment="PATH=$INSTALL_DIR/venv/bin:/usr/local/bin:/usr/bin:/bin"
+Environment="PYTHONPATH=$INSTALL_DIR"
 Environment="PYTHONUNBUFFERED=1"
 
 ExecStart=$INSTALL_DIR/venv/bin/python start_server.py --port $APP_PORT
@@ -564,8 +565,8 @@ SVCEOF
         warn "No firewall tool detected — please open port $APP_PORT manually"
     fi
 
-    # ── start the service ───────────────────────────────────────────
-    systemctl start "$SERVICE_NAME"
+    # ── start/restart the service ────────────────────────────────────
+    systemctl restart "$SERVICE_NAME"
     sleep 2
 
     if systemctl is-active --quiet "$SERVICE_NAME"; then

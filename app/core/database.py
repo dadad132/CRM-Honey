@@ -77,7 +77,11 @@ async def init_models() -> None:
                 # if it doesn't exist, without dropping existing tables.
 
                 if need_rebuild:
-                    await conn.run_sync(SQLModel.metadata.drop_all)
+                    import logging
+                    logging.getLogger(__name__).warning(
+                        "Schema drift detected — missing columns in user/task table. "
+                        "Run migration scripts to add missing columns. Skipping destructive drop_all."
+                    )
         except Exception:
             # Best-effort; continue to create_all
             pass
