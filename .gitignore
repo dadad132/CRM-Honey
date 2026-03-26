@@ -27,3 +27,4 @@ data.db-*
 # Alembic
 alembic/versions/*.pyc
 *.DS_Store
+'data.db'
