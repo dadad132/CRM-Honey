@@ -11,7 +11,7 @@ def migrate():
     # Find the database file
     db_path = 'data.db'
     if not os.path.exists(db_path):
-        db_path = '/home/eugene/crm-backend/data.db'
+        db_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'data.db')
     
     if not os.path.exists(db_path):
         print("❌ Error: Could not find data.db")
