@@ -15,6 +15,11 @@ app/uploads/
 
 # DB
 *.db
+*.db-shm
+*.db-wal
+*.db.backup*
+data.db
+data.db-*
 
 # VSCode
 .vscode/
