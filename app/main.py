@@ -123,13 +123,12 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
 app.add_middleware(SecurityHeadersMiddleware)
 
 # Session middleware for server-rendered web UI
-# In production: secure=True ensures cookies only sent over HTTPS
-# httponly=True prevents JavaScript access to session cookie
+# https_only=True ensures cookies only sent over HTTPS (enable via FORCE_HTTPS=true in .env)
 # same_site='lax' provides CSRF protection while allowing normal navigation
 app.add_middleware(
     SessionMiddleware, 
     secret_key=settings.secret_key,
-    https_only=not settings.debug,  # Secure cookies in production
+    https_only=settings.force_https,  # Only enable when HTTPS is configured
     same_site='lax'
 )
 

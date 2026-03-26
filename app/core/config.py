@@ -10,6 +10,7 @@ class Settings(BaseSettings):
     debug: bool = Field(True, alias="APP_DEBUG")
     host: str = Field("0.0.0.0", alias="APP_HOST")
     port: int = Field(8000, alias="APP_PORT")
+    force_https: bool = Field(False, alias="FORCE_HTTPS")
 
     secret_key: str = Field("change-me-in-production", alias="SECRET_KEY")
     algorithm: str = Field("HS256", alias="ALGORITHM")

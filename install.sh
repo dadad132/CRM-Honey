@@ -335,6 +335,9 @@ APP_DEBUG=False
 APP_HOST=0.0.0.0
 APP_PORT=$APP_PORT
 
+# Set to true only after you configure HTTPS (nginx + SSL cert)
+FORCE_HTTPS=false
+
 SECRET_KEY=$secret_key
 ALGORITHM=HS256
 ACCESS_TOKEN_EXPIRE_MINUTES=60
@@ -452,6 +455,7 @@ except Exception as e:
         add_performance_indexes.py \
         add_task_billing_columns.py \
         add_task_customer_columns.py \
+        add_ticket_billing_columns.py \
         run_migrations.py; do
         if [ -f "$INSTALL_DIR/$script" ]; then
             echo "    Running $script ..."
@@ -463,6 +467,34 @@ except Exception as e:
             fi
         fi
     done
+
+    # 9c2 — Run scripts/migration/ scripts
+    local scripts_migration_dir="$INSTALL_DIR/scripts/migration"
+    if [ -d "$scripts_migration_dir" ]; then
+        for script in "$scripts_migration_dir"/*.py; do
+            [ -f "$script" ] || continue
+            local sname
+            sname=$(basename "$script")
+            echo "    Running scripts/migration/$sname ..."
+            if (cd "$INSTALL_DIR" && PYTHONPATH="$INSTALL_DIR" "$VENV_PYTHON" "$script") 2>&1; then
+                migration_count=$((migration_count + 1))
+            else
+                warn "scripts/migration/$sname had errors (non-fatal)"
+                migration_fail=$((migration_fail + 1))
+            fi
+        done
+    fi
+
+    # 9c3 — Run scripts/run_all_migrations.py if present
+    if [ -f "$INSTALL_DIR/scripts/run_all_migrations.py" ]; then
+        echo "    Running scripts/run_all_migrations.py ..."
+        if (cd "$INSTALL_DIR" && PYTHONPATH="$INSTALL_DIR" "$VENV_PYTHON" "$INSTALL_DIR/scripts/run_all_migrations.py") 2>&1; then
+            migration_count=$((migration_count + 1))
+        else
+            warn "scripts/run_all_migrations.py had errors (non-fatal)"
+            migration_fail=$((migration_fail + 1))
+        fi
+    fi
 
     # 9d — Run Alembic migrations if alembic directory exists
     if [ -f "$INSTALL_DIR/alembic.ini" ] && [ -d "$INSTALL_DIR/alembic" ]; then
