@@ -24,7 +24,7 @@ NC='\033[0m'
 
 SERVICE_NAME="crm-backend"
 APP_DIR="$HOME/crm-backend"
-GITHUB_REPO="dadad132/cem-backend"
+GITHUB_REPO="dadad132/CRM-Honey"
 GITHUB_BRANCH="main"
 
 echo -e "${BLUE}=========================================${NC}"

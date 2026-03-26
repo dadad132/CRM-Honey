@@ -8,7 +8,7 @@ echo "========================================"
 echo "CEM Backend Server Fix Script"
 echo "========================================"
 
-cd /root/cem-backend
+cd /opt/crm-backend
 
 echo ""
 echo "[1/5] Pulling latest code from GitHub..."
@@ -20,24 +20,24 @@ source venv/bin/activate
 
 echo ""
 echo "[3/5] Running database migrations..."
-PYTHONPATH=/root/cem-backend alembic upgrade head
+PYTHONPATH=/opt/crm-backend alembic upgrade head
 
 echo ""
 echo "[4/5] Checking migration status..."
-PYTHONPATH=/root/cem-backend alembic current
+PYTHONPATH=/opt/crm-backend alembic current
 
 echo ""
 echo "[5/5] Restarting the service..."
-if systemctl is-active --quiet cem-backend; then
-    sudo systemctl restart cem-backend
+if systemctl is-active --quiet crm-backend; then
+    sudo systemctl restart crm-backend
     echo "Service restarted successfully!"
 elif systemctl is-active --quiet cem; then
     sudo systemctl restart cem
     echo "Service restarted successfully!"
 else
     echo "No systemd service found. You may need to manually restart your server."
-    echo "If using supervisor: sudo supervisorctl restart cem-backend"
-    echo "If using PM2: pm2 restart cem-backend"
+    echo "If using supervisor: sudo supervisorctl restart crm-backend"
+    echo "If using PM2: pm2 restart crm-backend"
 fi
 
 echo ""

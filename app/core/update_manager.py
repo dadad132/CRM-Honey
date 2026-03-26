@@ -23,7 +23,7 @@ class UpdateManager:
     3. Setting up SSH config or GIT_SSH_COMMAND environment variable
     """
     
-    def __init__(self, repo_owner: str = "dadad132", repo_name: str = "cem-backend"):
+    def __init__(self, repo_owner: str = "dadad132", repo_name: str = "CRM-Honey"):
         self.repo_owner = repo_owner
         self.repo_name = repo_name
         self.github_api = f"https://api.github.com/repos/{repo_owner}/{repo_name}"

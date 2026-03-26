@@ -291,6 +291,7 @@ async def web_signup_post(
     await db.commit()
     await db.refresh(user)
     request.session['user_id'] = user.id
+    request.session['workspace_id'] = user.workspace_id
     return RedirectResponse('/web/profile/complete', status_code=303)
 
 
@@ -3679,7 +3680,7 @@ async def web_admin_setup_ssh(
     try:
         subprocess.run([
             "git", "remote", "set-url", "origin",
-            "git@github.com:dadad132/cem-backend.git"
+            "git@github.com:dadad132/CRM-Honey.git"
         ], capture_output=True)
     except Exception:
         pass

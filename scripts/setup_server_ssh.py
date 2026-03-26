@@ -50,7 +50,7 @@ def setup_ssh():
     try:
         subprocess.run([
             "git", "remote", "set-url", "origin",
-            "git@github.com:dadad132/cem-backend.git"
+            "git@github.com:dadad132/CRM-Honey.git"
         ], check=True)
         print("✓ Git remote updated to SSH")
     except:
@@ -65,7 +65,7 @@ def setup_ssh():
     
     print("\n📋 NEXT STEPS:")
     print("1. Copy the public key above")
-    print("2. Go to: https://github.com/dadad132/cem-backend/settings/keys")
+    print("2. Go to: https://github.com/dadad132/CRM-Honey/settings/keys")
     print("3. Click 'Add deploy key'")
     print("4. Paste the key and save")
     print("5. Then the Update button will work!\n")

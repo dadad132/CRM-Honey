@@ -9,7 +9,7 @@ def migrate():
     # Find the database
     db_paths = [
         'data.db',
-        '/root/cem-backend/data.db',
+        '/opt/crm-backend/data.db',
         os.path.join(os.path.dirname(os.path.dirname(__file__)), 'data.db')
     ]
     
